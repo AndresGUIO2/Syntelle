@@ -12,12 +12,12 @@ Status: local implementation candidate, October 21, 2026. The original product s
 
 ## Confirmed decisions
 
-- Deployment target: Azure Container Apps Express with CPU-only compute. Express excludes GPU workloads. Local NVIDIA-assisted measurements do not establish deployment concurrency or economics. The private renderer/media path still needs CPU-only Linux and public connectivity validation; no separate GPU service or client-side rendering change is implicitly authorized.
+- Deployment targets updated October 22, 2026: Vue on Cloudflare, Go API and Python/FastAPI preparation on Azure Container Apps Express, the separate native Go/CUDA renderer on **Modal**, and cloud persistence on Azure Database for PostgreSQL. Modal explicitly supersedes the prior CPU-only Express constraint for rendering. Zero warm GPU containers are required; native NVENC/image compatibility, authenticated remote coordination, session routing, ICE/relay connectivity, capacity and actual idle shutdown remain unverified. See the [deployment decisions](../001-syntelle-demo/deployment-options.md). This selection does not provision resources or authorize paid GPU tests.
 - Visitors can talk to Syntelle, explore and start creating without signing in.
 - Accounts add saved characters/settings across devices and integration API keys.
 - API consumers can select a character, send a conversational message, provide the exact text to speak, and receive idle animation.
 - The output is rendered live video with synchronized audio. The consumer plays the result rather than receiving the rendering engine or animation data.
-- Conversation-history synchronization is not part of the selected first account scope.
+- Conversation-history synchronization was outside the first account scope and is added by the later account-history extension.
 
 This deliberately extends the original public-demo MVP's account/embedding exclusions. The preceding [public demo](../001-syntelle-demo/spec.md) and [optional login](../002-optional-login/spec.md) remain separate records. The local candidate is implemented; public-service readiness must not be inferred from it.
 
@@ -78,7 +78,7 @@ New work includes session-owned clocks, complete-scene composition, frame captur
 
 The public website still captures microphone input locally and uses the recognition pipeline. Remote-video playback needs its own playback-state/clock adapter so barge-in, cancellation and echo handling do not depend on the old local AudioBuffer player. Sending textual messages through the integration API does not require adding a general-purpose transcription API.
 
-The website remains Vue on Cloudflare and becomes a client/player for the same session API. Go remains responsible for account/session authorization, commands, conversation, voice orchestration and PostgreSQL records. FastAPI remains responsible for preparation. A private render/media worker is a proposed addition; its host is not selected yet.
+The website remains Vue on Cloudflare and becomes a client/player for the same session API. Go remains responsible for account/session authorization, commands, conversation, voice orchestration and PostgreSQL records. FastAPI remains responsible for preparation. The private native render/media worker is implemented locally; Modal is its selected cloud host as of October 22. Cloud deployment and connectivity validation remain pending.
 
 [Azure Container Apps ingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress-overview#protocol-types) documents HTTP/TCP and WebSocket support. That is not proof that the current Go WebSocket endpoint provides WebRTC media connectivity. Validate ICE/relay/egress and the media host separately before choosing deployment.
 
@@ -113,7 +113,7 @@ Before public release, define guest/account quotas, key scopes, stream limits, s
 
 ## Boundaries
 
-No billing/subscriptions, organizations, role editor, general-purpose SDK, arbitrary character-generation API, image regeneration, new animation model, wide-angle reconstruction, production deployment or automatic history synchronization is included in this draft.
+No billing/subscriptions, organizations, role editor, general-purpose SDK, arbitrary character-generation API, image regeneration, new animation model, wide-angle reconstruction or production deployment is included in this draft. Account conversation history is specified by its later extension.
 
 Saving characters requires a durable private rendering package and account ownership. The existing development archive is not an implemented production account library. Define retention for temporary uploads versus saved likeness/render materials explicitly.
 

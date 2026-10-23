@@ -10,6 +10,7 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"strings"
+	"syntelle/render-contract"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -42,7 +43,15 @@ func (s *session) offer() error {
 	if s.host.config.NetworkSettings != nil {
 		options = append(options, webrtc.WithSettingEngine(*s.host.config.NetworkSettings))
 	}
-	pc, err := webrtc.NewAPI(options...).NewPeerConnection(webrtc.Configuration{})
+	ice, err := rendercontract.ICEServers()
+	if err != nil {
+		return err
+	}
+	servers := []webrtc.ICEServer{}
+	for _, server := range ice {
+		servers = append(servers, webrtc.ICEServer{URLs: server.URLs, Username: server.Username, Credential: server.Credential})
+	}
+	pc, err := webrtc.NewAPI(options...).NewPeerConnection(webrtc.Configuration{ICEServers: servers})
 	if err != nil {
 		return fmt.Errorf("create native peer: %w", err)
 	}

@@ -29,18 +29,20 @@ import (
 )
 
 type Service struct {
-	mu           sync.Mutex
-	ctx          context.Context // owned service lifecycle, never an HTTP request context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	closing      bool
-	sessions     map[string]*streamSession
-	worker       *peer
-	store        *recordStore
-	conversation *conversation.Service
-	resolve      ResolveFunc
-	config       Config
-	admission    *streamAdmission
+	bootMu        sync.Mutex
+	workerStarted time.Time
+	mu            sync.Mutex
+	ctx           context.Context // owned service lifecycle, never an HTTP request context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	closing       bool
+	sessions      map[string]*streamSession
+	worker        *peer
+	store         *recordStore
+	conversation  *conversation.Service
+	resolve       ResolveFunc
+	config        Config
+	admission     *streamAdmission
 }
 
 var identifier = regexp.MustCompile(`^[a-zA-Z0-9_-]{8,128}$`)
@@ -100,7 +102,7 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 		parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/streams"), "/"), "/")
 		if len(parts) == 1 && parts[0] == "status" && r.Method == http.MethodGet {
 			s.mu.Lock()
-			available := s.worker != nil && !s.closing
+			available := (s.worker != nil || httpapi.Cloud()) && !s.closing
 			count := len(s.sessions)
 			s.mu.Unlock()
 			writeJSON(w, 200, map[string]any{"available": available, "configured": s.conversation.Speech != nil && s.conversation.Model != nil, "speech_configured": s.conversation.Speech != nil, "recognition": s.conversation.Recognition != nil, "capacity": s.config.MaximumSessions, "active": count, "time_limits_enabled": !s.config.DisableTimeLimits})
@@ -171,6 +173,9 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 }
 
 func localRequest(r *http.Request) bool {
+	if httpapi.Cloud() {
+		return httpapi.CloudRequest(r)
+	}
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host = r.Host
@@ -181,7 +186,12 @@ func localRequest(r *http.Request) bool {
 	return r.Header.Get("Origin") == "" || httpapi.AllowedOrigin(r)
 }
 func (s *Service) response(session *streamSession, ticket string) SessionResponse {
-	return SessionResponse{ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
+	ice, _ := rendercontract.ICEServers()
+	startupTimeout := 12000
+	if httpapi.Cloud() {
+		startupTimeout = 95000
+	}
+	return SessionResponse{StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
 }
 func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
 	input := struct {
@@ -323,7 +333,17 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		writeError(w, 503, "Conversation service is unavailable.")
 		return
 	}
-	if !s.toWorker(envelope("create", id, map[string]any{"settings": input.Settings, "package_hash": s.config.PackageHash, "width": 720, "height": 960, "fps": 30})) {
+	if httpapi.Cloud() {
+		s.mu.Lock()
+		if s.closing || s.sessions[id] != session {
+			s.mu.Unlock()
+			writeError(w, 503, "Stream closed.")
+			return
+		}
+		s.wg.Add(1)
+		s.mu.Unlock()
+		go s.bootSession(ctx, session)
+	} else if !s.deliverCreate(session) {
 		s.closeSession(id, "renderer unavailable")
 		writeError(w, 503, "The private renderer disconnected.")
 		return

@@ -1,5 +1,7 @@
 # Documentation
 
+[Cloud deployment preparation](development/cloud-deployment.md) covers Terraform, Modal, the app.syntelle.online proxy, offline verification, private inputs and rollout gates.
+
 [Independent API and renderer modules](development/renderer-service-boundary.md) describes separate source, dependency and image boundaries and unchanged contracts.
 
 Current application entry: [backend-only player](development/backend-only-player.md). Both `/` and `/?view=stream` display remote video with the latest microphone-only UI; former public client-rendering routes and export modes are retired. Historical experiment descriptions below remain evidence.

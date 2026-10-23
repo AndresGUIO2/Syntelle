@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"syntelle/api/internal/httpapi"
 	"time"
 
 	"github.com/coder/websocket"
@@ -90,6 +91,14 @@ func (s *Service) trackPeer(parent context.Context, c *websocket.Conn) *peer {
 	return p
 }
 func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
+	if httpapi.Cloud() {
+		var valid bool
+		err := s.store.pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM syntelle_streaming.worker_allocation WHERE id=$1 AND expires_at>now())", r.Header.Get("X-Syntelle-Allocation")).Scan(&valid)
+		if err != nil || !valid {
+			writeError(w, 403, "Worker allocation required.")
+			return
+		}
+	}
 	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if r.Method != http.MethodGet || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || s.config.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(s.config.WorkerToken)) != 1 {
 		writeError(w, 403, "Private renderer authorization required.")
@@ -120,6 +129,7 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.worker = p
+	s.workerStarted = time.Now()
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -133,6 +143,11 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		for _, id := range ids {
 			s.closeSession(id, "private renderer disconnected")
+		}
+		if httpapi.Cloud() {
+			archive, stop := context.WithTimeout(context.WithoutCancel(s.ctx), time.Second)
+			defer stop()
+			_, _ = s.store.pool.Exec(archive, "UPDATE syntelle_streaming.worker_allocation SET expires_at=now() WHERE id=$1", r.Header.Get("X-Syntelle-Allocation"))
 		}
 	}()
 	p.send(envelope("registered", "", map[string]int{"maximum_sessions": s.config.MaximumSessions}))
@@ -232,7 +247,11 @@ func (s *Service) playerSocket(w http.ResponseWriter, r *http.Request, id string
 		}
 		defer release()
 	}
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:5173", "127.0.0.1:5173"}})
+	patterns := []string{"localhost:5173", "127.0.0.1:5173"}
+	if httpapi.Cloud() {
+		patterns = []string{"app.syntelle.online"}
+	}
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: patterns})
 	if err != nil {
 		return
 	}
@@ -349,6 +368,7 @@ func (s *Service) playerSocket(w http.ResponseWriter, r *http.Request, id string
 			session.lastSeen = time.Now()
 		}
 		channel := session.channel
+		starting := session.state == "starting"
 		s.mu.Unlock()
 		if !active {
 			return
@@ -390,6 +410,12 @@ func (s *Service) playerSocket(w http.ResponseWriter, r *http.Request, id string
 			}
 			p.send(envelope("command", id, result))
 		case "microphone":
+			// Admission precedes GPU startup; do not open paid recognition while
+			// the admitted renderer is still starting.
+			if starting {
+				p.send(envelope("error", id, map[string]string{"message": "The renderer is still starting."}))
+				continue
+			}
 			var microphone conversation.Event
 			if json.Unmarshal(event.Data, &microphone) != nil || !identifier.MatchString(microphone.TurnID) || channel == nil {
 				continue

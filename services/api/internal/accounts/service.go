@@ -106,6 +106,15 @@ func Open(ctx context.Context, pool *pgxpool.Pool, cfg Config) (*Service, error)
 // AllowedRequest keeps the account MVP local and protects cookie writes from
 // cross-site requests. Bearer integrations may omit Origin; browser writes may not.
 func (s *Service) AllowedRequest(r *http.Request) bool {
+	if httpapi.Cloud() {
+		if !httpapi.CloudRequest(r) {
+			return false
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			return r.Header.Get("Origin") == s.cfg.Origin && r.Header.Get("X-Syntelle-Request") == "1"
+		}
+		return true
+	}
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host = r.Host

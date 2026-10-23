@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syntelle/api/internal/httpapi"
 	"time"
 )
 
@@ -249,10 +250,13 @@ var errRendererUnavailable = errors.New("The private renderer is not running.")
 func (s *Service) reserveSession(session *streamSession) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closing || s.worker == nil {
+	if s.closing || (s.worker == nil && !httpapi.Cloud()) {
 		return errRendererUnavailable
 	}
 	if s.sessions[session.id] != nil {
+		return errRenderCapacity
+	}
+	if httpapi.Cloud() && s.worker != nil && time.Since(s.workerStarted) > 24*time.Minute {
 		return errRenderCapacity
 	}
 	if s.admission != nil && !s.admission.config.DisableSessionLimit {

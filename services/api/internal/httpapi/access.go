@@ -7,6 +7,9 @@ import (
 )
 
 func AllowedOrigin(r *http.Request) bool {
+	if Cloud() {
+		return r.Header.Get("Origin") == "https://app.syntelle.online" && CloudRequest(r)
+	}
 	// This is an owner-only, loopback development service. Origin is required
 	// for browser writes, including HTTP Read aloud; wildcard CORS is prohibited.
 	switch r.Header.Get("Origin") {

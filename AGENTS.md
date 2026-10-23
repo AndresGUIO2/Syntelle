@@ -87,7 +87,7 @@ The six Go skills are project-local and pinned to `samber/cc-skills-golang@8e899
 
 
 
-The user's instructions and confirmed architecture take precedence over skill defaults: Vue on Cloudflare, separate Go and FastAPI services on Azure Container Apps, and Azure Speech for TTS. FastAPI does not host the frontend. Skill sources and pinned revisions are recorded in `docs/development/development-skills.md`.
+The user's instructions and confirmed architecture take precedence over skill defaults: Vue on Cloudflare, separate Go and FastAPI services on Azure Container Apps Express, a separate native GPU render worker on Modal, Azure Database for PostgreSQL for cloud persistence, and Azure Speech for TTS. The cloud database selection is a planning decision; local PostgreSQL evidence and budgets remain unchanged, and no database migration or provisioning is implied. FastAPI does not host the frontend. Skill sources and pinned revisions are recorded in `docs/development/development-skills.md`.
 
 
 
@@ -334,3 +334,6 @@ Speech lighting correction: the local renderer now selects `.tools/speech-lighti
 
 
 Local runtime naming: the owner requires stable local names across updates. Always activate verified renderer builds as `syntelle-render-native:local` and start the normal launcher without an experiment-specific `--image`. Keep the container name `syntelle-render-native-local`. Preserve historical experiment tags/evidence, but do not use their labels for the running owner-local container. The normal entry remains `.\dev start`.
+
+
+Modal renderer hosting decision (October 22, 2026): the owner explicitly selected Modal for the separate native Go/CUDA render worker. This supersedes phase 53's CPU-only renderer deployment constraint; Go API and Python preparation remain on Azure Container Apps Express. Follow specs/001-syntelle-demo/deployment-options.md and specs/003-character-streaming-api/spec.md. Use a zero-warm-container target, authorize admission before GPU invocation, and end worker execution when no sessions remain. Native binary/image compatibility, actual NVENC availability, authenticated remote control, session routing, ICE/STUN/TURN connectivity and shutdown/cold-start behavior remain deployment validation work. Modal's TCP tunnels are not a claim of public UDP port mapping. This selection does not provision resources, start GPUs, change local services/assets, migrate data or authorize paid trials.

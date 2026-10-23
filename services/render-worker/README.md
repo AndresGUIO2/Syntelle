@@ -2,6 +2,8 @@
 
 The worker owns its independent Go module, commands and CPU/CUDA/media code in this directory. See [service boundaries and independent builds](../../docs/development/renderer-service-boundary.md). Both image builds use the repository root as context and copy only their service plus the shared contracts.
 
+The selected cloud host is **Modal** (October 22, 2026), with zero warm GPU containers. This is a deployment decision, not a deployed adapter: the local launcher still requires a loopback API. Native CUDA/NVENC availability, authenticated remote control, session routing, ICE/STUN/TURN connectivity and scale-down need validation. See [renderer deployment requirements](../../specs/001-syntelle-demo/deployment-options.md#selected-renderer-host). Current local commands/assets remain unchanged; no GPU invocation is part of this documentation update.
+
 This local service reuses the accepted Syntelle RGB-D engine. It publishes rendered character RGB and alpha together with native speech over WebRTC. The browser owns background composition and blur; all character rendering remains private. The public player receives no character source textures, meshes or animation implementation. See [browser backgrounds](../../docs/development/frontend-background.md) for the current media contract and bounded checks.
 
 The native Go worker selects CUDA rendering when available, with CPU fallback, and publishes Pion H.264/Opus in Linux Docker behind the existing Go API and public WebRTC player. `build` builds the native image and `start` launches it. The former Chromium render worker, private web entry and browser-comparison launch commands are retired. There is no browser fallback.

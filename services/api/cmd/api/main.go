@@ -20,6 +20,9 @@ import (
 )
 
 func main() {
+	if err := httpapi.ValidateDeployment(); err != nil {
+		log.Fatal(err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	processorURL := os.Getenv("PROCESSOR_URL")
@@ -147,6 +150,7 @@ func main() {
 	if streamMode || accountMode {
 		handler = &productHandler{Handler: handler, streams: streams, conversations: conversations}
 	}
+	handler = httpapi.DeploymentGuard(handler)
 	server := &http.Server{
 		Addr: address, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second,

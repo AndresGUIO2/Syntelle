@@ -1,0 +1,43 @@
+{
+  "azure": {
+    "subscription_id": "REPLACE_WITH_AZURE_SUBSCRIPTION_ID",
+    "tenant_id": "REPLACE_WITH_AZURE_TENANT_ID"
+  },
+  "bootstrap": {
+    "storage_account_name": "REPLACE",
+    "operator_object_id": "REPLACE_WITH_DEPLOYMENT_PRINCIPAL_OBJECT_ID"
+  },
+  "backend": {
+    "resource_group_name": "syntelle-tfstate",
+    "storage_account_name": "REPLACE",
+    "container_name": "tfstate",
+    "use_azuread_auth": true
+  },
+  "foundation": {
+    "resource_group_name": "rg-syntelle",
+    "location": "canadacentral"
+  },
+  "services": {
+    "foundation": {},
+    "images": {},
+    "secrets": {},
+    "runtime": {
+      "SYNTELLE_CHAT_PROVIDER": "gemini",
+      "GEMINI_CHAT_MODEL": "gemini-3.8-flash",
+      "SYNTELLE_MODAL_LAUNCH_URL": "",
+      "SYNTELLE_TURN_URLS": "",
+      "SYNTELLE_STUN_URLS": "",
+      "SYNTELLE_PACKAGE_HASH": ""
+    },
+    "publish_frontend": false,
+    "cloudflare_account_id": "REPLACE",
+    "cloudflare_zone_id": "REPLACE",
+    "assets_directory": "../../apps/web/dist",
+    "worker_file": "../../deploy/edge/worker.mjs"
+  },
+  "performance_profile": "REPLACE_WITH_FROZEN_PROFILE_PATH",
+  "modal": {
+    "assets": "REPLACE_WITH_FROZEN_NATIVE_BUNDLE_PATH"
+  },
+  "live_acceptance": false
+}

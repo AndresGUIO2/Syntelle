@@ -2,6 +2,28 @@
 
 Updated October 16, 2026. The owner confirmed Azure Container Apps for two backend services with scale-to-zero: the Go API and independent Python/FastAPI processor. This replaces the earlier Google Cloud Run choice while keeping Vue separately on Cloudflare. Priorities are low cost and simple maintenance. The owner already has Azure Container Apps Express experience; evaluate that mode before fixing it for both services. No infrastructure has been provisioned.
 
+## Selected renderer host
+
+October 22, 2026: the owner selected **[Modal](https://modal.com/)** for the separate native Go/CUDA renderer. This replaces the earlier requirement to host rendering on CPU-only Azure Container Apps Express. The Go API and Python/FastAPI preparation service remain on Express; Vue remains on Cloudflare. The installed local renderer, character resources and provider budgets stay unchanged.
+
+Use zero warm containers (`min_containers=0`, no idle buffer) and an explicit bounded `max_containers`; choose the GPU and capacity only after a bounded compatibility check. Modal scales Functions to zero when there are no inputs, subject to the scale-down window. An active render session must keep its invocation alive; an indefinitely running worker/control connection would prevent idle shutdown. The API must authorize admission before invoking GPU work, and termination/cancellation must release the session and invocation. [Modal scaling](https://modal.com/docs/guide/scale), [serverless WebRTC lifecycle](https://modal.com/docs/examples/webrtc_yolo).
+
+Preserve the native Go renderer and its H.264/Opus/WebRTC contract. A small Modal deployment/entry wrapper can launch the compiled binary; do not rewrite rendering in Python. Modal supports compiled CUDA programs, but that does not verify the Syntelle image, video-capable GPU selection or NVENC driver/library exposure. Validate the existing native CUDA/NVENC pipeline explicitly. [CUDA on Modal](https://modal.com/docs/guide/cuda).
+
+Modal documents WebRTC with ICE/STUN and TURN when needed. Its public tunnels expose TCP, which is not public UDP port mapping. Validate actual browser-to-worker connectivity and select authenticated TURN/relay capacity for restrictive networks; no relay provider is selected here. Audio/video continue between the worker and browser through the selected media route, while Go owns signaling, authorization and conversation/provider orchestration. [Modal WebRTC example](https://modal.com/docs/examples/webrtc_yolo), [Modal tunnels](https://modal.com/docs/guide/tunnels).
+
+The current local API accepts one registered worker and the launcher requires a loopback API. Authenticated remote control, invocation dispatch, session routing and multi-worker admission therefore need explicit implementation before cloud deployment. Verify cold start, cancellation, idle shutdown and observed zero-container state with cached speech before making production cost/capacity claims. No GPU invocation or paid trial is performed or authorized by this hosting decision.
+
+For the deployment workflow, use Modal's application definition and CLI/SDK in CI; Terraform remains appropriate for the selected Azure/Cloudflare resources. This records the intended split without adding or applying infrastructure. [Modal continuous deployment](https://modal.com/docs/guide/continuous-deployment).
+
+## Selected cloud database
+
+October 22, 2026: the owner selected **Azure Database for PostgreSQL** for cloud persistence, with Flexible Server as the deployment target. Local PostgreSQL remains in place for development and evidence. Region, engine version, size, networking and backup policy are still deployment details; no cloud resource, migration or credential change is performed by this decision.
+
+Budget the database separately from application/GPU scale-to-zero. Flexible Server stop/start is a management operation; storage is still billed while compute is stopped, and a stopped server automatically starts after seven days. Do not describe the selected database as automatically pausing with application traffic. [Microsoft stop/start documentation](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server), [database pricing](https://azure.microsoft.com/en-us/pricing/details/postgresql/flexible-server/).
+
+Terraform can manage the server and its databases through AzureRM's `azurerm_postgresql_flexible_server` and `azurerm_postgresql_flexible_server_database` resources. Infrastructure configuration is separate from application schema migrations and importing existing evidence. No Terraform configuration or apply is included here. [Microsoft Terraform deployment guide](https://learn.microsoft.com/en-us/azure/developer/terraform/deploy-postgresql-flexible-server-database).
+
 ## Selection criteria
 
 Infrastructure must stop its compute between demo uses. Estimate active time, allocated resources, and trial count, adding supporting services. A range based on memory remaining resident for a full month does not represent this architecture.

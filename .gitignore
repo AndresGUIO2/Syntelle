@@ -1,4 +1,11 @@
 .env
+.deploy-private/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
 .env.*
 !.env.example
 .tools/

@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -94,6 +95,9 @@ func NewHandler(processorURL string, client *http.Client) http.Handler {
 			return
 		}
 		req.Header.Set("Content-Type", writer.FormDataContentType())
+		if Cloud() {
+			req.Header.Set("Authorization", "Bearer "+os.Getenv("SYNTELLE_PROCESSOR_TOKEN"))
+		}
 		res, err := client.Do(req)
 		if err != nil {
 			processorUnavailable(w)

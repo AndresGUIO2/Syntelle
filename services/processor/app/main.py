@@ -1,4 +1,6 @@
 from io import BytesIO
+import os
+import hmac
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Request, UploadFile
@@ -11,6 +13,14 @@ MAX_IMAGE_BYTES = 5_000_000
 MIME_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 
 app = FastAPI(title="Syntelle image processor", version="0.1.0")
+
+@app.middleware("http")
+async def service_auth(request: Request, call_next):
+    if os.environ.get("SYNTELLE_DEPLOYMENT_MODE") == "cloud" and request.url.path != "/healthz":
+        token = os.environ.get("SYNTELLE_PROCESSOR_TOKEN", "")
+        if len(token) < 32 or not hmac.compare_digest(request.headers.get("Authorization", ""), "Bearer " + token):
+            return JSONResponse({"error": "Service authorization required"}, status_code=403)
+    return await call_next(request)
 
 
 class ImageResult(BaseModel):

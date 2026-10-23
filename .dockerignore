@@ -1,0 +1,25 @@
+# Root-context images receive source only. Private assets are mounted separately
+# by the explicit Modal deployment, never sent with this build context.
+**
+!packages/
+!packages/render-contract/
+!packages/render-contract/**
+!services/
+!services/api/
+!services/api/Dockerfile
+!services/api/go.mod
+!services/api/go.sum
+!services/api/cmd/
+!services/api/cmd/**
+!services/api/internal/
+!services/api/internal/**
+!services/render-worker/
+!services/render-worker/native.Dockerfile
+!services/render-worker/go.mod
+!services/render-worker/go.sum
+!services/render-worker/cmd/
+!services/render-worker/cmd/**
+!services/render-worker/internal/
+!services/render-worker/internal/**
+**/.env*
+**/__pycache__/

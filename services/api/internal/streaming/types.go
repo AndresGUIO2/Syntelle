@@ -14,6 +14,7 @@ import (
 type ResolveFunc func(http.ResponseWriter, *http.Request, bool) (accounts.Principal, error)
 
 type Config struct {
+	LaunchClient      *http.Client
 	WorkerToken       string
 	MaximumSessions   int
 	PackageHash       string
@@ -41,15 +42,17 @@ type Command struct {
 }
 
 type SessionResponse struct {
-	ID                string            `json:"id"`
-	Ticket            string            `json:"ticket,omitempty"`
-	State             string            `json:"state"`
-	Configured        bool              `json:"configured"`
-	SpeechConfigured  bool              `json:"speech_configured"`
-	Recognition       bool              `json:"recognition"`
-	Settings          accounts.Settings `json:"settings"`
-	RemainingSeconds  int               `json:"remaining_seconds,omitempty"`
-	TimeLimitsEnabled bool              `json:"time_limits_enabled"`
+	StartupTimeoutMS  int                        `json:"startup_timeout_ms,omitempty"`
+	ICEServers        []rendercontract.ICEServer `json:"ice_servers,omitempty"`
+	ID                string                     `json:"id"`
+	Ticket            string                     `json:"ticket,omitempty"`
+	State             string                     `json:"state"`
+	Configured        bool                       `json:"configured"`
+	SpeechConfigured  bool                       `json:"speech_configured"`
+	Recognition       bool                       `json:"recognition"`
+	Settings          accounts.Settings          `json:"settings"`
+	RemainingSeconds  int                        `json:"remaining_seconds,omitempty"`
+	TimeLimitsEnabled bool                       `json:"time_limits_enabled"`
 }
 
 type commandResult struct {

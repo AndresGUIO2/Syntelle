@@ -41,9 +41,13 @@ func run(ctx context.Context) (runErr error) {
 	if *assets == "" {
 		return errors.New("configure private native character assets")
 	}
+	cloud := os.Getenv("SYNTELLE_DEPLOYMENT_MODE") == "cloud"
 	address, err := url.Parse(*endpoint)
-	if err != nil || address.User != nil || (address.Scheme != "http" && address.Scheme != "https") || (address.Hostname() != "127.0.0.1" && address.Hostname() != "localhost" && address.Hostname() != "::1") {
+	if err != nil || address.User != nil || (address.Scheme != "http" && address.Scheme != "https") || (!cloud && address.Hostname() != "127.0.0.1" && address.Hostname() != "localhost" && address.Hostname() != "::1") {
 		return errors.New("native render worker requires a loopback API URL")
+	}
+	if cloud && (address.Scheme != "https" || address.String() != os.Getenv("SYNTELLE_API_ORIGIN")) {
+		return errors.New("cloud worker requires exact API origin")
 	}
 	if address.Scheme == "https" {
 		address.Scheme = "wss"
@@ -71,6 +75,9 @@ func run(ctx context.Context) (runErr error) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		err = connection(ctx, address.String(), token, nativemedia.Config{Capacity: *limit, Width: 1440, Height: 960, FPS: 30, PackageHash: hash, SceneFactory: factory, NetworkSettings: network})
+		if cloud {
+			return err
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -90,8 +97,11 @@ func run(ctx context.Context) (runErr error) {
 func connection(parent context.Context, address, token string, config nativemedia.Config) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	cloud := os.Getenv("SYNTELLE_DEPLOYMENT_MODE") == "cloud"
+	lifecycle := newCloudLifecycle(cloud, cancel, 90*time.Second, 5*time.Second)
+	defer lifecycle.close()
 	dial, stop := context.WithTimeout(ctx, 10*time.Second)
-	c, _, err := websocket.Dial(dial, address, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}}})
+	c, _, err := websocket.Dial(dial, address, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}, "X-Syntelle-Allocation": []string{os.Getenv("SYNTELLE_RENDER_ALLOCATION_ID")}}})
 	stop()
 	if err != nil {
 		return fmt.Errorf("connect private control: %w", err)
@@ -143,7 +153,11 @@ func connection(parent context.Context, address, token string, config nativemedi
 			slog.Info("Native render worker connected")
 			continue
 		}
+		lifecycle.observe(command.Type, command.SessionID)
 		if err := host.Dispatch(ctx, command); err != nil {
+			if command.Type == "create" {
+				lifecycle.observe("stop", command.SessionID)
+			}
 			slog.Warn("Native render command failed", "kind", command.Type, "error", err)
 			config.Emit(nativemedia.Envelope{Type: "error", SessionID: command.SessionID, Data: []byte(`{"message":"The private native renderer could not process this command."}`)})
 		}
