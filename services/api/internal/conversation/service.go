@@ -200,15 +200,30 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 	settle.Stop()
 	defer settle.Stop()
 	var settled <-chan time.Time
+	maximumHold := time.NewTimer(utteranceMaximumHold)
+	maximumHold.Stop()
+	defer maximumHold.Stop()
+	var held <-chan time.Time
 	pauseUtterance := func() {
 		settle.Stop()
 		settled = nil
 	}
+	clearUtterance := func() {
+		pauseUtterance()
+		maximumHold.Stop()
+		held = nil
+	}
 	armUtterance := func() {
 		if utterance.id != "" {
+			settle.Stop()
 			settle.Reset(utterancePause)
 			settled = settle.C
 		}
+	}
+	holdUtterance := func() {
+		maximumHold.Stop()
+		maximumHold.Reset(utteranceMaximumHold)
+		held = maximumHold.C
 	}
 	emit := func(kind, id, text string, data any) {
 		send(ctx, Event{Type: kind, ConversationID: cid, TurnID: id, Text: text, Data: data})
@@ -240,7 +255,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		playing = false
 	}
 	stopMic := func() {
-		pauseUtterance()
+		clearUtterance()
 		utterance.take()
 		if micCancel != nil {
 			micCancel()
@@ -309,6 +324,14 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 		}()
 	}
+	flushUtterance := func() {
+		clearUtterance()
+		id, text := utterance.take()
+		if micID != "" && id != "" {
+			emit("transcript_final", id, text, nil)
+			start(id, text, false)
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -319,12 +342,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				armUtterance()
 				continue
 			}
-			pauseUtterance()
-			id, text := utterance.take()
-			if micID != "" && id != "" {
-				emit("transcript_final", id, text, nil)
-				start(id, text, false)
-			}
+			flushUtterance()
+		case <-held:
+			flushUtterance()
 		case event, open := <-incoming:
 			if !open {
 				return
@@ -395,7 +415,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				if event.Baseline != nil && event.Baseline.valid() {
 					baseline = *event.Baseline
 				}
-				pauseUtterance()
+				clearUtterance()
 				utterance.take()
 				start(event.TurnID, event.Text, event.Type == "speak")
 			case "cancel":
@@ -481,6 +501,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 		case event := <-recognized:
 			if micID == "" || event.StreamID != micID {
+				if event.Type == "final" {
+					slog.Warn("Confirmed recognition did not match the active microphone", "code", "recognition_final_inactive_microphone", "conversation_id", cid, "result_id", event.ID)
+				}
 				continue
 			}
 			switch event.Type {
@@ -498,6 +521,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				armUtterance()
 			case "final":
 				if !identifier.MatchString(event.ID) || seen[event.ID] {
+					slog.Warn("Confirmed recognition was invalid or already seen", "code", "recognition_final_duplicate_or_invalid", "conversation_id", cid, "result_id", event.ID)
 					continue
 				}
 				seen[event.ID] = true
@@ -506,23 +530,31 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					delete(seen, seenOrder[0])
 					seenOrder = seenOrder[1:]
 				}
-				if playing && !gate || overlapsPlayback(event, windows, microphoneMS, activityMS) {
+				// Timing overlap is only a reason to suppress speech while the
+				// speaker is active. A delayed SDK result after playback has ended
+				// may retain an overlapping offset but must remain eligible as a
+				// follow-up turn.
+				if playing && (!gate || overlapsPlayback(event, windows, microphoneMS, activityMS)) {
+					slog.Info("Confirmed recognition suppressed during playback", "code", "recognition_final_playback", "conversation_id", cid, "result_id", event.ID)
 					emit("transcript_partial", micID, utterance.text, nil)
 					armUtterance()
 					continue
 				}
-				if playing {
+				if len(windows) > 0 {
 					spoken, err := s.Store.PlaybackText(ctx, cid, turnID)
 					if err != nil {
 						emit("microphone_error", micID, "The interruption could not be checked. Use Stop reply before asking again.", nil)
 						continue
 					}
 					if matchesPlayback(event.Text, spoken) {
+						slog.Info("Confirmed recognition matched playback text", "code", "recognition_final_echo", "conversation_id", cid, "result_id", event.ID)
 						continue
 					}
 				}
 				utterance.append(event.ID, event.Text)
+				slog.Info("Confirmed recognition queued for a turn", "code", "recognition_final_queued", "conversation_id", cid, "result_id", event.ID)
 				emit("transcript_partial", micID, utterance.text, nil)
+				holdUtterance()
 				armUtterance()
 			case "error":
 				emit("microphone_error", micID, event.Text, nil)

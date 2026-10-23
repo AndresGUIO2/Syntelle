@@ -9,6 +9,10 @@ import (
 // Allow another short pause after a final segment; interim speech suspends it.
 const utterancePause = 1100 * time.Millisecond
 
+// A new SDK speech-start/interim event may never be followed by a result or
+// no-match callback. Do not leave an already confirmed phrase pending forever.
+const utteranceMaximumHold = 4 * time.Second
+
 // Owned exclusively by the socket event loop. Raw SDK results remain archived
 // separately; only confirmed text is eligible for a conversation turn.
 type recognitionUtterance struct {

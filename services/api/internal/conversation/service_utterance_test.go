@@ -96,6 +96,74 @@ func TestRecognitionSegmentsProduceOneTurnAfterContinuationFinishes(t *testing.T
 	}
 }
 
+func TestConfirmedFollowUpSurvivesUnresolvedInterimRecognition(t *testing.T) {
+	store := isolatedStore(t)
+	model := &inputModelFixture{input: make(chan string, 2)}
+	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 8)}
+	cid := "followup-session-01"
+	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f.send(Event{Type: "mic_start", ConversationID: cid, TurnID: "followup-microphone-01"})
+	readUtteranceEvent(t, f, "listening")
+	r.events <- RecognitionEvent{Type: "final", ID: "followup-first-01", Text: "Hi, how are you?"}
+	readUtteranceEvent(t, f, "transcript_final")
+	readUtteranceEvent(t, f, "accepted")
+	readUtteranceEvent(t, f, "prepared_speech")
+	if got := <-model.input; got != "Hi, how are you?" {
+		t.Fatal("first turn was lost", got)
+	}
+	f.send(Event{Type: "playback_ended", ConversationID: cid, TurnID: "followup-first-01"})
+	r.events <- RecognitionEvent{Type: "final", ID: "followup-second-01", Text: "Can you tell me a story?"}
+	if event := readUtteranceEvent(t, f, "transcript_partial"); event.Text != "Can you tell me a story?" {
+		t.Fatal(event)
+	}
+	// A subsequent start/interim event can lack both a final and a no-match
+	// callback. It must not hold the already confirmed second turn forever.
+	r.events <- RecognitionEvent{Type: "start"}
+	readUtteranceEvent(t, f, "speech_detected")
+	r.events <- RecognitionEvent{Type: "partial", Text: "unconfirmed background speech"}
+	readUtteranceEvent(t, f, "transcript_partial")
+	final := readUtteranceEvent(t, f, "transcript_final")
+	if final.TurnID != "followup-second-01" || final.Text != "Can you tell me a story?" {
+		t.Fatal("confirmed follow-up was not released", final)
+	}
+	readUtteranceEvent(t, f, "accepted")
+	readUtteranceEvent(t, f, "prepared_speech")
+	if got := <-model.input; got != "Can you tell me a story?" || model.calls.Load() != 2 {
+		t.Fatal("follow-up did not reach the model exactly once", got, model.calls.Load())
+	}
+}
+
+func TestFollowUpAfterPlaybackIsNotDiscardedByEarlierAudioWindow(t *testing.T) {
+	store := isolatedStore(t)
+	model := &inputModelFixture{input: make(chan string, 2)}
+	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 4)}
+	cid := "playback-followup-session-01"
+	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f.send(Event{Type: "submit", ConversationID: cid, TurnID: "playback-first-turn-01", Text: "Say hello."})
+	readUtteranceEvent(t, f, "accepted")
+	readUtteranceEvent(t, f, "prepared_speech")
+	<-model.input
+	f.send(Event{Type: "mic_start", ConversationID: cid, TurnID: "playback-followup-mic-01"})
+	readUtteranceEvent(t, f, "listening")
+	f.send(Event{Type: "playback_started", ConversationID: cid, TurnID: "playback-first-turn-01"})
+	for range 5 {
+		f.send(Event{Type: "audio", ConversationID: cid, TurnID: "playback-followup-mic-01", Audio: make([]byte, 6400)})
+	}
+	f.send(Event{Type: "playback_ended", ConversationID: cid, TurnID: "playback-first-turn-01"})
+	// Let the ordered socket commands close the playback window before the
+	// independent recognition callback delivers its delayed final result.
+	time.Sleep(50 * time.Millisecond)
+	r.events <- RecognitionEvent{Type: "final", ID: "playback-followup-result-01", Text: "Please explain something else.", OffsetMS: 400, DurationMS: 800}
+	if event := readUtteranceEvent(t, f, "transcript_final"); event.Text != "Please explain something else." {
+		t.Fatal("confirmed follow-up was discarded by previous playback", event)
+	}
+	readUtteranceEvent(t, f, "accepted")
+	readUtteranceEvent(t, f, "prepared_speech")
+	if got := <-model.input; got != "Please explain something else." {
+		t.Fatal("follow-up did not reach the model", got)
+	}
+}
+
 func TestPendingRecognitionIsDiscardedOnStopOrFailure(t *testing.T) {
 	for _, mode := range []string{"mic_stop", "recognition_error", "disconnect"} {
 		t.Run(mode, func(t *testing.T) {
