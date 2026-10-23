@@ -1,6 +1,21 @@
 # Bounded speech articulation
 
-## Current correction: responsive articulation
+## Current tuning: a small speed increase
+
+The owner requested only a little more speed after version 2.
+`bounded-articulation/3` reduces ordinary/contact transition caps from 80/45 ms
+to 70/40 ms, approximately 12% shorter. The 20 ms visual anticipation and
+60/35 ms fleeting-target thresholds remain unchanged. The ordinary midpoint is
+15 ms after its event, compared with 20 ms in version 2. This is a bounded
+animation timing adjustment, not a measured transport synchronization result.
+Version 2 remains in `.tools/viseme-pacing-66/` and PostgreSQL snapshot 570;
+new before/current records are `.tools/viseme-pacing-82/`. Owner visual review
+remains pending. No provider calls or asset changes are involved.
+
+The native code now lives in `services/render-worker/internal/nativeanimation`;
+the earlier API paths below describe their historical location.
+
+## Previous correction: responsive articulation
 
 The owner found the first tuning too slow and visibly delayed. The current
 `bounded-articulation/2` keeps the same fleeting-target filter, but reduces the

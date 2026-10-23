@@ -45,7 +45,7 @@ const map = [
   'MBP',
 ]
 export const AZURE_MAPPING_VERSION = 'azure-nine-pose/1'
-export const VISEME_PACING_VERSION = 'bounded-articulation/2'
+export const VISEME_PACING_VERSION = 'bounded-articulation/3'
 export function decodeSpeechWav(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const tag = (at: number) => String.fromCharCode(...bytes.subarray(at, at + 4))
@@ -122,7 +122,7 @@ export function mouthAt(timeline: ReturnType<typeof speechTimeline>, seconds: nu
   const next = timeline[index + 1]?.time ?? current.time + 0.2
   const duration = Math.max(
     0.001,
-    Math.min(current.pose === 'MBP' || current.pose === 'FV' ? 0.045 : 0.08, next - current.time),
+    Math.min(current.pose === 'MBP' || current.pose === 'FV' ? 0.04 : 0.07, next - current.time),
   )
   const t = Math.max(0, Math.min(1, (articulationTime - current.time) / duration))
   return { from: previous, to: current.pose, amount: t * t * (3 - 2 * t) }

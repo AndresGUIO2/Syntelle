@@ -113,15 +113,15 @@ func TestTimelinePacesBriefTargetsAndPreservesContacts(t *testing.T) {
 func TestMouthAtSmoothsWithoutAccumulatingDelay(t *testing.T) {
 	t.Parallel()
 	timeline := []TimelineEvent{{0, "A"}, {.3, "O"}, {.4, "EI"}, {.6, "Rest"}}
-	frame := MouthAt(timeline, .32)
+	frame := MouthAt(timeline, .315)
 	if math.Abs(frame.Amount-.5) > 1e-9 {
-		t.Fatalf("gesture should be halfway 20ms after its audio event: %+v", frame)
+		t.Fatalf("gesture should be halfway 15ms after its audio event: %+v", frame)
 	}
 	if early := MouthAt(timeline, .279); early.To != "A" {
 		t.Fatalf("gesture anticipates its event by more than 20ms: %+v", early)
 	}
-	if reached := MouthAt(timeline, .36); reached.To != "O" || reached.Amount < .999999 {
-		t.Fatalf("gesture still trails its event after 60ms: %+v", reached)
+	if reached := MouthAt(timeline, .35); reached.To != "O" || reached.Amount < .999999 {
+		t.Fatalf("gesture still trails its event after 50ms: %+v", reached)
 	}
 	before := MouthAt(timeline, .38-1e-8)
 	after := MouthAt(timeline, .38)
@@ -130,7 +130,7 @@ func TestMouthAtSmoothsWithoutAccumulatingDelay(t *testing.T) {
 	}
 	// Sampling out of order (seek/resume) must not depend on frame history.
 	_ = MouthAt(timeline, 1)
-	if MouthAt(timeline, .32) != frame {
+	if MouthAt(timeline, .315) != frame {
 		t.Fatal("pacing depends on sampling history")
 	}
 	if MouthAt(timeline, 10).To != "Rest" {

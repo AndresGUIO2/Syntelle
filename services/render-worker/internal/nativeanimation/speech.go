@@ -91,7 +91,7 @@ type SpeechState struct {
 
 var azurePoses = [...]string{"Rest", "A", "A", "O", "EI", "EI", "EI", "U", "O", "A", "O", "A", "Rest", "CHSHR", "EI", "SZ", "CHSHR", "CHSHR", "FV", "EI", "Rest", "MBP"}
 
-const VisemePacingVersion = "bounded-articulation/2"
+const VisemePacingVersion = "bounded-articulation/3"
 
 func Timeline(events []NativeViseme, durationMS float64) ([]TimelineEvent, error) {
 	return timeline(context.Background(), events, durationMS)
@@ -169,9 +169,9 @@ func MouthAt(timeline []TimelineEvent, seconds float64) Mouth {
 	if index+1 < len(timeline) {
 		next = timeline[index+1].Time
 	}
-	maximum := .08
+	maximum := .07
 	if current.Pose == "MBP" || current.Pose == "FV" {
-		maximum = .045
+		maximum = .04
 	}
 	duration := math.Max(.001, math.Min(maximum, next-current.Time))
 	return Mouth{previous, current.Pose, smooth((articulationTime - current.Time) / duration)}
