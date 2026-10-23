@@ -8,6 +8,7 @@ const props = defineProps<{
   active: boolean
   disabled: boolean
   starting: boolean
+  connects: boolean
   state: 'off' | 'starting' | 'listening' | 'preparing' | 'speaking' | 'error'
   inputLevel: number
 }>()
@@ -27,11 +28,21 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
       ref="button"
       class="microphone-button"
       type="button"
-      :aria-label="t(active ? 'Microphone on' : 'Enable microphone')"
+      :aria-label="
+        t(active ? 'Microphone on' : connects ? 'Start with microphone' : 'Enable microphone')
+      "
       :aria-pressed="active"
       :aria-busy="starting"
       :title="
-        t(starting ? 'Starting microphone…' : active ? 'Turn microphone off' : 'Start talking')
+        t(
+          starting
+            ? 'Starting microphone…'
+            : active
+              ? 'Turn microphone off'
+              : connects
+                ? 'Start with microphone'
+                : 'Start talking',
+        )
       "
       :disabled="disabled"
       @click="$emit('toggle')"
@@ -75,6 +86,11 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
   color: var(--muted);
   background: var(--surface);
   box-shadow: none;
+}
+[data-capture='false']:not([data-state='starting']) .microphone-button:enabled {
+  color: #6d4bd0;
+  background: #f8f5ff;
+  box-shadow: 0 4px 16px #6d4bd038;
 }
 [data-capture='false']:not([data-state='starting']) .microphone-halo {
   opacity: 0;

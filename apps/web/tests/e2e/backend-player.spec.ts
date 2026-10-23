@@ -52,20 +52,74 @@ test('arrival shows a static portrait and opens no rendering session until Start
   await page.goto('/')
   const start = page.getByRole('button', { name: 'Start conversation', exact: true })
   await expect(start).toBeVisible()
+  await expect(page.locator('.remote-stage')).toHaveClass(/remote-stage-still/)
+  await expect(page.locator('.still-mark')).toHaveCount(0)
+  await expect(page.getByText('Select Start conversation', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('Ready when you are.', { exact: true })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Syntelle portrait' })).toBeVisible()
   await expect(page.locator('video')).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Start with microphone', exact: true }),
+  ).toBeEnabled()
   await chooseLanguage(page, 'es')
   await expect(
     page.getByRole('button', { name: 'Iniciar conversación', exact: true }),
   ).toBeVisible()
+  await expect(page.getByText('Lista cuando quieras.', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Iniciar con micrófono', exact: true }),
+  ).toBeEnabled()
   await page.waitForTimeout(500)
   expect(remote.sessionRequests).toEqual([])
   expect(remote.commands).toEqual([])
   await page.screenshot({ path: test.info().outputPath('static-arrival.png') })
   await page.getByRole('button', { name: 'Iniciar conversación', exact: true }).click()
+  await expect(page.locator('.remote-stage')).not.toHaveClass(/remote-stage-still/)
   await expect(page.getByRole('button', { name: 'Activar micrófono', exact: true })).toBeEnabled()
   expect(remote.sessionRequests).toHaveLength(1)
+})
+
+test('microphone starts the conversation and capture in one action', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Windows WebKit does not provide Web Audio capture.')
+  const remote = await fixture(page, false, true)
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const audio = new AudioContext()
+      const output = audio.createMediaStreamDestination()
+      const oscillator = audio.createOscillator()
+      const gain = audio.createGain()
+      gain.gain.value = 0
+      oscillator.connect(gain).connect(output)
+      oscillator.start()
+      output.stream.getTracks().forEach((track) => {
+        const stop = track.stop.bind(track)
+        track.stop = () => {
+          stop()
+          oscillator.stop()
+          void audio.close()
+        }
+      })
+      return output.stream
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start with microphone', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Microphone on', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start conversation', exact: true })).toHaveCount(0)
+  expect(remote.sessionRequests).toHaveLength(1)
+  expect(remote.commands.filter((event) => event.data?.type === 'mic_start')).toHaveLength(1)
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await page.getByRole('button', { name: /Play gesture/ }).click()
+  await expect(page.locator('.microphone-control')).toHaveAttribute('data-capture', 'false')
+  await expect
+    .poll(
+      () => remote.commands.filter((event) => event.data?.type === 'preview').at(-1)?.data?.text,
+    )
+    .toBe('nod')
+  expect(remote.commands.filter((event) => event.data?.type === 'mic_stop')).toHaveLength(1)
 })
 
 test('five-minute end returns to a portrait and never silently restarts', async ({ page }) => {
@@ -455,10 +509,13 @@ test('inactivity pause releases the player and resumes only after explicit actio
   remote.publish({ type: 'paused', data: { reason: 'user inactivity' } })
   const resume = page.getByRole('button', { name: 'Resume', exact: true })
   await expect(resume).toBeVisible()
+  await expect(page.locator('.remote-stage')).toHaveClass(/remote-stage-still/)
+  await expect(page.locator('.connection-state [role="status"]')).toHaveText(
+    'Syntelle is paused due to inactivity',
+  )
   await expect(
-    page.getByRole('status').filter({ hasText: 'Syntelle is paused due to inactivity' }),
-  ).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeDisabled()
+    page.getByRole('button', { name: 'Start with microphone', exact: true }),
+  ).toBeEnabled()
   await expect(page.locator('[data-testid="stream-workspace"]')).toHaveAttribute(
     'data-stream-id',
     '',
@@ -470,6 +527,7 @@ test('inactivity pause releases the player and resumes only after explicit actio
   await page.screenshot({ path: test.info().outputPath('paused-resume-control.png') })
   await resume.click()
   await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
+  await expect(page.locator('.remote-stage')).not.toHaveClass(/remote-stage-still/)
   expect(remote.sessionRequests).toHaveLength(2)
   expect(remote.sessionRequests[1]?.resume_from).toBe('fixture-stream')
   await expect(page.getByText('Keep my conversation.', { exact: true })).toBeVisible()
@@ -1057,6 +1115,152 @@ test('platform language applies to saved account controls without adopting a set
   await expect(languageTrigger(page)).toHaveText('Español')
 })
 
+for (const language of ['en', 'es'] as const) {
+  test(`account history opens and continues in ${language} without auto-start`, async ({
+    page,
+  }) => {
+    const remote = await fixture(page)
+    let signedIn = true
+    await page.route('**/api/v1/auth/me', (route) =>
+      route.fulfill({
+        json: {
+          account: signedIn
+            ? { id: 'fixture-account', email: 'owner@example.test', name: 'Owner' }
+            : null,
+        },
+      }),
+    )
+    await page.route('**/api/v1/auth/logout', (route) => {
+      signedIn = false
+      return route.fulfill({ json: {} })
+    })
+    await page.route('**/api/v1/configurations', (route) => route.fulfill({ json: { items: [] } }))
+    await page.route('**/api/v1/keys', (route) => route.fulfill({ json: { items: [] } }))
+    let claimed = false
+    await page.route('**/api/v1/conversations**', (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith('/claimable'))
+        return route.fulfill({
+          json: {
+            items: claimed ? [] : [{ id: 'guest-chat', title: 'Guest note', language: 'en-US' }],
+          },
+        })
+      if (path.endsWith('/guest-chat/claim')) {
+        claimed = true
+        return route.fulfill({ json: { saved: true } })
+      }
+      if (path.endsWith('/saved-chat'))
+        return route.fulfill({
+          json: {
+            conversation: {
+              id: 'saved-chat',
+              title: 'Earlier chat',
+              language: language === 'es' ? 'es-CO' : 'en-US',
+              settings: {
+                character: 'syntelle',
+                instructions: 'Saved instructions',
+                language: language === 'es' ? 'es-CO' : 'en-US',
+                voice: 'en-US-Ava:DragonHDLatestNeural',
+                background: 'natural-space',
+                blur: 0,
+                blinking: true,
+                movement: true,
+                automatic_expressions: true,
+                smile: 0,
+                brows: 0,
+                reduced_motion: false,
+              },
+            },
+            turns: new URL(route.request().url()).searchParams.has('before')
+              ? [
+                  {
+                    id: 'turn-1',
+                    sequence: 1,
+                    status: 'ready',
+                    user: 'Earlier question',
+                    reply: 'Earlier answer',
+                    spoken: '',
+                  },
+                ]
+              : [
+                  {
+                    id: 'turn-2',
+                    sequence: 2,
+                    status: 'ready',
+                    user: 'Later question',
+                    reply: 'Later answer',
+                    spoken: '',
+                  },
+                ],
+            before: new URL(route.request().url()).searchParams.has('before') ? 0 : 2,
+          },
+        })
+      if (
+        path === '/api/v1/conversations' &&
+        new URL(route.request().url()).searchParams.has('before')
+      )
+        return route.fulfill({ json: { items: [], next: '' } })
+      if (path === '/api/v1/conversations')
+        return route.fulfill({
+          json: {
+            items: [
+              {
+                id: 'saved-chat',
+                title: 'Earlier chat',
+                language: language === 'es' ? 'es-CO' : 'en-US',
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            next: '',
+          },
+        })
+      throw Error(`Unexpected history request: ${path}`)
+    })
+    await page.goto('/')
+    if (language === 'es') await chooseLanguage(page, 'es')
+    await page
+      .getByRole('button', {
+        name: language === 'es' ? 'Historial de conversaciones' : 'Conversation history',
+      })
+      .click()
+    await expect(
+      page.getByRole('heading', {
+        name: language === 'es' ? 'Historial de conversaciones' : 'Conversation history',
+      }),
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: language === 'es' ? 'Guardar en la cuenta' : 'Save to account' })
+      .click()
+    expect(claimed).toBe(true)
+    await page.getByRole('button', { name: /Earlier chat/ }).click()
+    await expect(page.getByText('Later answer')).toBeVisible()
+    await page
+      .getByRole('button', { name: language === 'es' ? 'Mensajes anteriores' : 'Older messages' })
+      .click()
+    await expect(page.getByText('Earlier answer')).toBeVisible()
+    expect(remote.sessionRequests).toHaveLength(0)
+    await page
+      .getByRole('button', {
+        name: language === 'es' ? 'Continuar en español' : 'Continue in English',
+      })
+      .click()
+    await expect.poll(() => remote.sessionRequests.length).toBe(1)
+    expect(remote.sessionRequests[0]).toMatchObject({ continue_conversation_id: 'saved-chat' })
+    await page
+      .getByRole('button', { name: language === 'es' ? 'Tu cuenta' : 'Your account' })
+      .click()
+    await page
+      .getByRole('button', { name: language === 'es' ? 'Cerrar sesión' : 'Sign out' })
+      .click()
+    await expect(
+      page.getByRole('button', {
+        name: language === 'es' ? 'Historial de conversaciones' : 'Conversation history',
+      }),
+    ).toHaveCount(0)
+    await expect(page.getByText('Later answer')).toHaveCount(0)
+  })
+}
+
 test('platform language cancels an in-flight connection and waits for Start', async ({ page }) => {
   const remote = await fixture(page)
   await page.addInitScript(() => {
@@ -1123,12 +1327,41 @@ test('expression previews use a direct command without sending a chat message', 
   await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
 })
 
+test('expression previews start a stream without microphone capture, including reduced motion', async ({
+  page,
+}) => {
+  const remote = await fixture(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: /Play gesture/ })).toBeEnabled()
+  await page.getByRole('button', { name: /Play gesture/ }).click()
+  await expect
+    .poll(
+      () => remote.commands.filter((event) => event.data?.type === 'preview').at(-1)?.data?.text,
+    )
+    .toBe('nod')
+  await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Play laughter', exact: true }).click()
+  await expect
+    .poll(
+      () => remote.commands.filter((event) => event.data?.type === 'preview').at(-1)?.data?.text,
+    )
+    .toBe('laugh')
+  expect(remote.sessionRequests).toHaveLength(1)
+  expect(remote.settings[0]).toMatchObject({ reduced_motion: true })
+  expect(remote.commands.some((event) => event.type === 'microphone')).toBe(false)
+})
+
 test('backend unavailability has no browser rendering fallback', async ({ page }) => {
   await fixture(page, true)
   await openStream(page)
   await expect(page.getByRole('alert')).toHaveText('The backend stream is unavailable.')
   await expect(page.getByRole('button', { name: 'Reconnect', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Start with microphone', exact: true }),
+  ).toBeEnabled()
   await expect(page.locator('video')).toHaveCount(1)
   await expect(page.locator('canvas')).toHaveCount(0)
 })

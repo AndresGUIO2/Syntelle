@@ -447,6 +447,13 @@ func (s *Service) conversationEvent(session *streamSession, event conversation.E
 		current = session.pendingTurn
 	}
 	s.mu.Unlock()
+	if event.Type == "accepted" && session.principal.AccountID != "" && strings.TrimSpace(event.Text) != "" {
+		ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+		if err := s.store.saveTurn(ctx, session.cid, session.principal.AccountID); err != nil {
+			slog.Warn("Conversation history could not be saved", "code", "history_save_failed")
+		}
+		cancel()
+	}
 	if event.Type == "ready" {
 		return
 	}

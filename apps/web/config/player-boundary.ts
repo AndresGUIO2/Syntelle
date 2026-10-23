@@ -33,6 +33,8 @@ const publicSources = new Set([
     'composables/useAccount.ts',
     'components/RemotePlayer.vue',
     'components/AccountDialog.vue',
+    'components/ConversationHistory.vue',
+    'components/PrivacyStorageNotice.vue',
     'components/StreamSettings.vue',
     'components/ExpressionPreview.vue',
   ].map((path) => `features/streaming/${path}`),

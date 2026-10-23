@@ -37,6 +37,8 @@ export function useRemoteStream(settings: () => StreamSettings) {
   let pausedID = ''
   let releasing = Promise.resolve()
   type Session = {
+    ice_servers?: RTCIceServer[]
+    startup_timeout_ms?: number
     id: string
     ticket: string
     state: string
@@ -188,7 +190,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
           ...turns.value,
           {
             id: event.turn_id,
-            sequence: turns.value.length + 1,
+            sequence: turns.value.reduce((last, item) => Math.max(last, item.sequence), 0) + 1,
             status: 'preparing',
             user: event.text ?? '',
             reply: '',
@@ -316,7 +318,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
     }
   }
 
-  async function connect(resume = false) {
+  async function connect(resume = false, continueConversationID = '') {
     const resumeFrom = state.value === 'paused' ? pausedID : ''
     let released: Promise<void> | undefined
     if (resume) detach()
@@ -346,6 +348,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       result ??= await request<Session>('/api/v1/streams', 'POST', {
         settings: settings(),
         ...(resumeFrom ? { resume_from: resumeFrom } : {}),
+        ...(continueConversationID ? { continue_conversation_id: continueConversationID } : {}),
       })
       if (binding !== epoch || disposed) {
         await request(`/api/v1/streams/${encodeURIComponent(result.id)}`, 'DELETE').catch(
@@ -359,7 +362,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       speechConfigured.value = result.speech_configured ?? result.configured
       recognition.value = result.recognition
       timeLimitsEnabled.value = result.time_limits_enabled !== false
-      peer = new RTCPeerConnection({ iceServers: [] })
+      peer = new RTCPeerConnection({ iceServers: result.ice_servers ?? [] })
       const currentPeer = peer
       const stream = new MediaStream()
       media.value = stream
@@ -404,7 +407,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
         if (binding !== epoch) return
         recover(binding)
       }
-      connectionTimer = setTimeout(() => recover(binding), 12_000)
+      connectionTimer = setTimeout(
+        () => recover(binding),
+        Math.min(95_000, Math.max(12_000, result.startup_timeout_ms ?? 12_000)),
+      )
     } catch (failure) {
       if (binding === epoch) {
         if (resumeFrom) {
@@ -425,6 +431,13 @@ export function useRemoteStream(settings: () => StreamSettings) {
             'Your 15-minute demo allowance is exhausted or in use by another session.'
               ? 'exhausted'
               : 'disconnected'
+        } else if (!id.value) {
+          error.value =
+            failure instanceof Error
+              ? failure.message
+              : 'The renderer could not start. Start a new session.'
+          connecting.value = false
+          state.value = 'disconnected'
         } else recover(binding)
       }
     }

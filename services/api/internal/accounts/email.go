@@ -374,7 +374,7 @@ func (s *Service) attachIdentity(ctx context.Context, tx pgx.Tx, accountID, prov
 func (s *Service) accountSession(ctx context.Context, tx pgx.Tx, accountID, previousID string) (string, time.Time, error) {
 	token, id := randomID(), randomID()
 	expires := s.cfg.Now().Add(7 * 24 * time.Hour)
-	_, err := tx.Exec(ctx, `INSERT INTO syntelle_accounts.sessions(id,token_hash,account_id,expires_at) VALUES($1,$2,$3,$4)`, id, digest(token), accountID, expires)
+	_, err := tx.Exec(ctx, `INSERT INTO syntelle_accounts.sessions(id,token_hash,account_id,expires_at,guest_session_id) VALUES($1,$2,$3,$4,(SELECT CASE WHEN account_id IS NULL THEN id END FROM syntelle_accounts.sessions WHERE id=$5))`, id, digest(token), accountID, expires, previousID)
 	if err == nil && previousID != "" {
 		_, err = tx.Exec(ctx, `UPDATE syntelle_accounts.sessions SET revoked_at=$2 WHERE id=$1`, previousID, s.cfg.Now())
 	}

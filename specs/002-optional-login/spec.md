@@ -6,7 +6,7 @@ Status: local implementation candidate, October 21, 2026. The original discovery
 
 - Select `/?view=stream` for Syntelle-only accounts, saved configurations and integration keys. The previous default at `/`, Café/Woodland and technical trials remain preserved.
 - Optional Google/GitHub Authorization Code Flow with PKCE and passwordless Resend email codes share server-owned sessions. Google adds OIDC nonce/token validation. New social connections require account/email proof and explicit consent; matching emails do not silently merge accounts.
-- Use explicit Save to retain only the current Syntelle configuration. Saved setups remain until deleted; temporary guest configurations expire after 24 hours. Conversation-history synchronization is excluded.
+- Use explicit Save to retain only the current Syntelle configuration. Saved setups remain until deleted; temporary guest configurations expire after 24 hours. The later account-history extension saves signed-in conversations and offers explicit guest-chat claiming.
 - The local implementation uses separate PostgreSQL ownership/configuration/key records. Ordinary accounts do not inherit owner privileges, historical evidence or provider allowances.
 - Real Google/GitHub sign-in requires OAuth credentials; email requires `RESEND_API_KEY`, explicit verified `RESEND_FROM` and the private auth secret. Missing configuration leaves those methods unavailable. Fixture tests establish implementation behavior, not actual provider/email delivery or public launch acceptance.
 - Current source, failed checks and verification records belong in `.tools/accounts-streaming-49/`. The linked development record is the current endpoint/setup reference.
@@ -17,7 +17,7 @@ The owner confirmed that signing in is optional. Visitors can talk to Syntelle t
 
 This specification extends the public-access model in [the original MVP](../001-syntelle-demo/spec.md). It does not silently replace RF01 or claim that the current local owner demo is a secured public service.
 
-The owner selected saved characters and settings across devices, plus Syntelle API keys for external integrations. Conversation-history synchronization is not included in this first account scope. The local implementation is limited to Syntelle configurations, explicit guest Save, 24-hour temporary guest retention and saved setups retained until deletion.
+The owner selected saved characters and settings across devices, plus Syntelle API keys for external integrations. The first account scope excluded conversation history; the later account-history extension adds it with 90-day retention after the last user turn.
 
 The owner also confirmed rendered live video and synchronized audio as the API output. See the separate [character streaming API specification](../003-character-streaming-api/spec.md); this expands the MVP beyond a login screen.
 
@@ -89,7 +89,7 @@ End the authenticated session, capture, active replies and protected connections
 - Keep the local owner workflow, existing assets, paid-provider ledgers and historical allowances intact.
 - Local provider/library choices, seven-day browser sessions, proof-based identity linking and canonical callback configuration are documented in the linked implementation record. Public domain/deployment configuration remains separate.
 - Authentication does not complete public-upload validation, public provider access controls, account retention policy or deployment.
-- No passwords, billing plans, organizations, role editor, social-profile import or conversation-history synchronization are assumed.
+- No passwords, billing plans, organizations, role editor or social-profile import are assumed. Conversation history belongs to the later bounded extension.
 
 ## Historical discovery decisions
 

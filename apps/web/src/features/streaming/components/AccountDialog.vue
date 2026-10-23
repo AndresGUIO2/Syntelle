@@ -336,13 +336,13 @@ onScopeDispose(() => {
 
 <style scoped>
 .account-dialog {
-  width: min(540px, calc(100% - 32px));
+  width: min(480px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--divider);
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: 0 24px 80px #00000040;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -351,7 +351,7 @@ onScopeDispose(() => {
   background: #08060db3;
 }
 .account-content {
-  padding: 28px;
+  padding: 24px;
 }
 .dialog-header {
   display: flex;
@@ -361,7 +361,7 @@ onScopeDispose(() => {
   margin-bottom: 8px;
 }
 h2 {
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.2;
   font-weight: 600;
   letter-spacing: -0.6px;
@@ -388,18 +388,18 @@ h2 {
   overflow-wrap: anywhere;
 }
 .intro {
-  margin: 6px 0 24px;
+  margin: 4px 0 16px;
 }
 .providers,
 .email-form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .providers .button {
   width: 100%;
 }
 .providers-soon {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   text-align: center;
   font-weight: 600;
 }
@@ -410,7 +410,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 24px 0;
+  margin: 16px 0;
   color: var(--muted);
   font-size: 12px;
 }
@@ -449,7 +449,7 @@ input {
 }
 .guest {
   display: block;
-  margin: 18px auto 0;
+  margin: 10px auto 0;
 }
 .dialog-footer a {
   color: var(--accent);
@@ -575,8 +575,8 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 20px;
-  padding-top: 12px;
+  margin-top: 14px;
+  padding-top: 10px;
   border-top: 1px solid var(--divider);
 }
 .sign-out {

@@ -9,6 +9,7 @@ const props = defineProps<{
   media: MediaStream | null
   ready: boolean
   suppressed: boolean
+  still: boolean
   background: StreamSettings['background']
   blur: number
   controlsTarget: HTMLElement | null
@@ -128,6 +129,7 @@ async function enableAudio() {
   const stream = element.srcObject
   muted.value = false
   element.muted = props.suppressed
+  if (!stream) return
   try {
     await element.play()
     if (attempt === audioAttempt) audioError.value = ''
@@ -167,6 +169,7 @@ defineExpose({ enableAudio })
 <template>
   <section
     class="remote-stage"
+    :class="{ 'remote-stage-still': still }"
     :aria-label="t(showVideo ? 'Syntelle live video' : 'Syntelle portrait')"
     :aria-busy="Boolean(media) && !showVideo"
   >
@@ -287,10 +290,27 @@ defineExpose({ enableAudio })
 .remote-poster img {
   object-position: center;
 }
+.remote-stage-still .remote-poster img {
+  filter: saturate(0.4) contrast(1.04) brightness(0.88);
+}
+.remote-stage-still .remote-media::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 8% 8%, #f3f0f74d, transparent 42%),
+    radial-gradient(ellipse at 92% 90%, #bab4c53d, transparent 48%),
+    linear-gradient(140deg, #f3f0f721, #25232b26 56%, #bab4c52d);
+  box-shadow: inset 0 0 0 1px #f3f0f73d;
+  backdrop-filter: blur(2px);
+}
 @media (max-width: 899px) {
   .remote-video,
   .remote-poster img {
-    object-position: left center;
+    object-fit: cover;
+    object-position: center 45%;
   }
 }
 .audio-action {

@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { useLocaleStore } from '../../stores/locale'
-import { computed, onMounted, onScopeDispose, shallowRef, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onScopeDispose,
+  shallowRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import ChatPanel from '../conversation/components/ChatPanel.vue'
 import ConversationIcon from '../conversation/components/ConversationIcon.vue'
 import RemotePlayer from './components/RemotePlayer.vue'
 import AccountDialog from './components/AccountDialog.vue'
+import ConversationHistory from './components/ConversationHistory.vue'
 import StreamSettingsPanel from './components/StreamSettings.vue'
 import { useWorkspaceViewport } from '../conversation/composables/useWorkspaceViewport'
 import { useAccount } from './composables/useAccount'
 import { useRemoteStream } from './composables/useRemoteStream'
 import { AVA_VOICE, defaultSettings, type SavedConfiguration, type StreamSettings } from './types'
+import type { ConversationTurn } from '../conversation/types'
 
 const locale = useLocaleStore()
 const { t } = locale
@@ -18,6 +28,7 @@ const workspace = useTemplateRef<HTMLElement>('workspace')
 const customizeButton = useTemplateRef<HTMLButtonElement>('customizeButton')
 const { viewportStyle, keyboardOpen } = useWorkspaceViewport(workspace)
 const accountOpen = shallowRef(false)
+const historyOpen = shallowRef(false)
 const emit = defineEmits<{ accountChange: [signedIn: boolean] }>()
 function openAccount() {
   accountOpen.value = true
@@ -65,6 +76,7 @@ const auth = useAccount()
 watch(auth.account, (account) => emit('accountChange', Boolean(account)), { immediate: true })
 const remote = useRemoteStream(() => settings.value)
 const microphoneStartupPending = shallowRef(false)
+const queuedPreview = shallowRef<{ kind: string; amount: number; repetitions: number } | null>(null)
 const canStartMicrophone = computed(() =>
   ['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value),
 )
@@ -89,6 +101,28 @@ const controlsLocked = computed(
     remote.microphone.value ||
     remote.startingMicrophone.value,
 )
+const previewDisabled = computed(
+  () =>
+    Boolean(queuedPreview.value) ||
+    remote.pending.value ||
+    remote.speaking.value ||
+    remote.startingMicrophone.value ||
+    remote.state.value === 'exhausted',
+)
+watch([remote.ready, remote.connecting, remote.error, remote.state], () => {
+  const preview = queuedPreview.value
+  if (!preview) return
+  if (remote.ready.value) {
+    queuedPreview.value = null
+    remote.command('preview', preview.kind, undefined, preview.amount, preview.repetitions)
+  } else if (
+    remote.error.value ||
+    (!remote.connecting.value &&
+      ['disconnected', 'paused', 'ended', 'exhausted'].includes(remote.state.value))
+  ) {
+    queuedPreview.value = null
+  }
+})
 let configureTimer: ReturnType<typeof setTimeout> | undefined
 watch(
   () => locale.speechLanguage,
@@ -154,6 +188,28 @@ async function signedIn() {
   microphoneStartupPending.value = false
   await remote.stop()
   await auth.refresh()
+  accountOpen.value = false
+  if (auth.account.value) historyOpen.value = true
+}
+async function continueHistory(
+  item: { id: string; language: string; settings?: StreamSettings },
+  turns: ConversationTurn[],
+) {
+  if (!item.settings) return
+  historyOpen.value = false
+  await remote.stop()
+  locale.locale = item.language === 'es-CO' ? 'es' : 'en'
+  settings.value = {
+    ...defaultSettings(),
+    ...item.settings,
+    language: locale.speechLanguage,
+    voice: AVA_VOICE,
+    reduced_motion: reducedMotion.matches,
+  }
+  await nextTick()
+  await remote.stop()
+  remote.turns.value = turns
+  await remote.connect(false, item.id)
 }
 async function load(configuration: SavedConfiguration) {
   microphoneStartupPending.value = false
@@ -168,7 +224,14 @@ async function load(configuration: SavedConfiguration) {
 }
 async function previewExpression(kind: string, amount = 1, repetitions = 1) {
   if (kind === 'laugh') await player.value?.enableAudio()
-  remote.command('preview', kind, undefined, amount, repetitions)
+  microphoneStartupPending.value = false
+  if (remote.microphone.value) remote.stopMicrophone()
+  if (remote.ready.value) {
+    remote.command('preview', kind, undefined, amount, repetitions)
+    return
+  }
+  queuedPreview.value = { kind, amount, repetitions }
+  if (!remote.connecting.value) await reconnect()
 }
 async function microphone() {
   await player.value?.enableAudio()
@@ -185,12 +248,27 @@ async function microphone() {
   }
   await remote.toggleMicrophone()
 }
+async function entryAction() {
+  if (remote.state.value === 'not-started' || remote.state.value === 'ended') {
+    await microphone()
+    return
+  }
+  microphoneStartupPending.value = false
+  await reconnect()
+}
 async function newChat() {
   microphoneStartupPending.value = false
   await remote.stop()
   remote.turns.value = []
   remote.partial.value = ''
 }
+watch(auth.account, (account, previous) => {
+  if (!account && previous) {
+    historyOpen.value = false
+    remote.turns.value = []
+    remote.partial.value = ''
+  }
+})
 onMounted(async () => {
   if (query.has('auth') || flow) accountOpen.value = true
   await auth.refresh()
@@ -223,6 +301,7 @@ onScopeDispose(() => {
           :media="remote.media.value"
           :ready="remote.ready.value"
           :suppressed="remote.audioSuppressed.value"
+          :still="['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value)"
           :background="settings.background"
           :blur="settings.blur"
           :controls-target="mediaControls"
@@ -241,28 +320,51 @@ onScopeDispose(() => {
           <p v-if="remote.state.value !== 'not-started'" class="connection-status" role="status">
             {{ t(remote.status.value) }}
           </p>
-          <p v-else-if="microphoneStartupPending" class="connection-status" role="status">
-            {{ t('Starting microphone…') }}
-          </p>
           <button
             v-if="
-              ['disconnected', 'paused', 'ended'].includes(remote.state.value) &&
+              ['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value) &&
               !remote.connecting.value
             "
             type="button"
             class="entry-action"
-            @click="reconnect"
+            @click="entryAction"
           >
-            <ConversationIcon name="play" />
-            {{
-              t(
-                remote.state.value === 'paused'
-                  ? 'Resume'
-                  : remote.state.value === 'disconnected'
-                    ? 'Reconnect'
-                    : 'Start new session',
-              )
-            }}
+            <svg
+              class="entry-action-wave"
+              viewBox="0 0 32 32"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M4 14v4M10 9v14M16 4v24M22 10v12M28 14v4" />
+            </svg>
+            <span class="entry-action-label">
+              {{
+                t(
+                  remote.state.value === 'paused'
+                    ? 'Resume'
+                    : remote.state.value === 'disconnected'
+                      ? 'Reconnect'
+                      : remote.state.value === 'ended'
+                        ? 'Start new session'
+                        : 'Start conversation',
+                )
+              }}
+            </span>
+            <svg
+              class="entry-action-arrow"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14m-5-5 5 5-5 5" />
+            </svg>
           </button>
           <p v-if="remote.timeLimitsEnabled.value" class="session-note">
             {{ t('Up to 5 minutes per session. 15 minutes total.') }}
@@ -277,6 +379,7 @@ onScopeDispose(() => {
         :configured="remote.configured.value"
         :can-start-microphone="canStartMicrophone"
         :not-started="remote.state.value === 'not-started'"
+        :paused="remote.state.value === 'paused'"
         :checking="remote.connecting.value || microphoneStartupPending"
         :ready="remote.ready.value"
         :pending="remote.pending.value"
@@ -291,11 +394,13 @@ onScopeDispose(() => {
           t(
             remote.state.value === 'paused'
               ? 'Select Resume to continue your conversation.'
-              : remote.state.value === 'not-started' || remote.state.value === 'ended'
-                ? 'Turn on your microphone to start talking.'
-                : remote.state.value === 'exhausted'
-                  ? 'Your 15-minute demo allowance has been used.'
-                  : 'Select Reconnect to restore video and voice controls.',
+              : remote.state.value === 'not-started'
+                ? ''
+                : remote.state.value === 'ended'
+                  ? 'Select Start new session to continue.'
+                  : remote.state.value === 'exhausted'
+                    ? 'Your 15-minute demo allowance has been used.'
+                    : 'Select Reconnect to restore video and voice controls.',
           )
         "
         @microphone="microphone"
@@ -306,6 +411,16 @@ onScopeDispose(() => {
           <div ref="mediaControls" />
         </template>
         <template #actions>
+          <button
+            v-if="auth.account.value"
+            class="quiet-action icon-action"
+            type="button"
+            :aria-label="t('Conversation history')"
+            :title="t('Conversation history')"
+            @click="historyOpen = true"
+          >
+            <ConversationIcon name="history" />
+          </button>
           <button
             ref="customizeButton"
             class="quiet-action icon-action"
@@ -332,6 +447,11 @@ onScopeDispose(() => {
       @signed-out="signedIn"
       @resume-stream="signedIn"
     />
+    <ConversationHistory
+      v-model="historyOpen"
+      :signed-in="Boolean(auth.account.value)"
+      @continue="continueHistory"
+    />
     <dialog
       ref="settingsDialog"
       class="settings-dialog"
@@ -355,7 +475,7 @@ onScopeDispose(() => {
       <StreamSettingsPanel
         v-model="settings"
         :disabled="controlsLocked"
-        :preview-disabled="!remote.ready.value"
+        :preview-disabled="previewDisabled"
         @preview="previewExpression"
       />
     </dialog>
@@ -456,57 +576,101 @@ onScopeDispose(() => {
   font-size: 14px;
   text-align: center;
 }
-.connection-state .button {
+.connection-state .entry-action {
   pointer-events: auto;
 }
 .connection-state.connection-entry {
+  inset: 0;
   padding: 24px;
   background: transparent;
 }
 .connection-entry .connection-status {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  transform: translateX(-50%);
   padding: 10px 14px;
   border-radius: 8px;
   background: #26232c;
   font-size: 13px;
 }
+.connection-paused .connection-status {
+  color: #f3f0f7;
+  border: 1px solid #857b94;
+  background: #26232ce8;
+}
 .entry-action {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 48px;
+  gap: 16px;
+  min-height: 72px;
   max-width: 100%;
-  padding: 12px 18px 12px 16px;
-  border: 1px solid #857b94;
-  border-radius: 8px;
-  color: #f3f0f7;
-  background: #26232c;
-  box-shadow: 0 2px 8px #0000001a;
+  padding: 18px 22px;
+  border: 1px solid var(--control-border);
+  border-radius: 16px 16px 16px 4px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 78%, transparent);
+  box-shadow: 0 2px 8px #14131633;
+  backdrop-filter: blur(3px);
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
   cursor: pointer;
   pointer-events: auto;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 150ms ease-out;
 }
-.entry-action :deep(.conversation-icon) {
-  color: #bba3f5;
+.entry-action-wave {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
+}
+.entry-action-arrow {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.entry-action-label {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
 }
 .entry-action:focus-visible {
-  outline: 2px solid #cbb8fa;
+  outline: 2px solid var(--accent);
   outline-offset: 4px;
-}
-.entry-action:active {
-  background: #3c3549;
 }
 @media (hover: hover) {
   .entry-action:hover {
-    background: #35303f;
+    background: color-mix(in srgb, var(--subtle) 84%, transparent);
+    border-color: color-mix(in srgb, var(--control-border) 72%, transparent);
+  }
+  .entry-action:hover .entry-action-arrow {
+    color: var(--accent);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .entry-action {
+    transition:
+      background-color 150ms ease-out,
+      border-color 150ms ease-out,
+      transform 150ms ease-out;
+  }
+  .entry-action:active {
+    transform: scale(0.96);
   }
 }
 .connection-entry .session-note {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto;
   padding: 6px 10px;
   border-radius: 6px;
   color: #d4d0da;
@@ -571,11 +735,18 @@ onScopeDispose(() => {
     background: #19181bb3;
   }
   .connection-state.connection-entry {
+    inset: 0;
+    width: 100%;
     padding: 12px;
+    background: transparent;
   }
   .entry-action {
-    padding: 10px 12px 10px 10px;
-    font-size: 13px;
+    min-height: 64px;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .entry-action-label {
+    font-size: 14px;
   }
   .settings-dialog {
     inset: auto 0 0;
@@ -598,7 +769,7 @@ onScopeDispose(() => {
   }
   .stream-panels {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: clamp(160px, 26svh, 240px) minmax(0, 1fr);
+    grid-template-rows: clamp(180px, 28svh, 240px) minmax(0, 1fr);
     gap: 16px;
   }
   .conversation-panel :deep(.conversation-controls) {

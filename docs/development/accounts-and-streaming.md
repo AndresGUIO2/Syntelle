@@ -1,5 +1,15 @@
 # Local Syntelle accounts and rendered streaming
 
+## Account conversation history
+
+Signed-in conversations with a user turn are now saved to the account in PostgreSQL. History lists account-owned chats, reads transcript pages without starting media, and continues a selected chat through a new stream that reuses its existing conversation ID and settings. The existing inactivity `resume_from` path remains separate. Continuing in another language uses an explicit language-labelled action. The model retains its existing recent-turn context bound even when the UI displays older transcript pages.
+
+An email code remains the proof of inbox access; account creation follows successful verification. After guest sign-in, chats from that guest browser session are offered for explicit Save to account. No guest chat, local-owner history or preparation evidence is imported automatically. Sign-out clears visible account transcript state.
+
+`GET /api/v1/conversations` lists 20 entries per opaque cursor; `GET /api/v1/conversations/{id}` returns up to 100 turns per page. `GET /api/v1/conversations/claimable`, `POST /api/v1/conversations/{id}/claim` and `DELETE /api/v1/conversations/{id}` handle guest adoption and deletion. `POST /api/v1/streams` accepts `continue_conversation_id` for an owned, unexpired chat, mutually exclusive with `resume_from`. All history routes require a browser account and enforce ownership in Go.
+
+Saved chats expire 90 days after the last user turn; reading them does not renew the deadline. Unclaimed guest chats expire with the 24-hour guest session. Expired chats are unavailable immediately and their live transcript, provider records, audio and command content are purged at service startup and hourly while running. Content-free stream usage totals remain for admission limits. No personal chat content is included in new development evidence archives; existing frozen archives are unchanged. A scale-to-zero public deployment needs a scheduled cleanup invocation to enforce physical deletion while the API remains stopped.
+
 Current routing supersedes the original candidate arrangement: `/` and `/?view=stream` both use the [backend-only player](backend-only-player.md), with the latest microphone-only chat interface. Former client-demo and laboratory routes no longer activate browser rendering. Original source/evidence remains preserved. Only Syntelle is selectable in the public workspace.
 
 The candidate deliberately extends the original demo: sign-in is optional, and account resources are separate from the local owner's historical preparation, conversations and provider allowances. It does not deploy public access or finish arbitrary portrait preparation.
@@ -75,7 +85,7 @@ Build the consumer-only distribution from `apps/web` with `npm run build:player`
 
 ## Account and integration behavior
 
-Signing in does not save guest work automatically. Use Your account → Saved setups → Save to claim only the current Syntelle instructions, voice/language and appearance settings. Setups can be loaded, updated and deleted. Saved setups do not expire; temporary guest configurations expire after 24 hours. Cross-device conversation-history restoration is not part of this version.
+Signing in does not save guest work automatically. Use Your account → Saved setups → Save to claim only the current Syntelle instructions, voice/language and appearance settings. Setups can be loaded, updated and deleted. Saved setups do not expire; temporary guest configurations expire after 24 hours. The newer account-history extension above restores saved conversations across devices.
 
 Your account → Developer access creates an integration key shown only once. Keep it on the integrator's server. Only a verifier is stored. Revocation terminates that key's active streams. Browser logout ends browser sessions without revoking unrelated integration keys.
 

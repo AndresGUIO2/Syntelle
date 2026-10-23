@@ -3,6 +3,7 @@ import { useLocaleStore } from '../../../stores/locale'
 import type { StreamSettings } from '../types'
 import { backgrounds } from '../settingsCatalog'
 import ExpressionPreview from './ExpressionPreview.vue'
+import PrivacyStorageNotice from './PrivacyStorageNotice.vue'
 const { t } = useLocaleStore()
 const settings = defineModel<StreamSettings>({ required: true })
 defineProps<{ disabled: boolean; previewDisabled?: boolean }>()
@@ -85,11 +86,12 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
     <ExpressionPreview
       :smile="settings.smile"
       :brows="settings.brows"
-      :disabled="disabled || previewDisabled || settings.reduced_motion"
+      :disabled="previewDisabled"
       @update:smile="update('smile', $event)"
       @update:brows="update('brows', $event)"
       @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"
     />
+    <PrivacyStorageNotice />
   </div>
 </template>
 

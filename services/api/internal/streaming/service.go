@@ -65,6 +65,7 @@ func Open(parent context.Context, pool *pgxpool.Pool, conversations *conversatio
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Service{ctx: ctx, cancel: cancel, sessions: map[string]*streamSession{}, store: store, conversation: conversations, resolve: resolve, config: config, admission: admission}
+	s.purgeOldHistory(ctx)
 	s.wg.Add(1)
 	go s.expire()
 	return s, nil
@@ -72,6 +73,10 @@ func Open(parent context.Context, pool *pgxpool.Pool, conversations *conversatio
 
 func (s *Service) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/conversations" || strings.HasPrefix(r.URL.Path, "/api/v1/conversations/") {
+			s.history(w, r)
+			return
+		}
 		if r.URL.Path == "/api/v1/stream-worker/ws" {
 			if !localRequest(r) {
 				http.Error(w, "Local service required.", 403)
@@ -180,12 +185,41 @@ func (s *Service) response(session *streamSession, ticket string) SessionRespons
 }
 func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
 	input := struct {
-		Settings   accounts.Settings `json:"settings"`
-		ResumeFrom string            `json:"resume_from,omitempty"`
+		Settings               accounts.Settings `json:"settings"`
+		ResumeFrom             string            `json:"resume_from,omitempty"`
+		ContinueConversationID string            `json:"continue_conversation_id,omitempty"`
 	}{Settings: accounts.Defaults()}
 	if decode(w, r, &input) != nil {
 		writeError(w, 400, "Invalid stream settings.")
 		return
+	}
+	if input.ResumeFrom != "" && input.ContinueConversationID != "" {
+		writeError(w, 400, "Choose one conversation to continue.")
+		return
+	}
+	if input.ContinueConversationID != "" {
+		if principal.Kind != "account" || !identifier.MatchString(input.ContinueConversationID) {
+			writeError(w, 404, "Conversation not found.")
+			return
+		}
+		stored, loadErr := s.store.continuation(r.Context(), input.ContinueConversationID, principal.AccountID)
+		if loadErr != nil || json.Unmarshal(stored, &input.Settings) != nil {
+			writeError(w, 404, "Conversation not found.")
+			return
+		}
+		s.mu.Lock()
+		active := false
+		for _, existing := range s.sessions {
+			if existing.cid == input.ContinueConversationID {
+				active = true
+				break
+			}
+		}
+		s.mu.Unlock()
+		if active {
+			writeError(w, 409, "This conversation is already active.")
+			return
+		}
 	}
 	input.Settings.Voice = "en-US-Ava:DragonHDLatestNeural"
 	if err := input.Settings.Validate(); err != nil {
@@ -201,6 +235,9 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	if err != nil {
 		writeError(w, 500, "Stream identity could not be created.")
 		return
+	}
+	if input.ContinueConversationID != "" {
+		cid = input.ContinueConversationID
 	}
 	var hadMessages bool
 	if input.ResumeFrom != "" {
@@ -559,10 +596,16 @@ func (s *Service) expire() {
 	defer s.wg.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	cleanup := time.NewTicker(time.Hour)
+	defer cleanup.Stop()
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
+		case <-cleanup.C:
+			ctx, cancel := context.WithTimeout(s.ctx, 20*time.Second)
+			s.purgeOldHistory(ctx)
+			cancel()
 		case now := <-ticker.C:
 			s.expireAt(now)
 		}

@@ -13,6 +13,7 @@ const props = defineProps<{
   configured: boolean
   canStartMicrophone?: boolean
   notStarted?: boolean
+  paused?: boolean
   checking: boolean
   ready: boolean
   pending: boolean
@@ -33,12 +34,20 @@ defineSlots<{
 const displayStatus = computed(() => {
   if (props.error) return 'Conversation needs attention'
   if (props.checking) return 'Connecting…'
-  if (props.notStarted) return 'Turn on your microphone to start talking.'
+  if (props.notStarted) return 'Ready when you are.'
+  if (props.paused) return props.status
   if (!props.configured) return 'Chat setup needed'
   if (!props.ready) return 'Loading character…'
   if (!props.recognitionAvailable) return 'Voice setup needed'
   return props.status
 })
+const emptyDescription = computed(() =>
+  props.paused
+    ? 'Select Resume to continue your conversation.'
+    : props.notStarted
+      ? 'Your conversation will appear here.'
+      : undefined,
+)
 </script>
 
 <template>
@@ -59,11 +68,17 @@ const displayStatus = computed(() => {
           @click="$emit('newChat')"
         >
           <ConversationIcon name="new-chat" />
+          <span class="new-chat-label">{{ t('New chat') }}</span>
         </button>
         <slot name="actions" />
       </div>
     </header>
-    <ConversationMessages :turns="turns" :partial="partial" :character="character" />
+    <ConversationMessages
+      :turns="turns"
+      :partial="partial"
+      :character="character"
+      :empty-description="emptyDescription"
+    />
     <p v-if="!checking && !configured && !notStarted" class="setup-note">
       {{ t('Voice conversation is not configured on the local server yet.') }}
     </p>
@@ -148,19 +163,38 @@ const displayStatus = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  gap: 8px;
+  min-width: 44px;
   min-height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--divider));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+}
+.new-chat .conversation-icon {
+  width: 20px;
+  height: 20px;
+}
+.new-chat-label {
+  white-space: nowrap;
 }
 @media (hover: hover) {
   .new-chat:hover {
     color: var(--text);
     background: var(--subtle);
+  }
+}
+@media (max-width: 520px) {
+  .new-chat {
+    width: 44px;
+    padding: 0;
+  }
+  .new-chat-label {
+    display: none;
   }
 }
 .setup-note,

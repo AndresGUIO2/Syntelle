@@ -298,12 +298,28 @@ func TestSessionOwnershipCommandsAndPrivateDelivery(t *testing.T) {
 	if err = store.Pool.QueryRow(ctx, `SELECT count(*) FROM syntelle_streaming.commands WHERE session_id=$1`, created.ID).Scan(&commands); err != nil || commands != 2 {
 		t.Fatal("command persistence/idempotency failed", err, commands)
 	}
-	status, b = request("POST", "/api/v1/streams", "one", map[string]any{"settings": accounts.Defaults()})
+	var savedCID string
+	if err = store.Pool.QueryRow(ctx, `SELECT conversation_id FROM syntelle_streaming.sessions WHERE id=$1`, created.ID).Scan(&savedCID); err != nil {
+		t.Fatal(err)
+	}
+	status, b = request("GET", "/api/v1/conversations/"+savedCID, "one", nil)
+	if status != 200 || !bytes.Contains(b, []byte("Tell me something.")) {
+		t.Fatalf("accepted user turn was not saved: %d %s", status, b)
+	}
+	status, _ = request("POST", "/api/v1/streams", "two", map[string]any{"continue_conversation_id": savedCID})
+	if status != http.StatusNotFound {
+		t.Fatal("another account continued saved conversation", status)
+	}
+	status, b = request("POST", "/api/v1/streams", "one", map[string]any{"continue_conversation_id": savedCID})
 	if status != http.StatusCreated {
-		t.Fatal("closing the previous session did not release the visitor's slot", status)
+		t.Fatal("saved conversation could not continue", status, string(b))
 	}
 	if json.Unmarshal(b, &created) != nil {
 		t.Fatal("invalid replacement session")
+	}
+	var continuedCID string
+	if err = store.Pool.QueryRow(ctx, `SELECT conversation_id FROM syntelle_streaming.sessions WHERE id=$1`, created.ID).Scan(&continuedCID); err != nil || continuedCID != savedCID {
+		t.Fatal("continuation created a separate conversation", err, continuedCID)
 	}
 	replacement, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/streams/"+created.ID+"/ws", nil)
 	if err != nil {

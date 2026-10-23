@@ -11,6 +11,12 @@ const props = defineProps<{
   emptyTitle?: string
 }>()
 const transcript = useTemplateRef<HTMLElement>('transcript')
+let followingLatest = true
+function trackScroll() {
+  const element = transcript.value
+  if (element)
+    followingLatest = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+}
 watch(
   () => [props.turns, props.partial],
   async () => {
@@ -19,9 +25,8 @@ watch(
       if (element) element.scrollTop = 0
       return
     }
-    const follow = element && element.scrollHeight - element.scrollTop - element.clientHeight < 100
     await nextTick()
-    if (follow && element) element.scrollTop = element.scrollHeight
+    if (followingLatest && element) element.scrollTop = element.scrollHeight
   },
 )
 </script>
@@ -30,10 +35,12 @@ watch(
   <div
     ref="transcript"
     class="transcript"
+    :class="{ 'transcript-empty': !turns.length && !partial }"
     role="log"
     :aria-label="t('Conversation')"
     aria-live="polite"
     aria-relevant="additions text"
+    @scroll="trackScroll"
   >
     <div v-if="!turns.length && !partial" class="empty-conversation">
       <h2 class="empty-title">{{ t(emptyTitle ?? 'Start a conversation') }}</h2>
@@ -76,14 +83,19 @@ watch(
   scrollbar-width: thin;
   scrollbar-color: var(--control-border) transparent;
 }
+.transcript-empty {
+  display: grid;
+  place-items: center;
+  scrollbar-gutter: auto;
+}
 .empty-conversation {
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  min-height: 100%;
-  max-width: 380px;
-  margin: 0 auto;
+  width: min(380px, 100%);
   padding: 0;
+  text-align: center;
 }
 .empty-title {
   font-size: 26px;

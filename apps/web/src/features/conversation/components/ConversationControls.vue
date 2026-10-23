@@ -50,7 +50,13 @@ const hint = computed(() => {
   return ''
 })
 const microphoneStatus = computed(() =>
-  props.starting ? 'Starting microphone…' : props.microphone ? 'Microphone on' : 'Microphone off',
+  props.starting
+    ? 'Starting microphone…'
+    : props.microphone
+      ? 'Microphone on'
+      : !props.ready && props.canStartMicrophone
+        ? 'Start with microphone'
+        : 'Microphone off',
 )
 </script>
 
@@ -65,6 +71,7 @@ const microphoneStatus = computed(() =>
         class="microphone-presentation"
         :active="microphone"
         :starting="starting"
+        :connects="!ready && canStartMicrophone"
         :state="state"
         :input-level="inputLevel"
         :disabled="
@@ -78,12 +85,12 @@ const microphoneStatus = computed(() =>
       />
       <button
         v-if="pending || speaking"
-        class="workspace-action workspace-action-quiet stop-reply"
+        class="workspace-action stop-reply"
         type="button"
         :aria-label="t('Stop reply')"
         @click="stopReply"
       >
-        <ConversationIcon name="stop" /><span> {{ t('Stop reply') }} </span>
+        <ConversationIcon name="stop" /><span>{{ t('Stop reply') }}</span>
       </button>
       <p class="capture-status" :class="{ 'capture-status-on': microphone }" role="status">
         {{ t(microphoneStatus) }}
@@ -136,19 +143,22 @@ const microphoneStatus = computed(() =>
   grid-column: 3;
   grid-row: 1;
   justify-self: end;
-  min-height: 44px;
-  width: 44px;
+  min-width: 136px;
+  min-height: 48px;
   margin-left: 0;
-  padding: 0;
-  border-radius: 6px;
-  background: var(--subtle);
+  padding: 0 14px;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--divider));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .stop-reply .conversation-icon {
-  width: 16px;
-  height: 16px;
-}
-.stop-reply span {
-  display: none;
+  width: 20px;
+  height: 20px;
 }
 .microphone-hint {
   margin: 8px auto 0;
@@ -161,6 +171,13 @@ const microphoneStatus = computed(() =>
 @media (max-width: 899px) {
   .conversation-controls {
     padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 520px) {
+  .stop-reply {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: center;
   }
 }
 </style>

@@ -140,6 +140,10 @@ func TestAccountLifecycleAndOwnership(t *testing.T) {
 		t.Fatal("session fixation: cookie did not rotate")
 	}
 	account := login["account"].(map[string]any)
+	var linkedGuest bool
+	if err := f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM syntelle_accounts.sessions signed JOIN syntelle_accounts.sessions guest ON guest.id=signed.guest_session_id WHERE signed.account_id=$1 AND guest.token_hash=$2)`, account["id"], digest(cookie.Value)).Scan(&linkedGuest); err != nil || !linkedGuest {
+		t.Fatal("verified sign-in did not retain the originating guest session", err)
+	}
 	// A guest configuration must not be silently imported on sign-in.
 	fixtureJSON(t, f.request("GET", "/api/v1/configurations/"+guestConfig["id"].(string), nil, signed, nil), 404)
 	fixtureJSON(t, f.request("POST", "/api/v1/auth/email/verify", map[string]any{"challenge_id": challenge["challenge_id"], "code": code}, signed, nil), 400)

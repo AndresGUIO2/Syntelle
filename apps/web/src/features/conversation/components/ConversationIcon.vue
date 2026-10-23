@@ -1,6 +1,16 @@
 <script setup lang="ts">
 defineProps<{
-  name: 'mic' | 'mic-off' | 'adjust' | 'close' | 'play' | 'stop' | 'alert' | 'send' | 'new-chat'
+  name:
+    | 'mic'
+    | 'mic-off'
+    | 'adjust'
+    | 'close'
+    | 'play'
+    | 'stop'
+    | 'alert'
+    | 'send'
+    | 'new-chat'
+    | 'history'
 }>()
 </script>
 
@@ -34,10 +44,14 @@ defineProps<{
     <path v-else-if="name === 'close'" d="m6 6 12 12M6 18 18 6" />
     <path v-else-if="name === 'send'" d="M12 19V5m-6 6 6-6 6 6" stroke-width="2" />
     <template v-else-if="name === 'new-chat'">
-      <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
-      <path d="m16 3 5 5-9 9-6 1 1-6Z" />
+      <path d="M19 4H5a2 2 0 0 0-2 2v13l5-3h11a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z" />
+      <path d="M12 8v6m-3-3h6" />
     </template>
     <path v-else-if="name === 'play'" d="M9 5.5v13l10-6.5Z" fill="currentColor" stroke="none" />
+    <template v-else-if="name === 'history'">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 6v6l4 2" />
+    </template>
     <rect
       v-else-if="name === 'stop'"
       x="6"
