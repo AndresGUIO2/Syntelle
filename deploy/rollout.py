@@ -22,6 +22,32 @@ def run(args, **kw):
     return subprocess.run(args, cwd=ROOT, check=True, **kw)
 
 
+def api_profile_dockerfile():
+    return (
+        "ARG BASE\n"
+        "FROM ${BASE}\n"
+        "USER root\n"
+        "RUN mkdir -p /opt/syntelle && chmod 0555 /opt/syntelle\n"
+        "COPY --chmod=0444 performance.json /opt/syntelle/performance.json\n"
+        "USER syntelle\n"
+    )
+
+
+def verify_api_profile_image(image):
+    run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "/bin/sh",
+            image,
+            "-c",
+            "test -x /opt/syntelle && test -r /opt/syntelle/performance.json",
+        ]
+    )
+
+
 def output(args):
     return subprocess.check_output(
         args,
@@ -35,11 +61,57 @@ def validate_turn_configuration(config):
     services = config["services"]
     runtime = services["runtime"]
     turn_urls = (runtime.get("SYNTELLE_TURN_URLS") or "").strip()
+    stun_urls = (runtime.get("SYNTELLE_STUN_URLS") or "").strip()
     turn_secret = services["secrets"].get("SYNTELLE_TURN_SECRET", "")
     if turn_urls and len(turn_secret) < 32:
         raise SystemExit("TURN URLs require a signing secret of at least 32 characters.")
-    if config.get("live_acceptance") and not turn_urls:
-        raise SystemExit("Public live-media publication requires configured TURN URLs.")
+    if config.get("live_acceptance") and not (turn_urls or stun_urls):
+        raise SystemExit("Live-media acceptance requires configured STUN or TURN URLs.")
+    if services.get("publish_frontend") and not (turn_urls or stun_urls):
+        raise SystemExit("Frontend publication requires configured STUN or TURN URLs.")
+
+
+def validate_frontend_publication(config):
+    services = config["services"]
+    if not services.get("publish_frontend"):
+        return
+    runtime = services["runtime"]
+    if not (runtime.get("SYNTELLE_MODAL_LAUNCH_URL") or "").strip():
+        raise SystemExit("Frontend publication requires the deployed Modal launcher URL.")
+    if not (
+        (runtime.get("SYNTELLE_STUN_URLS") or "").strip()
+        or (runtime.get("SYNTELLE_TURN_URLS") or "").strip()
+    ):
+        raise SystemExit("Frontend publication requires configured STUN or TURN URLs.")
+
+
+def validate_release_selection(config, root=ROOT, allow_inactive_release=False):
+    """Catch an old private export when this checkout selects a newer local package."""
+    if allow_inactive_release:
+        return
+    dotenv = Path(root) / ".env"
+    if not dotenv.is_file():
+        return
+    active_hash = ""
+    for line in dotenv.read_text(encoding="utf-8-sig").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "SYNTELLE_PACKAGE_HASH":
+            active_hash = value.strip().strip('"\'')
+    selected_hash = config["services"]["runtime"].get("SYNTELLE_PACKAGE_HASH", "")
+    if active_hash and selected_hash and active_hash != selected_hash:
+        raise SystemExit(
+            "Deployment selects package "
+            + selected_hash[:12]
+            + " while this checkout uses "
+            + active_hash[:12]
+            + ". Update the private release assets, profile and package hash before applying; "
+            "use --allow-inactive-release only for an intentional rollback."
+        )
+
+
+def publish_frontend_during_service_update(requested, launch_url):
+    """Keep an already wired public domain attached during a full redeploy."""
+    return bool(requested and (launch_url or "").strip())
 
 
 def verify_modal_credentials():
@@ -71,17 +143,19 @@ def verify_modal_credentials():
         ) from None
 
 
-def apply_all(config_path):
+def apply_all(config_path, allow_inactive_release=False):
     path = Path(config_path).resolve()
     config = json.loads(path.read_text())
+    validate_release_selection(config, allow_inactive_release=allow_inactive_release)
     services = config["services"]
+    publish_frontend = bool(services.get("publish_frontend", False))
     modal = config["modal"]
     cloudflare_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
     if not cloudflare_token:
         raise SystemExit("Provide CLOUDFLARE_API_TOKEN before apply-all.")
     if len(config.get("foundation", {}).get("database_password", "")) < 32:
         raise SystemExit("Configure a strong foundation database password before apply-all.")
-    from deploy.packaging import validate_bundle
+    from deploy.packaging import validate_bundle, validate_performance_profile
 
     verify_modal_credentials()
     assets = Path(modal["assets"]).resolve()
@@ -93,6 +167,14 @@ def apply_all(config_path):
     if len(services["runtime"].get("SYNTELLE_PACKAGE_HASH", "")) != 64:
         raise SystemExit("Supply the verified package hash.")
     validate_bundle(assets, services["runtime"]["SYNTELLE_PACKAGE_HASH"])
+    try:
+        validate_performance_profile(
+            profile, services["runtime"]["SYNTELLE_PACKAGE_HASH"]
+        )
+    except (OSError, ValueError):
+        raise SystemExit(
+            "Supply a reviewed, owner-accepted performance profile matching the native package."
+        ) from None
     # Validate complete cloud inputs before creating even the foundation.
     for name in [
         "SYNTELLE_AUTH_SECRET",
@@ -140,7 +222,9 @@ def apply_all(config_path):
         raise SystemExit(
             "Regional PostgreSQL 18/B1ms availability is not verified; no resources created."
         )
-    services["publish_frontend"] = False
+    services["publish_frontend"] = publish_frontend_during_service_update(
+        publish_frontend, services["runtime"].get("SYNTELLE_MODAL_LAUNCH_URL")
+    )
     private_json(path, config)
     run(
         [
@@ -213,9 +297,7 @@ def apply_all(config_path):
     context = ROOT / ".deploy-private" / "api-profile"
     context.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(profile, context / "performance.json")
-    (context / "Dockerfile").write_text(
-        "ARG BASE\nFROM ${BASE}\nCOPY --chmod=0444 performance.json /opt/syntelle/performance.json\n"
-    )
+    (context / "Dockerfile").write_text(api_profile_dockerfile())
     tag = foundation["registry"] + "/syntelle-api:deployment-profile"
     run(
         [
@@ -228,6 +310,7 @@ def apply_all(config_path):
             str(context),
         ]
     )
+    verify_api_profile_image(tag)
     run(["docker", "push", tag])
     images["api"] = json.loads(
         output(["docker", "image", "inspect", tag, "--format", "{{json .RepoDigests}}"])
@@ -267,7 +350,7 @@ def apply_all(config_path):
     )
     services["runtime"]["SYNTELLE_MODAL_LAUNCH_URL"] = endpoint
     # Activation of the public domain is a separate live-acceptance decision.
-    services["publish_frontend"] = bool(config.get("live_acceptance", False))
+    services["publish_frontend"] = publish_frontend
     private_json(path, config)
     run(["npm", "--prefix", "apps/web", "run", "build"], shell=os.name == "nt")
     run(

@@ -7,7 +7,7 @@ from pathlib import Path
 
 def validate_bundle(directory, expected_hash):
     root = Path(directory).resolve()
-    manifest = json.loads((root / "manifest.json").read_text())
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     if (
         manifest.get("version") != "native-character/1"
         or manifest.get("package_hash") != expected_hash
@@ -30,3 +30,19 @@ def validate_bundle(directory, expected_hash):
             path.read_bytes()
         ).hexdigest()
     return files
+
+
+def validate_performance_profile(path, expected_hash):
+    profile = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError("Performance profile must be a JSON object.")
+    if (
+        profile.get("version") != "character-performance/1"
+        or profile.get("package_hash") != expected_hash
+        or profile.get("reviewed") is not True
+        or profile.get("owner_acceptance") is not True
+    ):
+        raise ValueError(
+            "Deployment requires a reviewed, owner-accepted performance profile for the exact native package."
+        )
+    return profile

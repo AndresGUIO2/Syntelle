@@ -10,7 +10,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $saved = @{}
 
 function Set-DeploymentSecret([string] $Name, [string] $Prompt) {
-    if (Test-Path "Env:$Name") {
+    $existing = [Environment]::GetEnvironmentVariable($Name, "Process")
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
         return
     }
     $secure = Read-Host -Prompt $Prompt -AsSecureString

@@ -8,6 +8,8 @@ import subprocess
 import sys
 import uuid
 
+from deploy.terraform import command as terraform_command
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -68,7 +70,10 @@ def main():
         default="foundation",
     )
     parser.add_argument("--config", default=".deploy-private/config.json")
+    parser.add_argument("--allow-inactive-release", action="store_true")
     options = parser.parse_args()
+    if options.allow_inactive_release and (options.command, options.stack) != ("apply", "all"):
+        raise SystemExit("--allow-inactive-release is only valid for apply --stack all.")
     if options.stack == "all" and options.command == "plan":
         raise SystemExit(
             "Plan foundation and services separately; apply-all wires computed outputs."
@@ -92,24 +97,22 @@ def main():
                 run(["terraform", f"-chdir=infra/{stack}", "test"])
         return
     config = json.loads((ROOT / options.config).read_text())
+    if options.command == "apply" and options.stack == "all":
+        from deploy.rollout import validate_release_selection
+
+        validate_release_selection(config, allow_inactive_release=options.allow_inactive_release)
     select_azure_subscription(config)
     if options.command == "apply" and options.stack == "services":
         run(["npm", "--prefix", "apps/web", "run", "build"], shell=os.name == "nt")
+        from deploy.rollout import validate_frontend_publication
+
+        validate_frontend_publication(config)
     if options.stack == "all" and options.command == "apply":
         from deploy.rollout import apply_all
 
-        apply_all(ROOT / options.config)
+        apply_all(ROOT / options.config, allow_inactive_release=options.allow_inactive_release)
         return
     values = config[options.stack]
-    if (
-        options.command == "apply"
-        and options.stack == "services"
-        and values.get("publish_frontend")
-    ):
-        if not config.get("live_acceptance", False):
-            raise SystemExit(
-                "Live CUDA/NVENC/ICE/shutdown acceptance must be recorded before publication."
-            )
     private = ROOT / ".deploy-private"
     private.mkdir(exist_ok=True)
     private.chmod(0o700)
@@ -152,16 +155,7 @@ def main():
             f"-backend-config={backend_file.resolve()}",
         ]
     )
-    run(
-        [
-            "terraform",
-            f"-chdir=infra/{options.stack}",
-            options.command,
-            "-input=false",
-            *(["-auto-approve"] if options.command == "apply" else []),
-            f"-var-file={variables.resolve()}",
-        ]
-    )
+    run(terraform_command(options.stack, options.command, variables.resolve()))
 
 
 if __name__ == "__main__":

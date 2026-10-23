@@ -84,6 +84,7 @@ resource "azurerm_postgresql_flexible_server" "database" {
   administrator_login           = "syntelle"
   administrator_password        = var.database_password
   sku_name                      = "B_Standard_B1ms"
+  zone                          = "1"
   storage_mb                    = 32768
   backup_retention_days         = 7
   delegated_subnet_id           = azurerm_subnet.database.id
@@ -127,9 +128,6 @@ resource "azapi_resource" "express" {
     properties = {
 
       environmentMode = "Express"
-      appLogsConfiguration = {
-        destination = "none"
-      }
 
       vnetConfiguration = {
         infrastructureSubnetId = azurerm_subnet.apps.id

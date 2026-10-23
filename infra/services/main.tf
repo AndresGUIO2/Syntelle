@@ -85,7 +85,7 @@ resource "azapi_resource" "app" {
 
         activeRevisionsMode = "Single"
         ingress = {
-          external = true, targetPort = each.key == "api" ? 8080 : 8000, allowInsecure = false, transport = "http"
+          external = true, targetPort = each.key == "api" ? 8080 : 8000, allowInsecure = false, transport = "Http"
         }
 
         registries = [{
@@ -182,8 +182,8 @@ resource "cloudflare_workers_script" "app" {
 
     precondition {
 
-      condition     = !var.publish_frontend || (try(var.runtime["SYNTELLE_MODAL_LAUNCH_URL"], "") != "" && try(var.runtime["SYNTELLE_TURN_URLS"], "") != "")
-      error_message = "Publication requires configured Modal and TURN endpoints plus a separate live compatibility acceptance."
+      condition     = !var.publish_frontend || (try(var.runtime["SYNTELLE_MODAL_LAUNCH_URL"], "") != "" && (try(var.runtime["SYNTELLE_STUN_URLS"], "") != "" || try(var.runtime["SYNTELLE_TURN_URLS"], "") != ""))
+      error_message = "Publication requires the deployed Modal launcher and at least one configured STUN or TURN endpoint."
 
     }
 
