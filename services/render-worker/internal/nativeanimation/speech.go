@@ -91,7 +91,7 @@ type SpeechState struct {
 
 var azurePoses = [...]string{"Rest", "A", "A", "O", "EI", "EI", "EI", "U", "O", "A", "O", "A", "Rest", "CHSHR", "EI", "SZ", "CHSHR", "CHSHR", "FV", "EI", "Rest", "MBP"}
 
-const VisemePacingVersion = "bounded-articulation/3"
+const VisemePacingVersion = "bounded-articulation/4"
 
 func Timeline(events []NativeViseme, durationMS float64) ([]TimelineEvent, error) {
 	return timeline(context.Background(), events, durationMS)
@@ -148,33 +148,42 @@ func timeline(ctx context.Context, events []NativeViseme, durationMS float64) ([
 	return append(paced, TimelineEvent{end, "Rest"}), nil
 }
 func MouthAt(timeline []TimelineEvent, seconds float64) Mouth {
-	// Center the visual gesture nearer its audio event with a bounded 20ms lead.
-	articulationTime := seconds + .02
-	index := -1
+	// Anchor arrivals to sound times; distribute travel before the next arrival
+	// instead of reaching a pose quickly and parking until its successor starts.
+	previous, previousPeak := "Rest", 0.0
 	for i, event := range timeline {
-		if event.Time > articulationTime {
-			break
+		peak := mouthPeak(event)
+		if i == 0 {
+			previousPeak = peak - .07
 		}
-		index = i
+		if seconds <= peak {
+			maximum, hold := .14, 0.0
+			if previous == "Rest" || event.Pose == "Rest" {
+				maximum = .07
+			} else if mouthContact(event.Pose) {
+				maximum = .07
+			}
+			if mouthContact(previous) {
+				hold = .015
+			}
+			duration := math.Max(.001, math.Min(maximum, peak-previousPeak-hold))
+			start := peak - duration
+			if seconds < start || previous == event.Pose {
+				return Mouth{previous, previous, 0}
+			}
+			return Mouth{previous, event.Pose, smooth((seconds - start) / duration)}
+		}
+		previous, previousPeak = event.Pose, peak
 	}
-	if index < 0 {
-		return Mouth{"Rest", "Rest", 0}
+	return Mouth{previous, previous, 0}
+}
+
+func mouthContact(pose string) bool { return pose == "MBP" || pose == "FV" }
+func mouthPeak(event TimelineEvent) float64 {
+	if event.Pose == "Rest" || mouthContact(event.Pose) {
+		return event.Time
 	}
-	current := timeline[index]
-	previous := "Rest"
-	if index > 0 {
-		previous = timeline[index-1].Pose
-	}
-	next := current.Time + .2
-	if index+1 < len(timeline) {
-		next = timeline[index+1].Time
-	}
-	maximum := .07
-	if current.Pose == "MBP" || current.Pose == "FV" {
-		maximum = .04
-	}
-	duration := math.Max(.001, math.Min(maximum, next-current.Time))
-	return Mouth{previous, current.Pose, smooth((articulationTime - current.Time) / duration)}
+	return event.Time + .015
 }
 func AcousticCues(samples []float32, sampleRate int) []Cue {
 	return acousticCues(context.Background(), samples, sampleRate)

@@ -100,40 +100,76 @@ func TestTimelinePacesBriefTargetsAndPreservesContacts(t *testing.T) {
 		name string
 		at   float64
 		pose string
-	}{{"lip closure", .619999, "MBP"}, {"tooth lip contact", .659999, "FV"}, {"silence", 1.1, "Rest"}} {
+	}{{"lip closure", .6, "MBP"}, {"tooth lip contact", .64, "FV"}, {"silence", 1.1, "Rest"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			frame := MouthAt(got, tc.at)
-			if frame.To != tc.pose || frame.Amount < .999 {
+			if frame.To != tc.pose || (frame.From != frame.To && frame.Amount < .999) {
 				t.Fatalf("gesture did not reach its target: %+v", frame)
 			}
 		})
 	}
 }
 
-func TestMouthAtSmoothsWithoutAccumulatingDelay(t *testing.T) {
+func TestMouthAtLinksAudioAnchoredTargets(t *testing.T) {
 	t.Parallel()
-	timeline := []TimelineEvent{{0, "A"}, {.3, "O"}, {.4, "EI"}, {.6, "Rest"}}
-	frame := MouthAt(timeline, .315)
+	timeline := []TimelineEvent{{0, "A"}, {.1, "O"}, {.2, "EI"}, {.4, "Rest"}}
+	frame := MouthAt(timeline, .065)
 	if math.Abs(frame.Amount-.5) > 1e-9 {
-		t.Fatalf("gesture should be halfway 15ms after its audio event: %+v", frame)
+		t.Fatalf("travel should span the interval between arrivals: %+v", frame)
 	}
-	if early := MouthAt(timeline, .279); early.To != "A" {
-		t.Fatalf("gesture anticipates its event by more than 20ms: %+v", early)
-	}
-	if reached := MouthAt(timeline, .35); reached.To != "O" || reached.Amount < .999999 {
-		t.Fatalf("gesture still trails its event after 50ms: %+v", reached)
-	}
-	before := MouthAt(timeline, .38-1e-8)
-	after := MouthAt(timeline, .38)
-	if before.To != after.From || before.Amount < .999999 || after.Amount != 0 {
-		t.Fatalf("boundary jumps: %+v -> %+v", before, after)
+	for _, arrival := range []struct {
+		at   float64
+		pose string
+	}{{.015, "A"}, {.115, "O"}, {.215, "EI"}, {.4, "Rest"}} {
+		f := MouthAt(timeline, arrival.at)
+		if mouthPoseWeight(f, arrival.pose) < .999999 {
+			t.Fatalf("late target at %v: %+v", arrival.at, f)
+		}
+		before, after := MouthAt(timeline, arrival.at-1e-8), MouthAt(timeline, arrival.at+1e-8)
+		for _, pose := range []string{"Rest", "A", "O", "EI"} {
+			if math.Abs(mouthPoseWeight(before, pose)-mouthPoseWeight(after, pose)) > 1e-5 {
+				t.Fatalf("pose weight jumps at %v: %+v -> %+v", arrival.at, before, after)
+			}
+		}
 	}
 	// Sampling out of order (seek/resume) must not depend on frame history.
 	_ = MouthAt(timeline, 1)
-	if MouthAt(timeline, .315) != frame {
+	if MouthAt(timeline, .065) != frame {
 		t.Fatal("pacing depends on sampling history")
 	}
 	if MouthAt(timeline, 10).To != "Rest" {
 		t.Fatal("mouth did not return to rest")
+	}
+}
+
+func mouthPoseWeight(frame Mouth, pose string) float64 {
+	weight := 0.0
+	if frame.From == pose {
+		weight += 1 - frame.Amount
+	}
+	if frame.To == pose {
+		weight += frame.Amount
+	}
+	return weight
+}
+
+func TestMouthAtRetainsContactAndLongHolds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		timeline []TimelineEvent
+		at       float64
+		pose     string
+	}{
+		{"brief lip seal", []TimelineEvent{{0, "A"}, {.1, "MBP"}, {.135, "EI"}}, .11, "MBP"},
+		{"sustained vowel", []TimelineEvent{{0, "A"}, {.5, "O"}}, .2, "A"},
+		{"silence before speech", []TimelineEvent{{0, "Rest"}, {.5, "A"}}, .4, "Rest"},
+		{"empty timeline", nil, .1, "Rest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if frame := MouthAt(tc.timeline, tc.at); mouthPoseWeight(frame, tc.pose) < .999999 {
+				t.Fatalf("lost required hold: %+v", frame)
+			}
+		})
 	}
 }

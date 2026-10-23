@@ -45,7 +45,7 @@ const map = [
   'MBP',
 ]
 export const AZURE_MAPPING_VERSION = 'azure-nine-pose/1'
-export const VISEME_PACING_VERSION = 'bounded-articulation/3'
+export const VISEME_PACING_VERSION = 'bounded-articulation/4'
 export function decodeSpeechWav(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const tag = (at: number) => String.fromCharCode(...bytes.subarray(at, at + 4))
@@ -111,19 +111,29 @@ export function speechTimeline(events: NativeViseme[], duration: number) {
   return merged
 }
 export function mouthAt(timeline: ReturnType<typeof speechTimeline>, seconds: number): MouthFrame {
-  // A small visual lead centers the gesture nearer its audio event instead of
-  // starting a long transition only after the sound has already arrived.
-  const articulationTime = seconds + 0.02
-  let index = -1
-  for (let i = 0; i < timeline.length && timeline[i]!.time <= articulationTime; i++) index = i
-  if (index < 0) return { from: 'Rest', to: 'Rest', amount: 0 }
-  const current = timeline[index]!,
-    previous = timeline[index - 1]?.pose ?? 'Rest'
-  const next = timeline[index + 1]?.time ?? current.time + 0.2
-  const duration = Math.max(
-    0.001,
-    Math.min(current.pose === 'MBP' || current.pose === 'FV' ? 0.04 : 0.07, next - current.time),
-  )
-  const t = Math.max(0, Math.min(1, (articulationTime - current.time) / duration))
-  return { from: previous, to: current.pose, amount: t * t * (3 - 2 * t) }
+  // Travel toward audio-anchored arrivals instead of parking after short ramps.
+  let previous = 'Rest',
+    previousPeak = 0
+  for (let i = 0; i < timeline.length; i++) {
+    const event = timeline[i]!,
+      peak = mouthPeak(event)
+    if (i === 0) previousPeak = peak - 0.07
+    if (seconds <= peak) {
+      const maximum =
+        previous === 'Rest' || event.pose === 'Rest' || mouthContact(event.pose) ? 0.07 : 0.14
+      const hold = mouthContact(previous) ? 0.015 : 0
+      const duration = Math.max(0.001, Math.min(maximum, peak - previousPeak - hold))
+      const start = peak - duration
+      if (seconds < start || previous === event.pose)
+        return { from: previous, to: previous, amount: 0 }
+      const t = Math.max(0, Math.min(1, (seconds - start) / duration))
+      return { from: previous, to: event.pose, amount: t * t * (3 - 2 * t) }
+    }
+    previous = event.pose
+    previousPeak = peak
+  }
+  return { from: previous, to: previous, amount: 0 }
 }
+const mouthContact = (pose: string) => pose === 'MBP' || pose === 'FV'
+const mouthPeak = (event: { time: number; pose: string }) =>
+  event.time + (event.pose === 'Rest' || mouthContact(event.pose) ? 0 : 0.015)

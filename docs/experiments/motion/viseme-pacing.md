@@ -1,6 +1,37 @@
 # Bounded speech articulation
 
-## Current tuning: a small speed increase
+## Current correction: link motion between sound-anchored arrivals
+
+On October 23 the owner reported choppiness specifically in the mouth, not head
+motion or blinks. Version 3's short incoming ramps followed by full-pose holds
+created stop/start articulation. Reducing transition duration had accentuated that
+pattern. This diagnosis concerns the mouth timeline, not a measured video drop.
+
+`bounded-articulation/4` anchors ordinary pose arrivals 15 ms after their audio
+events and contact/rest arrivals at the events. It spreads travel before those
+arrivals, using up to 140 ms between ordinary poses, and up to 70 ms when entering
+MBP/FV or crossing rest. The preceding target must be reached before the next
+transition starts; contact targets retain a 15 ms hold. Sustained vowels and long
+silences retain intentional holds. Sampling remains stateless for pause/seek,
+audio/event bytes are unchanged, and the fleeting-target filter is unchanged.
+The 140 ms travel cap does not mean reaching a target 140 ms after its sound.
+
+At 30 Hz, the cached 4.25-second recording's 31 targets produce 18 stationary
+spoken frame steps instead of 37 out of 127 sampled steps. The largest single
+pose-weight step decreases from 0.926 to 0.689. These are deterministic timeline
+measurements, not source-pixel motion, physical mouth speed, measured received
+fps or owner visual approval. Short contact gestures remain deliberately brief.
+
+Focused tests verify audio-anchored arrivals, continuous pose weights on both
+sides of anchors, actual interval travel, preserved contact/silence/vowel holds
+and history-independent sampling. Native/reference and adapter checks pass with
+the updated 3,281-frame fixture. Evidence and prior sources are in
+`.tools/viseme-flow-83/`; the preceding package, textures and version 3 evidence
+remain unchanged. Generic PostgreSQL archive/restore preserves this separately.
+No provider requests, asset regeneration or transport/gesture changes are made.
+Owner speech review remains pending.
+
+## Previous tuning: a small speed increase
 
 The owner requested only a little more speed after version 2.
 `bounded-articulation/3` reduces ordinary/contact transition caps from 80/45 ms
