@@ -17,6 +17,7 @@ const publicSources = new Set([
   'locales/es.ts',
   'composables/usePageNavigation.ts',
   'features/pricing/PricingPage.vue',
+  'features/characters/CreateCharacterPage.vue',
   ...['light-studio', 'dark-lounge', 'natural-space'].flatMap((name) => [
     `assets/backgrounds/${name}-thumb.webp`,
     `assets/backgrounds/${name}.webp`,

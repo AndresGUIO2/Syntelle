@@ -1,22 +1,49 @@
 <script setup lang="ts">
 import { useLocaleStore } from './stores/locale'
-import { defineAsyncComponent, shallowRef, useTemplateRef, watchEffect } from 'vue'
+import {
+  defineAsyncComponent,
+  onMounted,
+  shallowRef,
+  useTemplateRef,
+  watchEffect,
+} from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import PricingPage from './features/pricing/PricingPage.vue'
+import CreateCharacterPage from './features/characters/CreateCharacterPage.vue'
+import { request } from './features/streaming/api'
 import { usePageNavigation } from './composables/usePageNavigation'
 const { t } = useLocaleStore()
 const accountWorkspace = useTemplateRef<{ openAccount: () => void }>('accountWorkspace')
 const signedIn = shallowRef(false)
 const navigation = usePageNavigation()
+const characterSessionChecked = shallowRef(!navigation.characterCreation.value)
 const streamWorkspace = defineAsyncComponent(
   () => import('./features/streaming/StreamWorkspace.vue'),
 )
 function openAccount() {
-  if (navigation.pricing.value) navigation.visit('/?auth')
+  if (navigation.pricing.value || navigation.characterCreation.value) navigation.visit('/?auth')
   else accountWorkspace.value?.openAccount()
 }
+onMounted(async () => {
+  if (!navigation.characterCreation.value) return
+  try {
+    const session = await request<{ account: unknown | null }>('/api/v1/auth/me')
+    signedIn.value = Boolean(session.account)
+  } catch {
+    signedIn.value = false
+  } finally {
+    characterSessionChecked.value = true
+  }
+  if (!signedIn.value && navigation.characterCreation.value) {
+    navigation.visit('/?auth')
+  }
+})
 watchEffect(() => {
-  document.title = navigation.pricing.value ? `${t('Pricing')} · Syntelle` : 'Syntelle'
+  document.title = navigation.pricing.value
+    ? `${t('Pricing')} · Syntelle`
+    : navigation.characterCreation.value
+      ? `${t('Create a character')} · Syntelle`
+      : 'Syntelle'
 })
 </script>
 
@@ -27,13 +54,26 @@ watchEffect(() => {
       :show-upload="false"
       :show-account="true"
       :show-pricing="true"
+      :show-create-character="true"
       :signed-in="signedIn"
       :pricing-active="navigation.pricing.value"
+      :character-creation-active="navigation.characterCreation.value"
       @account="openAccount"
       @navigate="navigation.follow"
     />
     <main id="main-content" class="main-content demo-content" tabindex="-1">
       <PricingPage v-if="navigation.pricing.value" @navigate="navigation.follow" />
+      <CreateCharacterPage
+        v-else-if="navigation.characterCreation.value && characterSessionChecked && signedIn"
+        @navigate="navigation.follow"
+      />
+      <div
+        v-else-if="navigation.characterCreation.value"
+        class="character-session-check"
+        role="status"
+      >
+        {{ t('Checking your account…') }}
+      </div>
       <template v-else>
         <h1 class="visually-hidden">{{ t('Syntelle workspace') }}</h1>
         <component
@@ -61,6 +101,13 @@ watchEffect(() => {
 }
 .main-content:focus {
   outline: none;
+}
+.character-session-check {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
 }
 .demo-shell {
   --workspace-max-width: 1520px;

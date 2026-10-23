@@ -1,5 +1,7 @@
 // Interface copy only. User prompts, transcripts and provider records stay verbatim.
 export const spanish: Record<string, string> = {
+  'The renderer could not start. Start a new session.':
+    'No se pudo iniciar el renderizador. Inicia una sesión nueva.',
   Repetitions: 'Repeticiones',
   'This request could not be completed. Please try again.':
     'No se pudo completar esta solicitud. Inténtalo de nuevo.',
@@ -26,7 +28,11 @@ export const spanish: Record<string, string> = {
   'Syntelle is paused due to inactivity': 'Syntelle está en pausa por inactividad',
   Resume: 'Reanudar',
   Start: 'Iniciar',
+  'Start conversation': 'Iniciar conversación',
   'Start new session': 'Iniciar otra sesión',
+  'Ready when you are.': 'Lista cuando quieras.',
+  'Your conversation will appear here.': 'Tu conversación aparecerá aquí.',
+  'Select Start new session to continue.': 'Selecciona Iniciar otra sesión para continuar.',
   'Syntelle portrait': 'Retrato de Syntelle',
   'Turn on your microphone to start talking.': 'Activa el micrófono para empezar a hablar.',
   'Up to 5 minutes per session. 15 minutes total.':
@@ -69,6 +75,9 @@ export const spanish: Record<string, string> = {
   'This resource is unavailable.': 'Este recurso no está disponible.',
   'Account storage is temporarily unavailable.':
     'El almacenamiento de la cuenta no está disponible temporalmente.',
+  'Cookies and browser storage': 'Cookies y almacenamiento del navegador',
+  'Syntelle uses an essential sign-in cookie for guest and account sessions. This browser also stores your language, appearance, instructions and conversation settings, plus a conversation ID. This storage is used to run the service, not for advertising.':
+    'Syntelle utiliza una cookie necesaria para mantener las sesiones de visitantes y cuentas. Este navegador también guarda tu idioma, apariencia, instrucciones y ajustes de conversación, además de un identificador de conversación. Este almacenamiento permite prestar el servicio y no se usa para publicidad.',
   'Check the submitted fields.': 'Revisa los campos enviados.',
   'Platform language': 'Idioma de la plataforma',
   'Skip to content': 'Saltar al contenido',
@@ -103,6 +112,18 @@ export const spanish: Record<string, string> = {
   'Close pricing': 'Cerrar precios',
   'Coming soon': 'Próximamente',
   Soon: 'Próximamente',
+  Create: 'Crear',
+  'Create a character': 'Crear un personaje',
+  'Checking your account…': 'Comprobando tu cuenta…',
+  'Character creation is not available yet.': 'La creación de personajes aún no está disponible.',
+  'We’re shaping a simple, guided way to turn a portrait into a character for Syntelle.':
+    'Estamos diseñando una forma sencilla y guiada de convertir un retrato en un personaje para Syntelle.',
+  'Character preview': 'Vista previa del personaje',
+  'From portrait to character': 'Del retrato al personaje',
+  Preview: 'Vista previa',
+  Portrait: 'Retrato',
+  Character: 'Personaje',
+  Conversation: 'Conversación',
   'Pricing is on its way.': 'Pronto conocerás nuestros precios.',
   'We’re preparing the details. Pricing information will appear here when it’s ready.':
     'Estamos preparando los detalles. La información de precios aparecerá aquí cuando esté lista.',
@@ -117,7 +138,6 @@ export const spanish: Record<string, string> = {
   Customize: 'Personalizar',
   'Customize Syntelle': 'Personalizar Syntelle',
   Close: 'Cerrar',
-  Conversation: 'Conversación',
   'Start a conversation': 'Inicia una conversación',
   'Turn on your microphone and talk with {character}. Your conversation will appear here.':
     'Activa el micrófono y habla con {character}. Tu conversación aparecerá aquí.',
@@ -134,6 +154,7 @@ export const spanish: Record<string, string> = {
   'Starting microphone…': 'Iniciando micrófono…',
   'Microphone on': 'Micrófono activado',
   'Microphone off': 'Micrófono desactivado',
+  'Start with microphone': 'Iniciar con micrófono',
   'Enable microphone': 'Activar micrófono',
   'Turn microphone off': 'Desactivar micrófono',
   'Start talking': 'Empezar a hablar',
@@ -287,4 +308,18 @@ export const spanish: Record<string, string> = {
   'The backend stream is unavailable.': 'La transmisión del servidor no está disponible.',
   'The local service could not complete this request ({status}).':
     'El servicio local no pudo completar esta solicitud ({status}).',
+  'Conversation history': 'Historial de conversaciones',
+  'Save guest conversations': 'Guardar conversaciones de visitante',
+  'Save to account': 'Guardar en la cuenta',
+  'Saved conversations': 'Conversaciones guardadas',
+  'No saved conversations yet.': 'Aún no hay conversaciones guardadas.',
+  'More conversations': 'Más conversaciones',
+  'Conversation transcript': 'Transcripción de la conversación',
+  'Older messages': 'Mensajes anteriores',
+  'Continue in Spanish': 'Continuar en español',
+  'Continue in English': 'Continuar en inglés',
+  'Delete conversation': 'Eliminar conversación',
+  'Confirm delete': 'Confirmar eliminación',
+  'Saved chats expire 90 days after the last message.':
+    'Las conversaciones guardadas caducan 90 días después del último mensaje.',
 }

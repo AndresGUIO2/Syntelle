@@ -13,10 +13,6 @@ const upcomingDetails = [
 
 <template>
   <section class="pricing-page" aria-labelledby="pricing-title">
-    <a class="pricing-back" href="/" @click="$emit('navigate', $event)">
-      <span aria-hidden="true">←</span>{{ t('Back to Syntelle') }}
-    </a>
-
     <div class="pricing-hero">
       <div class="pricing-intro">
         <p class="pricing-eyebrow">
@@ -69,17 +65,6 @@ const upcomingDetails = [
   display: flex;
   flex-direction: column;
   padding-bottom: 12px;
-}
-
-.pricing-back {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 8px;
-  min-height: 44px;
-  color: var(--muted);
-  font-size: 14px;
-  text-decoration: none;
 }
 
 .pricing-hero {
@@ -263,12 +248,6 @@ const upcomingDetails = [
 }
 
 @media (hover: hover) {
-  .pricing-back:hover {
-    color: var(--text);
-    text-decoration: underline;
-    text-underline-offset: 4px;
-  }
-
   .pricing-cta:hover .cta-arrow {
     transform: translateX(3px);
   }

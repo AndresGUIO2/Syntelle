@@ -13,7 +13,9 @@ withDefaults(
     showTheme?: boolean
     showAccount?: boolean
     showPricing?: boolean
+    showCreateCharacter?: boolean
     pricingActive?: boolean
+    characterCreationActive?: boolean
     signedIn?: boolean
   }>(),
   {
@@ -64,6 +66,17 @@ const companyAssets = {
           @click="$emit('navigate', $event)"
         >
           {{ t('Pricing') }}
+        </a>
+        <a
+          v-if="showCreateCharacter && signedIn"
+          class="header-create-character"
+          href="/characters/new"
+          :aria-label="t('Create a character')"
+          :aria-current="characterCreationActive ? 'page' : undefined"
+          @click="$emit('navigate', $event)"
+        >
+          <AppIcon name="plus" />
+          <span>{{ t('Create') }}</span>
         </a>
         <button
           v-if="showAccount"
@@ -151,7 +164,8 @@ const companyAssets = {
   margin-left: auto;
 }
 .header-account,
-.header-pricing {
+.header-pricing,
+.header-create-character {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -167,12 +181,22 @@ const companyAssets = {
   cursor: pointer;
   text-decoration: none;
 }
-.header-pricing[aria-current='page'] {
+.header-create-character {
+  gap: 6px;
+  color: var(--accent);
+}
+.header-create-character :deep(.icon) {
+  width: 16px;
+  height: 16px;
+}
+.header-pricing[aria-current='page'],
+.header-create-character[aria-current='page'] {
   color: var(--accent);
 }
 @media (hover: hover) {
   .header-account:hover,
-  .header-pricing:hover {
+  .header-pricing:hover,
+  .header-create-character:hover {
     background: var(--subtle);
   }
 }
@@ -236,7 +260,8 @@ const companyAssets = {
     gap: 4px;
   }
   .header-account,
-  .header-pricing {
+  .header-pricing,
+  .header-create-character {
     padding-right: 8px;
     padding-left: 8px;
   }
