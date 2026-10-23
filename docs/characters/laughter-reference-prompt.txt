@@ -1,0 +1,5 @@
+Edit target: the first image is the immutable approved Syntelle portrait. The second image is a face crop for identity and pixel-level detail guidance only.
+
+Create one matching portrait with a brief, friendly, restrained open-mouth laugh: gently raised cheeks, softly narrowed eyes with the original visible irises, a relaxed open smiling mouth and a small jaw opening. Keep the same person, facial proportions, camera angle, gaze toward the viewer, hairstyle, clothing, lighting and background. No head tilt or turn. Preserve skin texture and identity. No wide grin, exaggerated squint, closed eyes, hand gestures, text or borders.
+
+Make lips, cheeks and eye expression a coherent natural laugh. Teeth can be visible only as an expression reference; the application will discard generated dental pixels and reuse its own canonical dental materials. Do not enlarge, straighten, whiten or add an artificial dental strip. This is one expression reference, not a sprite sheet or animation.

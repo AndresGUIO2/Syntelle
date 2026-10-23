@@ -1,0 +1,22 @@
+{
+  "version": "smile-reference-proposal/1",
+  "status": "owner-authorized",
+  "budget_id": "authorized-smile-reference-2026-10-20",
+  "limits": { "image": 2, "analysis": 0 },
+  "character": "syntelle",
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "cached_landmarks": ".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json",
+  "prompt": "docs/prompts/smile-reference-v1.txt",
+  "model": "gemini-nano-banana-2.1",
+  "response_format": { "type": "image", "mime_type": "image/jpeg", "aspect_ratio": "3:4", "image_size": "1K" },
+  "exports": ["PNG", "lossless WebP"],
+  "proposed_maximum_image_requests": 2,
+  "proposed_maximum_analysis_requests": 0,
+  "visual_corrections": 1,
+  "transport_retries": 0,
+  "stop_on_provider_error": true,
+  "requests_made": 0,
+  "reuse_existing_visemes": true,
+  "reuse_existing_dentition": true,
+  "install_only_after_visual_review": true
+}

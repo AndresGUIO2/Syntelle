@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="Colors Studio: C multicolor y punto cian">
+  <defs>
+    <linearGradient id="colors-gradient" x1="25" y1="135" x2="121" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00F2FE"/>
+      <stop offset="33%" stop-color="#3B82F6"/>
+      <stop offset="66%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#FF3366"/>
+    </linearGradient>
+    <filter id="soft-glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+
+  <!-- Brillo suave, independiente del contorno -->
+  <g opacity="0.23" filter="url(#soft-glow)">
+    <path d="M 109 46 A 44 44 0 1 0 109 112"
+          fill="none" stroke="url(#colors-gradient)"
+          stroke-width="30" stroke-linecap="round"/>
+    <circle cx="142" cy="125" r="15" fill="#00F2FE"/>
+  </g>
+
+  <!-- C gruesa: borde externo y trazo de color -->
+  <path d="M 109 46 A 44 44 0 1 0 109 112"
+        fill="none" stroke="#151B35"
+        stroke-width="29" stroke-linecap="round"/>
+  <path d="M 109 46 A 44 44 0 1 0 109 112"
+        fill="none" stroke="url(#colors-gradient)"
+        stroke-width="24" stroke-linecap="round"/>
+
+  <!-- Punto separado, con exactamente el mismo borde -->
+  <circle cx="142" cy="125" r="13.5"
+          fill="#00F2FE" stroke="#151B35" stroke-width="5"/>
+</svg>

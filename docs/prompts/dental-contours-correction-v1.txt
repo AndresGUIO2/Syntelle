@@ -1,0 +1,15 @@
+Review and correct your own previously proposed dental contours. This is the one permitted correction round. Return a COMPLETE replacement JSON object in the same normalized coordinate space, not a patch or edited image.
+
+The first three images are the same clean, coordinate-grid and MediaPipe-lip views used for the first proposal. The fourth image is the pipeline's rendering of YOUR first coordinates on the clean crop: blue=upper teeth, pink=lower teeth, orange=tongue. It has the same framing, dimensions and [0,1000] coordinate system. The fourth image is a diagnostic proposal, NOT ground truth; check it against the clean first image.
+
+Inspect visible enamel that the colors missed, color extending onto lips/cavity, gaps/holes caused by crossed edges, and incorrect row or tongue assignments. Repair those defects by changing your predicted perimeter coordinates. Do not trace the rectangular crop, grid, MediaPipe lip contours or the colored mask as anatomical truth. An enlarged view does not add new source detail; do not invent hidden shapes.
+
+Return upper_teeth, lower_teeth and tongue with visible, polygons and notes. Use separate simple polygons for disconnected visible enamel. For each polygon, trace the upper edge left-to-right, then the lower edge right-to-left; do not zigzag between separate tooth surfaces. No crossing edges, row overlaps or repeated closing vertices. Visible=false requires polygons=[]. Preserve genuinely absent tongue tissue as absent. Coordinates remain [x,y] normalized to the entire image: [0,0]=top-left and [1000,1000]=bottom-right.
+
+Previous proposal (machine output, not a reference annotation):
+{{PREVIOUS_CONTOURS}}
+
+Automatic validation and measurements (diagnostics, not manually corrected coordinates):
+{{VALIDATION_REPORT}}
+
+Return only the full JSON object. Explain relevant corrections briefly in each region's notes. Do not output images or regenerate teeth.

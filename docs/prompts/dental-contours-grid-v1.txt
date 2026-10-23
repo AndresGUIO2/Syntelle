@@ -1,0 +1,14 @@
+Measure the visible teeth in the supplied EI mouth crop. This task outputs coordinates only; do not generate or edit a portrait.
+
+You receive three views of EXACTLY THE SAME crop, with identical framing and dimensions:
+1. Clean enlargement: use this view to identify actual enamel boundaries.
+2. Coordinate grid: lines and labels are normalized coordinates, not anatomical boundaries. Use this view only to read positions.
+3. MediaPipe lip contours: orange is the inner lip boundary; cyan is the outer lip boundary. These automatically detected contours delimit the mouth, NOT the teeth. Use the clean view for the actual tooth edges. MediaPipe is approximate; do not trace its lines as teeth.
+
+Return exactly three regions: upper_teeth, lower_teeth, tongue. Include visible, polygons, notes for each. If not visible, use visible=false and polygons=[]. Do not invent a tongue, hidden teeth, or missing anatomy. Preserve the identity and shape of the teeth present in the clean image. Include identifiable shadowed side teeth. Exclude gums, lips, cavity and dark gaps between disconnected enamel regions.
+
+Coordinate space: normalized-full-input-image-xy-0-1000. Every [x,y] is relative to the ENTIRE crop in ALL three views, not a bounding box or one tooth. [0,0] is top-left; [1000,1000] is bottom-right. x increases right; y increases down. No image has a border or extra margin.
+
+Build simple closed polygons, one per connected enamel component. For each component, start at the upper-left edge, follow its TOP outline towards the rightmost edge, then follow its BOTTOM outline back towards the start. Do not alternate between tops and bottoms of consecutive teeth midway through the same polygon: that creates crossed edges and holes. Adjacent touching teeth of one row may share a polygon; disconnected enamel requires separate polygons. Do not include teeth of the other row in a polygon. Do not repeat the start vertex at the end. Use up to 96 perimeter vertices per polygon, following visible curvature rather than a rectangle. Check perimeter ordering and row separation before returning JSON.
+
+Return only the JSON object matching the response schema. No markdown or images. The tongue should remain absent unless you can distinctly identify tongue tissue in the clean view.

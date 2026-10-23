@@ -1,0 +1,13 @@
+{
+  "version": "speech-allowance/1",
+  "budget_id": "authorized-dragon-continuation-2026-10-20",
+  "authorized_owner_reply": "Yes, add that allowance",
+  "maximum_requests": 20,
+  "maximum_characters": 5000,
+  "maximum_characters_per_request": 500,
+  "automatic_retries": 0,
+  "reuse_cached_recordings": true,
+  "previous_budget_id": "authorized-dragon-motion-2026-10-19",
+  "preserve_previous_budget_and_requests": true,
+  "scope": "Personal Azure Dragon HD local demo; existing allowlisted voices/languages and server-side credentials. No image allowance changes."
+}

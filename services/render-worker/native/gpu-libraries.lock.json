@@ -1,0 +1,27 @@
+{
+  "platform": "linux/amd64",
+  "selection": "auto-cuda-with-current-frame-cpu-fallback",
+  "compiler": {
+    "name": "clang",
+    "version": "14.0.6",
+    "debian_package": "1:14.0.6-12",
+    "build_image_default": "golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61",
+    "target": "sm_60",
+    "flags": ["--cuda-device-only", "-nocudainc", "-nocudalib", "-O2", "-ffp-contract=off", "-fno-fast-math"]
+  },
+  "driver_api": {
+    "library": "libcuda.so.1",
+    "header_provider": "nv-codec-headers",
+    "commit": "e844e5b26f46bb77479f063029595293aa8f812d",
+    "version": "13.0.19.0",
+    "minimum_driver": "570.0",
+    "synchronization": "primary context blocking completion; serialized initialization; balanced retain/release"
+  },
+  "runtime_toolkit": false,
+  "immutable_resources": "process/context/content-addressed device allocations; SHA-256 and length; reference-counted stream-drained release; no idle GPU retention; per-asset atlas identities avoid repeat host concatenation",
+  "kernel_precision": "FP64 matching Go, no FMA contraction",
+  "output": "720x960 opaque or 1440x960 packed premultiplied RGB/alpha",
+  "transfer": "default: GPU mouth/eyes/skin/raster/BT.601 directly to NVENC-owned CUDA I420; compressed packets to Go; RGBA readback only for inspection/software fallback; explicit host comparison retained",
+  "media_clock": "CLOCK_MONOTONIC_RAW on Linux, adjusted Go timer rate translated read-only through pinned golang.org/x/sys v0.41.0",
+  "qualification": "38 recorded CPU/GPU states byte identical; 180 controlled encoded frames byte identical; bounded Linux worker/Windows player speech cadence and controls pass; CPU and memory reduced versus matched host reference; inherited every-frame decoded 40 dB and sustained/device gates remain open"
+}

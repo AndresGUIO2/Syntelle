@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "light-studio",
+      "name": "Light Studio",
+      "image": "light-studio.webp",
+      "thumbnail": "light-studio-thumb.webp",
+      "source_sha256": "3b24dc131aaca75d50b2167f6a13f8fc4153557c7297a0a938aff16e9a5dba04"
+    },
+    {
+      "id": "dark-lounge",
+      "name": "Dark Lounge",
+      "image": "dark-lounge.webp",
+      "thumbnail": "dark-lounge-thumb.webp",
+      "source_sha256": "99baa4c0d3f4efef6441e412e48976888618847e4b75cae5eb77ef526bdacd46"
+    },
+    {
+      "id": "natural-space",
+      "name": "Natural Space",
+      "image": "natural-space.webp",
+      "thumbnail": "natural-space-thumb.webp",
+      "source_sha256": "931df7361be097b345eaffd2573374b1d575968b3f4028679ef8d88a25172211"
+    }
+  ],
+  "blur": {
+    "default_px": 0,
+    "maximum_px": 20
+  }
+}

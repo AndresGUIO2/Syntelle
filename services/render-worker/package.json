@@ -1,0 +1,17 @@
+{
+  "name": "@syntelle/render-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.0 <25"
+  },
+  "scripts": {
+    "start": "node scripts/start-local.mjs",
+    "start:native": "npm run start",
+    "build": "docker build --platform linux/amd64 -f native.Dockerfile -t syntelle-render-native:local ../..",
+    "build:native": "npm run build",
+    "test": "node --test tests/*.test.mjs",
+    "review": "node scripts/review-cpu.mjs"
+  }
+}

@@ -1,0 +1,99 @@
+name: syntelle
+x-logging: &local-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+services:
+  postgres:
+    logging: *local-logging
+    image: postgres:18
+    profiles: [preparation]
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: syntelle
+      POSTGRES_USER: syntelle
+      POSTGRES_PASSWORD: ${SYNTELLE_DB_PASSWORD:-}
+    volumes:
+      - preparation-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syntelle -d syntelle"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  web:
+    logging: *local-logging
+    build: ./apps/web
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      API_PROXY_TARGET: http://api:8080
+    depends_on:
+      api:
+        condition: service_started
+  api:
+    logging: *local-logging
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081/udp"
+    environment:
+      LISTEN_ADDR: 0.0.0.0:8080
+      PROCESSOR_URL: http://processor:8000
+      SYNTELLE_SPEECH_TRIAL: ${SYNTELLE_SPEECH_TRIAL:-0}
+      SYNTELLE_LOCAL_OWNER: ${SYNTELLE_LOCAL_OWNER:-0}
+      SYNTELLE_ACCOUNTS: ${SYNTELLE_ACCOUNTS:-0}
+      SYNTELLE_STREAMING: ${SYNTELLE_STREAMING:-0}
+      SYNTELLE_APP_ORIGIN: ${SYNTELLE_APP_ORIGIN:-http://127.0.0.1:5173}
+      SYNTELLE_AUTH_SECRET: ${SYNTELLE_AUTH_SECRET:-}
+      SYNTELLE_RENDER_WORKER_TOKEN: ${SYNTELLE_RENDER_WORKER_TOKEN:-}
+      SYNTELLE_RENDER_CAPACITY: ${SYNTELLE_RENDER_CAPACITY:-2}
+      SYNTELLE_STREAM_REQUESTS_PER_MINUTE: ${SYNTELLE_STREAM_REQUESTS_PER_MINUTE:-600}
+      SYNTELLE_STREAM_IP_REQUESTS_PER_MINUTE: ${SYNTELLE_STREAM_IP_REQUESTS_PER_MINUTE:-3000}
+      SYNTELLE_STREAM_CONNECTIONS_PER_MINUTE: ${SYNTELLE_STREAM_CONNECTIONS_PER_MINUTE:-30}
+      SYNTELLE_STREAM_CONNECTIONS_PER_IP: ${SYNTELLE_STREAM_CONNECTIONS_PER_IP:-8}
+      SYNTELLE_STREAM_CONNECTIONS_PER_PRINCIPAL: ${SYNTELLE_STREAM_CONNECTIONS_PER_PRINCIPAL:-2}
+      SYNTELLE_STREAM_SESSIONS_PER_PRINCIPAL: ${SYNTELLE_STREAM_SESSIONS_PER_PRINCIPAL:-1}
+      SYNTELLE_STREAM_SESSION_LIMIT_ENABLED: ${SYNTELLE_STREAM_SESSION_LIMIT_ENABLED:-false}
+      SYNTELLE_STREAM_TIME_LIMITS_ENABLED: ${SYNTELLE_STREAM_TIME_LIMITS_ENABLED:-false}
+      SYNTELLE_STREAM_TRUSTED_PROXY_CIDRS: ${SYNTELLE_STREAM_TRUSTED_PROXY_CIDRS:-}
+      SYNTELLE_PACKAGE_HASH: ${SYNTELLE_PACKAGE_HASH:-}
+      SYNTELLE_PERFORMANCE_PROFILE: ${SYNTELLE_PERFORMANCE_PROFILE:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SYNTELLE_CHAT_PROVIDER: ${SYNTELLE_CHAT_PROVIDER:-gemini}
+      GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-gemini-3.8-flash}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
+      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-}
+      SYNTELLE_DATABASE_URL: postgresql://syntelle:${SYNTELLE_DB_PASSWORD:-}@postgres:5432/syntelle
+    volumes:
+      - type: bind
+        source: ${SYNTELLE_PERFORMANCE_PROFILE_DIR:-./services/api/resources/performance}
+        target: /opt/syntelle-performance
+        read_only: true
+    depends_on:
+      processor:
+        condition: service_healthy
+  processor:
+    logging: *local-logging
+    build: ./services/processor
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+volumes:
+  preparation-db:
+

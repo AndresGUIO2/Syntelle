@@ -1,0 +1,40 @@
+{
+  "schema": "syntelle-gemini-contour-settings/1",
+  "version": "gemini-contours/1.2",
+  "response_schema_profile": "inline-simple-with-strict-local-validation",
+  "model": "gemini-3.8-flash",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
+  "maximum_requests": 1,
+  "retries": 0,
+  "follow_redirects": false,
+  "timeout_seconds": 180,
+  "generation_config": {
+    "thinking_level": "low",
+    "temperature": 1,
+    "max_output_tokens": 8192
+  },
+  "store": false,
+  "input": {
+    "pose": "EI",
+    "mime_type": "image/png",
+    "crop_padding_mouth_width_ratio": 0.2,
+    "resize": false,
+    "annotations": false
+  },
+  "render": {
+    "supersampling": 4,
+    "resampling": "LANCZOS",
+    "overlay_opacity": 0.45,
+    "preview_scale": 4,
+    "colors": {
+      "upper_teeth": [30, 185, 240],
+      "lower_teeth": [215, 120, 230],
+      "tongue": [245, 165, 50]
+    }
+  },
+  "documentation": [
+    "https://ai.google.dev/gemini-api/docs/image-understanding",
+    "https://ai.google.dev/gemini-api/docs/structured-output",
+    "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"
+  ]
+}

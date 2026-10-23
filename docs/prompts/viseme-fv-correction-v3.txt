@@ -1,0 +1,15 @@
+{{ORIGINAL_FV_PROMPT}}
+
+This is an anatomical correction, not a smile or an S/Z sound. The previous attempt is REJECTED because it shows lower teeth. Create a clearly recognizable sustained "ffff" labiodental articulation:
+
+- Roll the LOWER LIP inward and upward, pressing its wet inner rim directly against the biting edges of the UPPER incisors.
+- The entire LOWER dental row is concealed behind that rolled lower lip. There must be ZERO visible lower tooth crowns, not even a thin white strip.
+- Only the upper incisor tips/edges may remain visible above the contact. The lower lip must visibly reach them. Do not leave a dark central gap under the upper incisors.
+- Keep the upper lip relaxed and the jaw close. Do not show two clenched dental rows, an open vowel mouth, a grin or a tongue.
+
+Image 1 is the exact immutable ORIGINAL portrait and is the only identity/framing authority. Additional images are the rejected output, its clean mouth crop, and a semantic diagnostic guide. In the guide BLUE marks upper teeth, PURPLE marks the incorrectly exposed lower teeth, and the GREEN curve marks the required lower-lip contact at the observed upper incisal edges. Cover the purple region with the character's real lower lip, never with black paint, fake teeth or a white band. The guide is explanatory and must not appear in the output.
+
+Preserve the original face, skin detail, hair, camera, clothing, lighting and full image framing. Edit only the mouth and the subtle soft-tissue displacement required for this articulation. No markings, text, grids or colored lines in the final image.
+
+Rejected source validation:
+{{VALIDATION_ISSUES}}

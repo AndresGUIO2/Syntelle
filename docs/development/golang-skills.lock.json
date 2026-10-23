@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/samber/cc-skills-golang",
+  "revision": "8e899e20ff0cd4dc524af3993e4c62d8ee8c5717",
+  "installed_on": "2026-10-20",
+  "license": {
+    "upstream_path": "LICENSE",
+    "git_blob": "e01f008a1febe41946345c425832c6aa093731d3",
+    "sha256": "a6735e3815503be2fc1ae4813758cb3d0c24a5309df508309ce180cf5a4ead58",
+    "installed_as": "LICENSE.upstream"
+  },
+  "skills": [
+    {
+      "name": "golang-context",
+      "upstream_path": "skills/golang-context",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "257a3e5a07d686ef617a59bc55e5b320665381e50dbc696d0aacc43aee687da2",
+          "git_blob": "9f36632ede22295dc3aff816e4cecae365cb7271"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "b53b95d0c3a8ade1da1c3ea7f2bec22bfd8da37b61cb77be050100ccba738a89",
+          "git_blob": "9bcd031ae7e3eea52c58abb98e7b7bb3ad032af4"
+        },
+        {
+          "path": "references/cancellation.md",
+          "sha256": "7d99f6982a0e397e42321791e8a39a63058bd0164ee6bd0ef1b4a17510be10c6",
+          "git_blob": "e1c6a64047dd414da67efdc49f362fdd1db268fe"
+        },
+        {
+          "path": "references/http-services.md",
+          "sha256": "a676622a134b7363ffced7d1e6e0b11acbee0c8e226140d428494b741a3819ab",
+          "git_blob": "e1a5937a51a7e93d008c2834753f94de129069d5"
+        },
+        {
+          "path": "references/values-tracing.md",
+          "sha256": "7ef49277791408380d3b8ad285a81fe7814f5d727c3950abae2958e6dd9058af",
+          "git_blob": "a7778a2c7205cb1d40c8d9c32f549dad3e7e9764"
+        }
+      ]
+    },
+    {
+      "name": "golang-concurrency",
+      "upstream_path": "skills/golang-concurrency",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "b56255b765a50c1052c5d71cd60ddb1c2ef643ce3b447aa195ba81f31d10bd1c",
+          "git_blob": "84f3150e6266ba654201f6db313d13c3846b5403"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "045fcac623f3549608df0409edfd7863e9580249ae447499266e3a3d96798959",
+          "git_blob": "39d4bc35bb5f9ff669ab592d2997e0426a07a9a4"
+        },
+        {
+          "path": "references/channels-and-select.md",
+          "sha256": "3435dee63817a2829b48fbfbaebe25bbb448008d4d06e0e739c2f070b78328ab",
+          "git_blob": "6f8906774f72b4dde1503bcec5bd6f3f9d3edecb"
+        },
+        {
+          "path": "references/pipelines.md",
+          "sha256": "c1b3f3dc4273370c61631328de11ec19b2fa1000c22ddff50d06bca059dd5d70",
+          "git_blob": "51448a547d646f40f34c7c93a8ab20c681bd0ef4"
+        },
+        {
+          "path": "references/sync-primitives.md",
+          "sha256": "f54e4343942feef72b2f371e5b67156469f82fd2ea0e4f2634c957530926d6de",
+          "git_blob": "18bb1dfd859c6fbaacbd1f5319178f8a9873122c"
+        }
+      ]
+    },
+    {
+      "name": "golang-database",
+      "upstream_path": "skills/golang-database",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "34889bcf13c1f66125b388cf0abbf5600f1d09ef50ad731f8b266c48efd5d6b3",
+          "git_blob": "c3edcc7ae0f0411d44e94297cc1ac0d0eb1b78b1"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "83fab14518ea25947732f5848e96f41cc1a07da0972be22f9fec3e2838aabcbc",
+          "git_blob": "559c9cc4c3127c9d1672be2819aaff40315a36a7"
+        },
+        {
+          "path": "references/performance.md",
+          "sha256": "ef25539fe2670028748d31223d13f7c996696669b9e5a6d243ffc1cda36cdd77",
+          "git_blob": "f3537f3f75397d548ac196c9236d7be358d8a52b"
+        },
+        {
+          "path": "references/scanning.md",
+          "sha256": "f89c7f6f17a4a21f90e22dd4ff1f9c3bea3d6c6a42de0b4d11869cae206ca678",
+          "git_blob": "4f4638ffe0d7f36171514a5ca974799d30f9928d"
+        },
+        {
+          "path": "references/testing.md",
+          "sha256": "81bf4c1c0146ac9c1fb95ec7aba738fef3ad6ab96469f6945ac84ecff6099d67",
+          "git_blob": "aa4ad9f2278a0458bdb73e9bb3236b108792822b"
+        },
+        {
+          "path": "references/transactions.md",
+          "sha256": "f5a2ccec4d0f8a6f94529e178dfc711f96f7768ce32695060f9cb8084d733819",
+          "git_blob": "e7fcc5e9b379d626443a4c48ec6f3da77a455754"
+        }
+      ]
+    },
+    {
+      "name": "golang-testing",
+      "upstream_path": "skills/golang-testing",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "55eea3ed4536df0c95fc1247382d3027d45b1d1af0a94fc9de653debae5df0f2",
+          "git_blob": "7c437a850b220e8ad04a2c975062889044cf6750"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "bc083e8d62ff1c23d9cd734f274a5733cfc0d30bb6356e03668dd3c67ff7c92e",
+          "git_blob": "9b80e02b720293a9b918ef815ac3976685c07535"
+        },
+        {
+          "path": "references/benchmarks.md",
+          "sha256": "f9de0e2e50cbb8e28684da1f99ff15fa84779150b4a8deefdf97ea3345c871f1",
+          "git_blob": "5fd29f065b6d7feca95dbde251f619e3c7514860"
+        },
+        {
+          "path": "references/coverage.md",
+          "sha256": "b2f7af52412b084cf353ff493941ad43276cae9d197470db2287b5d2c5a1aebf",
+          "git_blob": "46618241a898c7424b3aa75447a1c198a9eb9a5e"
+        },
+        {
+          "path": "references/examples.md",
+          "sha256": "40c070f0a83898edbc0c87c034fc2281d9c2b04e0514c94aa1ff07b802b575c5",
+          "git_blob": "103889b49cabdb5484eb9c6630ac7c16349d1830"
+        },
+        {
+          "path": "references/helpers.md",
+          "sha256": "8c71d253a246e66b8249022c96d7e8892f5bfc2156b02a36673c321db2c843f4",
+          "git_blob": "3c0487705d10105125e86259e8b21c2adb21a5c9"
+        },
+        {
+          "path": "references/http-testing.md",
+          "sha256": "39381274d7887651b86bde513085835f52860aa0832eb6f945f79c008f240e0f",
+          "git_blob": "a7ff122f34194a93e358e2db1b6eba31e8cb6e12"
+        },
+        {
+          "path": "references/integration-testing.md",
+          "sha256": "a29e725c58a1c2feaf16470db7eb4f8394aa36a476df92a792ac026c950d0b85",
+          "git_blob": "a5d11413e313015a89b3a009f48f2afd8f88ee7e"
+        },
+        {
+          "path": "references/mocking.md",
+          "sha256": "65558f907dea483831aea4aca50b1d6f1b64f92803bc2446f6a550a6d6c5c33a",
+          "git_blob": "4c93e4668635d541a553af654caf7c6db15b8984"
+        }
+      ]
+    },
+    {
+      "name": "golang-error-handling",
+      "upstream_path": "skills/golang-error-handling",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "536c25e624c3cf3def98962d9f89db07b258cde6c9e7fd17009a9eb204ba631f",
+          "git_blob": "8254778086dafcc0d86ec37b33a149b72b49116b"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "a7b58b4f717745e606b067c1f65c93db55182b4a561b8ffa43158a7f64515fa7",
+          "git_blob": "3732cbd753ac03c16c6b5164d12c6e635e4f2ed1"
+        },
+        {
+          "path": "references/error-creation.md",
+          "sha256": "8a5bda5a543ef7774ddc240cd198d34871222ed0335474df599d162f09d253c2",
+          "git_blob": "3d871bec153354dd4cdd84513b4a101ca3fd1716"
+        },
+        {
+          "path": "references/error-handling.md",
+          "sha256": "ab9c510305a1fe043502a04fe935f16dac2f95c585820ae9f0568afb2a56d357",
+          "git_blob": "df4744408c6b6cc040e84ea96e2a21f23996bb30"
+        },
+        {
+          "path": "references/error-wrapping.md",
+          "sha256": "6293caf2c41eef243dffbc2dbd17d045770f9a04e8ce910c4452b3d2b6abce06",
+          "git_blob": "01405dc1473176e91e9a0cbe5a159074890ed3eb"
+        }
+      ]
+    },
+    {
+      "name": "golang-security",
+      "upstream_path": "skills/golang-security",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "8bcc0f7ff7d196aa498e0305b81c28f60c6e50a358626360f526c0cacc760bc4",
+          "git_blob": "88822a8bbd11ee80908a2301055ca633460c4f47"
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "88d584c25e5c8b9548ceac5e68d12f270a31dd9f9752554bfc9ed382eaee879f",
+          "git_blob": "38656054e1f93d4521224e5ccdf70ff24fd32706"
+        },
+        {
+          "path": "references/architecture.md",
+          "sha256": "0596335d458de12b3e74704119b8d6deb6fdb36e2ca2e628c4e7acd8587b3d70",
+          "git_blob": "b713636c5d91fde05abb72f634e08860ca165579"
+        },
+        {
+          "path": "references/checklist.md",
+          "sha256": "4c73996ad4c4e70756f1319c261e01d10977d26c0050ebbee6e19ca513ed1fdb",
+          "git_blob": "e4767635c851c0ad1c0479fc71b23535ab54561c"
+        },
+        {
+          "path": "references/cookies.md",
+          "sha256": "c9e837265926da8bf2adfac6fa9198f57a2140c6e4a83a037b1345f00f35bf31",
+          "git_blob": "54c34abec20265bc15933f7582780973e46dca5b"
+        },
+        {
+          "path": "references/cryptography.md",
+          "sha256": "5f9c2f1356189db66f948077467ac397b43b201f4f44b65669b24fdc86436fdb",
+          "git_blob": "969f03efdc266033156d362223b3fc5e4ab59933"
+        },
+        {
+          "path": "references/filesystem.md",
+          "sha256": "9b7fb420c288bdccb4af2c9ba052429916dc139f14dce2f5cea0d2d1961c1180",
+          "git_blob": "00e43845d18138c9936ff514135570bafe215705"
+        },
+        {
+          "path": "references/injection.md",
+          "sha256": "041f2942b7e530ead2b098c5383abbe092469752a19fefe8840ecb0ca29f90a3",
+          "git_blob": "d935624a7c6b1298810fb9186b0d6f1d6aee78a8"
+        },
+        {
+          "path": "references/logging.md",
+          "sha256": "86ba80ebcbf521822d388db0229fb0d82645baf41ac1eafa6294132718eab5a8",
+          "git_blob": "fd150476ee7c9bbee9d57385c08e0026e831179c"
+        },
+        {
+          "path": "references/memory-safety.md",
+          "sha256": "13d13a8207b28a7127fce6e291cf7bb6cbb4f0bf972ee9e951c060c887d236e8",
+          "git_blob": "84d602a3289663fc8e83a3c1f178b961f5b37143"
+        },
+        {
+          "path": "references/network.md",
+          "sha256": "7971416f2eb50ecd187dabd8121b619abdb38dea825f4f41379a6079dbb12dd0",
+          "git_blob": "f42816b2af9d9f734d9ce6aed6864f5a2eb4f993"
+        },
+        {
+          "path": "references/secrets.md",
+          "sha256": "81b1600445f73b24e68a916f3f38ddb80816ce63fc246c24af985d39d00a1249",
+          "git_blob": "c29eb2112f9fe7762467ecf638552c33d0e470a1"
+        },
+        {
+          "path": "references/third-party.md",
+          "sha256": "7c17628923152a646870f10fac0ab679709fe7cc98031fd1b31cd94dafba0cd2",
+          "git_blob": "c8052134e1d17f6f50d4a10ee84c28c90b151897"
+        },
+        {
+          "path": "references/threat-modeling.md",
+          "sha256": "e249413bd7ac9ed356d57333abada6dae2975242049dc55ef07a54bda1346326",
+          "git_blob": "0ce7455e487e1cd89780d7f521a18dc57dec369d"
+        }
+      ]
+    }
+  ]
+}

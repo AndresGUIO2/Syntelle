@@ -1,0 +1,41 @@
+{
+  "schema": "syntelle-oral-input/1",
+  "original": "../../../../Colors/Syntelle.jpg",
+  "original_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "crop": {
+    "x": 734,
+    "y": 998,
+    "width": 329,
+    "height": 221
+  },
+  "dentition": "../../../.tools/oral-artifacts-05/package",
+  "poses": {
+    "Rest": {
+      "source": "../../../.tools/viseme-a-05"
+    },
+    "A": {
+      "source": "../../../.tools/viseme-a-05"
+    },
+    "EI": {
+      "source": "../../../.tools/visemes-01/ei"
+    },
+    "O": {
+      "source": "../../../.tools/visemes-01/o"
+    },
+    "U": {
+      "source": "../../../.tools/visemes-01/u"
+    },
+    "MBP": {
+      "source": "../../../.tools/visemes-01/mbp"
+    },
+    "SZ": {
+      "source": "../../../.tools/visemes-01/sz"
+    },
+    "FV": {
+      "source": "../../../.tools/oral-repair-07/fv"
+    },
+    "CHSHR": {
+      "source": "../../../.tools/visemes-01/chshr"
+    }
+  }
+}

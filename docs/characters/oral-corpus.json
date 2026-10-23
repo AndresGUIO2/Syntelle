@@ -1,0 +1,43 @@
+{
+  "schema": "syntelle-oral-corpus/1",
+  "required": {"development": 3, "held-out": 2},
+  "cases": [
+    {
+      "id": "syntelle",
+      "split": "development",
+      "kind": "semirealistic-render",
+      "authorization": "Owner-selected immutable sample",
+      "input": "syntelle/oral-input.json",
+      "package": "../../.tools/semantic-oral-06/package/package.json",
+      "visual_acceptance": false
+    },
+    {
+      "id": "cafe", "split": "development", "kind": "photograph",
+      "authorization": "Owner-supplied test portrait",
+      "original": "../../.tools/semantic-oral-06/corpus/cafe/original.png",
+      "original_sha256": "056835109482e3d3542d2b1ed394c132664abab656bf510e2af8e35e47940e01",
+      "preflight": "../../.tools/semantic-oral-06/corpus/cafe/preflight.json"
+    },
+    {
+      "id": "woodland", "split": "development", "kind": "semirealistic-render",
+      "authorization": "Owner-supplied test portrait",
+      "original": "../../.tools/semantic-oral-06/corpus/woodland/original.png",
+      "original_sha256": "becfc653fd2958a99231302365f4ef24861b4ea5effab43ac557fd1bdc643b36",
+      "preflight": "../../.tools/semantic-oral-06/corpus/woodland/preflight.json"
+    },
+    {
+      "id": "blue", "split": "held-out", "kind": "semirealistic-render",
+      "authorization": "Owner-supplied test portrait",
+      "original": "../../.tools/semantic-oral-06/corpus/blue/original.png",
+      "original_sha256": "8ac3371008eac9456c26e422bccffb36da855f3c68c18fc37099533348640013",
+      "preflight": "../../.tools/semantic-oral-06/corpus/blue/preflight.json"
+    },
+    {
+      "id": "window", "split": "held-out", "kind": "photograph",
+      "authorization": "Owner-supplied test portrait",
+      "original": "../../.tools/semantic-oral-06/corpus/window/original.png",
+      "original_sha256": "6ea07f6b06147242b0df0a22c3135c7e0f95764e3aa9d8375504fde703172c3f",
+      "preflight": "../../.tools/semantic-oral-06/corpus/window/preflight.json"
+    }
+  ]
+}

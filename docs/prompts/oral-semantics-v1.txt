@@ -1,0 +1,9 @@
+Analyze the ORIGINAL mouth crop of pose {{POSE}}. This is image understanding, not image generation. The first image is clean; the second has a coordinate grid. Both show exactly the same full crop. Coordinates are x,y normalized 0..1000 over the entire supplied image, not over an object's bounding box.
+
+Return JSON with regions and notes. Exactly five region labels must occur: outer_lips, aperture, upper_teeth, lower_teeth, tongue. Each region has visible:boolean and polygons:list of simple polygons. Each polygon is an ordered list of [x,y] vertices; use enough vertices to follow the actual visible boundary (typically 20..50), not a rectangle. Absent regions have visible:false and polygons:[].
+
+outer_lips encloses the complete outer border of both lips, including the mouth opening. aperture is ONLY the real opening inside the lips. Follow the visible tissue boundary, not a facial landmark estimate. For closed lips there is NO aperture, even when a dark crease exists. upper_teeth and lower_teeth contain ONLY visible dental material, never lips, gums, cavity or tongue. Do not imagine hidden teeth. Preserve dim enamel as dental material. The tongue mask follows its visible portion behind teeth; minor occlusion overlap can be resolved by placing teeth in front, but the two dental rows must never overlap. A tongue may legitimately be absent. In FV, identify upper-incisor contact with the lower lip and do not invent a lower row. Rest and MBP have closed lips and no exposed teeth or tongue.
+
+Keep dental silhouettes anatomically continuous and accurately follow their sides and incisal edges. Separate darkness BETWEEN rows from dark enamel. Never widen an opening just to fit teeth. Do not use a previous composition as ground truth: the clean original image is authoritative.
+
+{{FEEDBACK}}

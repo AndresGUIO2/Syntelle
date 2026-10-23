@@ -1,0 +1,19 @@
+{
+  "schema": "syntelle-motion-development/1",
+  "budget_id": "authorized-motion-development-2026-10-19",
+  "limits": {"image": 6, "analysis": 0},
+  "model": "gemini-nano-banana-2.1",
+  "cases": {
+    "syntelle": {"original": "../../../Colors/Syntelle.jpg", "oral": "../../.tools/corpus-08/syntelle/package"},
+    "cafe": {"original": "../../.tools/semantic-oral-06/corpus/cafe/original.png", "oral": "../../.tools/corpus-08/cafe/package"},
+    "woodland": {"original": "../../.tools/semantic-oral-06/corpus/woodland/original.png", "oral": "../../.tools/corpus-08/woodland/package"}
+  },
+  "backgrounds": [
+    {"id": "light-studio", "name": "Light Studio", "source": "C:/Users/Eljac/AppData/Local/Temp/codex-clipboard-44b4a3a6-fb25-4a38-9642-74e63d1577f8.png"},
+    {"id": "dark-lounge", "name": "Dark Lounge", "source": "C:/Users/Eljac/AppData/Local/Temp/codex-clipboard-af3aa88a-90f7-4ecb-99cb-c3ab339821bb.png"},
+    {"id": "natural-space", "name": "Natural Space", "source": "C:/Users/Eljac/AppData/Local/Temp/codex-clipboard-1c2146a6-ba78-4788-9878-b05ae0d64e07.png"}
+  ],
+  "blink": {"closing_ms": 80, "closed_ms": 40, "opening_ms": 140, "minimum_interval_ms": 4000, "maximum_interval_ms": 7000},
+  "motion": {"yaw_degrees": 1, "pitch_degrees": 0.6, "roll_degrees": 0.6, "breath_period_ms": 5000, "breath_face_height_fraction": 0.006},
+  "background_blur": {"default_px": 0, "maximum_px": 20}
+}

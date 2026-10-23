@@ -1,0 +1,51 @@
+{
+  "schema": "syntelle-dental-calibration/1",
+  "version": 1,
+  "reviewer": "assistant-internal",
+  "reviewed_at": "2026-10-19",
+  "coordinates": "relative to the character review annotation origin",
+  "raw": ".tools/dentition-01/generated-dentition.jpg",
+  "request_record": ".tools/dentition-01/run.json",
+  "matte": {
+    "black_level": 8,
+    "ramp": 16,
+    "edge_threshold": 40
+  },
+  "rows": {
+    "upper": {
+      "source_box": [
+        48,
+        218,
+        850,
+        492
+      ],
+      "width": 200,
+      "center_x": 158,
+      "cutting_edge_y": 83,
+      "edge_curve_px": -7,
+      "edge_smoothing_source_px": 26,
+      "exposure_gain": 0.62
+    },
+    "lower": {
+      "source_box": [
+        60,
+        734,
+        839,
+        1002
+      ],
+      "width": 190,
+      "center_x": 158,
+      "cutting_edge_y": 106,
+      "edge_curve_px": 5,
+      "edge_smoothing_source_px": 26,
+      "exposure_gain": 0.52
+    }
+  },
+  "notes": "One synthetic plate extends the limited A reference. Reviewed source row regions; smooth cutting-edge envelope rectifies the generated arch perspective once. Uniform horizontal/vertical scale, column translation and exposure are fixed per row. Runtime uses the resulting immutable rows, without tooth mesh deformation. This is an artistic reconstruction, not recovered hidden anatomy.",
+  "owner_review": {
+    "status": "rejected",
+    "reviewer": "owner",
+    "reviewed_at": "2026-10-19",
+    "reason": "Owner rejected dental appearance: square, flat, gray rows do not fit the character. Technical consistency checks are not visual approval."
+  }
+}

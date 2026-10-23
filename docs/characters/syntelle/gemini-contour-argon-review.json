@@ -1,0 +1,18 @@
+{
+  "schema": "syntelle-gemini-contour-review-settings/1",
+  "version": "gemini-contour-argon-review/1",
+  "model": "gemini-4-argon",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
+  "maximum_requests": 1,
+  "retries": 0,
+  "follow_redirects": false,
+  "store": false,
+  "timeout_seconds": 240,
+  "generation_config": {"thinking_level": "medium", "temperature": 1, "max_output_tokens": 24576},
+  "input": {"media_resolution": "high", "manual_mask_inputs": false},
+  "render": {
+    "supersampling": 4, "resampling": "LANCZOS", "overlay_opacity": 0.45, "preview_scale": 4,
+    "colors": {"upper_teeth": [30, 185, 240], "lower_teeth": [215, 120, 230], "tongue": [245, 165, 50]}
+  },
+  "documentation": ["https://ai.google.dev/gemini-api/docs/models/gemini-4-argon", "https://ai.google.dev/gemini-api/docs/thinking"]
+}

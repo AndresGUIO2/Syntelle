@@ -1,0 +1,15 @@
+{
+  "version": "character-performance-experiment/1",
+  "status": "owner-authorized",
+  "id": "authorized-character-performance-2026-10-20",
+  "limits": {"image": 2, "tts": 2, "gemini": 2, "analysis": 0},
+  "retries": 0,
+  "stop_all_paid_work_on_provider_error": true,
+  "image_two_reserved_for_reviewed_correction": true,
+  "voice": "en-US-Ava:DragonHDLatestNeural",
+  "region": "canadacentral",
+  "languages": ["en-US", "es-CO"],
+  "model": "gemini-3.8-flash",
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "prerequisite": "Structured-output and native laughter probes must pass before any image request."
+}

@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Syntelle - Desktop Conversation Workspace (Light)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #F7FAF8;
+    --surface: #FFFFFF;
+    --subtle-surface: #EDF4EF;
+    --main-text: #172B24;
+    --secondary-text: #52665C;
+    --jade-action: #0F766E;
+    --action-hover: #115E59;
+    --text-on-jade: #FFFFFF;
+    --decorative-divider: #D9E5DD;
+    --essential-border: #71877C;
+    --error: #B42318;
+    --warning: #8A4B08;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-full: 9999px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--page);
+    color: var(--main-text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Header */
+  header {
+    height: 64px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--decorative-divider);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .brand-wordmark {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--main-text);
+  }
+
+  .brand-attribution {
+    font-size: 13px;
+    color: var(--secondary-text);
+    font-weight: 400;
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .browser-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--secondary-text);
+    background: var(--subtle-surface);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--decorative-divider);
+  }
+
+  .browser-badge svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--secondary-text);
+  }
+
+  .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: var(--surface);
+    color: var(--main-text);
+    border: 1px solid var(--decorative-divider);
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .nav-btn:hover {
+    background: var(--subtle-surface);
+    border-color: var(--essential-border);
+  }
+
+  .nav-btn.primary {
+    background: var(--jade-action);
+    color: var(--text-on-jade);
+    border: 1px solid var(--jade-action);
+  }
+
+  .nav-btn.primary:hover {
+    background: var(--action-hover);
+    border-color: var(--action-hover);
+  }
+
+  /* Main Workspace */
+  main {
+    flex: 1;
+    max-width: 1440px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 24px 32px 32px;
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 28px;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  /* Left Stage: Dominant Portrait */
+  .stage-panel {
+    background: var(--surface);
+    border: 1px solid var(--decorative-divider);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(15, 118, 110, 0.04);
+  }
+
+  .stage-header {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--decorative-divider);
+    background: var(--surface);
+    z-index: 2;
+  }
+
+  .character-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .character-tag {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+    background: var(--subtle-surface);
+    color: var(--jade-action);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .character-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--main-text);
+  }
+
+  /* Live State Indicator */
+  .state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--subtle-surface);
+    color: var(--jade-action);
+    border: 1px solid var(--decorative-divider);
+  }
+
+  .state-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--jade-action);
+    position: relative;
+  }
+
+  .state-dot.pulse::after {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px;
+    border-radius: 50%;
+    border: 1.5px solid var(--jade-action);
+    animation: pulse 1.8s infinite;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* Portrait Visual Container */
+  .portrait-wrapper {
+    flex: 1;
+    position: relative;
+    background: #0d1714;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .portrait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+  }
+
+  /* Overlay HUD over character */
+  .portrait-overlay-bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 24px;
+    background: linear-gradient(180deg, rgba(23, 43, 36, 0) 0%, rgba(23, 43, 36, 0.78) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #FFFFFF;
+  }
+
+  .character-caption {
+    font-size: 13px;
+    line-height: 1.4;
+    max-width: 70%;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+
+  .portrait-overlay-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hud-btn {
+    background: rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #FFFFFF;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+
+  .hud-btn:hover {
+    background: rgba(255, 255, 255, 0.28);
+  }
+
+  .hud-btn.stop-btn {
+    background: #B42318;
+    border-color: #B42318;
+  }
+  .hud-btn.stop-btn:hover {
+    background: #911c13;
+  }
+
+  /* Right Panel: Conversation Workspace */
+  .convo-panel {
+    background: var(--surface);
+    border: 1px solid var(--decorative-divider);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(15, 118, 110, 0.04);
+  }
+
+  /* Top Bar with Task Prompt Collapsed & Allowances */
+  .convo-topbar {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--decorative-divider);
+    background: var(--subtle-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .allowances-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--secondary-text);
+  }
+
+  .allowance-meter {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .meter-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .meter-bar {
+    width: 54px;
+    height: 6px;
+    background: var(--decorative-divider);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .meter-fill {
+    height: 100%;
+    background: var(--jade-action);
+    border-radius: var(--radius-full);
+  }
+
+  /* Collapsible Task Prompt Box */
+  details.task-prompt-accordion {
+    background: var(--surface);
+    border: 1px solid var(--decorative-divider);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  details.task-prompt-accordion summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--main-text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+
+  .task-prompt-edit-area {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    height: 64px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    border: 1px solid var(--essential-border);
+    border-radius: var(--radius-sm);
+    background: var(--subtle-surface);
+    color: var(--main-text);
+    resize: none;
+  }
+
+  /* Transcript Area */
+  .transcript-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .msg-row {
+    display: flex;
+    gap: 12px;
+    max-width: 88%;
+  }
+
+  .msg-row.character {
+    align-self: flex-start;
+  }
+
+  .msg-row.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .avatar-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--decorative-divider);
+  }
+
+  .user-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--subtle-surface);
+    color: var(--secondary-text);
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--decorative-divider);
+    flex-shrink: 0;
+  }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .msg-row.character .msg-bubble {
+    background: var(--subtle-surface);
+    color: var(--main-text);
+    border: 1px solid var(--decorative-divider);
+    border-top-left-radius: 2px;
+  }
+
+  .msg-row.user .msg-bubble {
+    background: var(--jade-action);
+    color: var(--text-on-jade);
+    border-top-right-radius: 2px;
+  }
+
+  .speaking-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .speaking-bar {
+    width: 3px;
+    height: 10px;
+    background: var(--jade-action);
+    border-radius: 1px;
+    animation: soundWave 0.8s ease-in-out infinite alternate;
+  }
+  .speaking-bar:nth-child(2) { animation-delay: 0.2s; height: 14px; }
+  .speaking-bar:nth-child(3) { animation-delay: 0.4s; height: 8px; }
+
+  @keyframes soundWave {
+    0% { height: 4px; }
+    100% { height: 14px; }
+  }
+
+  /* Pre-conversation Welcome Banner */
+  .welcome-banner {
+    background: var(--subtle-surface);
+    border: 1px dashed var(--essential-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .welcome-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--main-text);
+  }
+
+  .welcome-desc {
+    font-size: 13px;
+    color: var(--secondary-text);
+    max-width: 440px;
+  }
+
+  .welcome-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  /* Bottom Composer Area */
+  .composer-wrapper {
+    padding: 16px 20px;
+    border-top: 1px solid var(--decorative-divider);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .composer-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--page);
+    border: 1px solid var(--essential-border);
+    border-radius: var(--radius-md);
+    padding: 6px 8px 6px 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .composer-box:focus-within {
+    border-color: var(--jade-action);
+    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.15);
+  }
+
+  .composer-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--main-text);
+    outline: none;
+  }
+
+  .composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--secondary-text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover {
+    background: var(--subtle-surface);
+    color: var(--main-text);
+  }
+
+  .icon-btn.mic-btn {
+    background: var(--subtle-surface);
+    border: 1px solid var(--decorative-divider);
+    color: var(--jade-action);
+  }
+
+  .icon-btn.mic-btn:hover {
+    background: #e1f2eb;
+    border-color: var(--essential-border);
+  }
+
+  .icon-btn.send-btn {
+    background: var(--jade-action);
+    color: var(--text-on-jade);
+  }
+
+  .icon-btn.send-btn:hover {
+    background: var(--action-hover);
+  }
+
+  .composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--secondary-text);
+  }
+
+  /* Accessible Focus States */
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--jade-action);
+    outline-offset: 2px;
+  }
+
+  /* Modal / Slide-over placeholders */
+  .state-badges-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--secondary-text);
+  }
+
+  .state-indicator-badge {
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+  }
+  .state-indicator-badge.ready { background: #EDF4EF; color: #0F766E; }
+  .state-indicator-badge.listening { background: #FEF3F2; color: #B42318; }
+  .state-indicator-badge.thinking { background: #FEF7C3; color: #8A4B08; }
+  .state-indicator-badge.speaking { background: #EDF4EF; color: #0F766E; }
+</style>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header>
+    <div class="brand-group">
+      <span class="brand-wordmark">Syntelle</span>
+      <span class="brand-attribution">by Colors Studio</span>
+    </div>
+
+    <div class="header-controls">
+      <div class="browser-badge" title="Character configurations and state persist in local storage">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        <span>Saved in this browser</span>
+      </div>
+
+      <!-- Language Switcher -->
+      <select class="nav-btn" aria-label="Conversation language">
+        <option selected>Language: English (US)</option>
+        <option>Language: Español</option>
+      </select>
+
+      <!-- Theme Switcher -->
+      <button class="nav-btn" title="Toggle Light/Dark Theme" onclick="alert('Theme toggle demo')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <span>Theme: Light</span>
+      </button>
+
+      <!-- Custom Character Action -->
+      <button class="nav-btn" onclick="alert('Upload drawer opens')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Upload your photo</span>
+      </button>
+
+      <!-- Owner Settings Link -->
+      <button class="nav-btn" title="Private Owner Settings" onclick="alert('Owner Settings opened')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Owner</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Grid -->
+  <main>
+    <!-- Left Column: Character Stage -->
+    <section class="stage-panel" aria-label="Character Stage">
+      <div class="stage-header">
+        <div class="character-meta">
+          <span class="character-tag">Sample Character</span>
+          <span class="character-name">Elena • Advisor & Tutor</span>
+        </div>
+        
+        <!-- Live Status indicator (Ready / Listening / Thinking / Speaking) -->
+        <div class="state-pill" role="status" aria-live="polite">
+          <span class="state-dot pulse"></span>
+          <span>Speaking</span>
+        </div>
+      </div>
+
+      <div class="portrait-wrapper">
+        <img class="portrait-img" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXzl1S3325Qhvxuy98Dw0zVqazWWs_OmndjK5Qm25LPw3swlvFPLx-fHrlxxrdyO15Ho_ZuGbLZEgu2UDUeAc3psCLva_wCJnwVqrbhg08nUtM5amQfqe2dRMHSogJTVuCc0-Pukycp6OWChmzsPZjJaEq0BYCkNZ9KcpiXJ7OG19uwnfXIhhcaLFzVfNK0BzC-EDtCddwoikXqG-kIsMNZbj9rvIHDozWj5ZVqREvZbg9zTvsCIU" alt="Photorealistic portrait of Elena, Syntelle tutor character">
+
+        <div class="portrait-overlay-bottom">
+          <div class="character-caption">
+            "Hello! I am ready to explore today's learning module with you. How can I help?"
+          </div>
+
+          <div class="portrait-overlay-controls">
+            <!-- Interruption & Stop Output Control -->
+            <button class="hud-btn stop-btn" title="Interrupt spoken audio">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+              </svg>
+              <span>Stop speech</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Conversation Panel -->
+    <section class="convo-panel" aria-label="Conversation Panel">
+      
+      <!-- Top Bar: Allowances & Editable Task Prompt -->
+      <div class="convo-topbar">
+        <!-- Discreet Speech & Listening Allowances -->
+        <div class="allowances-row">
+          <div class="allowance-meter" title="Daily 24-hour reset allocation configured by owner">
+            <div class="meter-item">
+              <span>Speech:</span>
+              <strong style="color: var(--main-text); font-weight: 600;">2:45 / 3:00 min</strong>
+              <div class="meter-bar" aria-label="Speech allowance bar">
+                <div class="meter-fill" style="width: 82%;"></div>
+              </div>
+            </div>
+
+            <div class="meter-item">
+              <span>Listening:</span>
+              <strong style="color: var(--main-text); font-weight: 600;">5:10 / 6:00 min</strong>
+              <div class="meter-bar" aria-label="Listening allowance bar">
+                <div class="meter-fill" style="width: 78%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <span style="font-size: 11px;">Resets in 18h 42m</span>
+        </div>
+
+        <!-- Collapsed Editable Task Prompt -->
+        <details class="task-prompt-accordion">
+          <summary>
+            <span>Character Task Prompt: <em>"Helpful tutor & advisor for customer inquiries..."</em></span>
+            <span style="color: var(--jade-action); font-size: 12px; font-weight: 600;">Edit</span>
+          </summary>
+          <div class="task-prompt-edit-area">
+            <label for="task-prompt" style="font-size: 11px; color: var(--secondary-text); font-weight: 500;">
+              Instruction prompt guiding the character's persona and conversational responses:
+            </label>
+            <textarea id="task-prompt" class="prompt-textarea">You are an approachable, calm, and capable educational tutor and customer service advisor. Answer questions clearly, maintain friendly eye contact, and encourage questions.</textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+              <button class="nav-btn" style="height: 28px; font-size: 12px;">Reset to default</button>
+              <button class="nav-btn primary" style="height: 28px; font-size: 12px;">Update Prompt</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Transcript Container -->
+      <div class="transcript-container" id="transcript">
+        
+        <!-- Welcome intro card inside transcript -->
+        <div class="welcome-banner">
+          <h2 class="welcome-title">Instant Browser Conversation</h2>
+          <p class="welcome-desc">
+            Syntelle turns portraits into expressive digital characters. No registration needed. The prepared sample character is ready right now.
+          </p>
+          <div class="welcome-actions">
+            <button class="nav-btn primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>Start conversation</span>
+            </button>
+            <button class="nav-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Upload your photo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sample Conversation Messages -->
+        <div class="msg-row character">
+          <img class="avatar-thumb" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXzl1S3325Qhvxuy98Dw0zVqazWWs_OmndjK5Qm25LPw3swlvFPLx-fHrlxxrdyO15Ho_ZuGbLZEgu2UDUeAc3psCLva_wCJnwVqrbhg08nUtM5amQfqe2dRMHSogJTVuCc0-Pukycp6OWChmzsPZjJaEq0BYCkNZ9KcpiXJ7OG19uwnfXIhhcaLFzVfNK0BzC-EDtCddwoikXqG-kIsMNZbj9rvIHDozWj5ZVqREvZbg9zTvsCIU" alt="Elena avatar">
+          <div class="msg-bubble">
+            Hello! I’m Elena, your Syntelle sample character. You can speak to me with your microphone or type your question below. How can I assist you today?
+            <span class="speaking-indicator" title="Character is currently speaking">
+              <span class="speaking-bar"></span>
+              <span class="speaking-bar"></span>
+              <span class="speaking-bar"></span>
+            </span>
+          </div>
+        </div>
+
+        <div class="msg-row user">
+          <div class="user-thumb">You</div>
+          <div class="msg-bubble">
+            Can you explain the main difference between active and passive listening in customer service?
+          </div>
+        </div>
+
+        <div class="msg-row character">
+          <img class="avatar-thumb" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXzl1S3325Qhvxuy98Dw0zVqazWWs_OmndjK5Qm25LPw3swlvFPLx-fHrlxxrdyO15Ho_ZuGbLZEgu2UDUeAc3psCLva_wCJnwVqrbhg08nUtM5amQfqe2dRMHSogJTVuCc0-Pukycp6OWChmzsPZjJaEq0BYCkNZ9KcpiXJ7OG19uwnfXIhhcaLFzVfNK0BzC-EDtCddwoikXqG-kIsMNZbj9rvIHDozWj5ZVqREvZbg9zTvsCIU" alt="Elena avatar">
+          <div class="msg-bubble">
+            Active listening involves fully concentrating, understanding, and reflecting on what the speaker is sharing—such as paraphrasing their issue before jumping to a solution. Passive listening merely hears words without verification or thoughtful engagement.
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Text Composer & Controls -->
+      <div class="composer-wrapper">
+        <div class="composer-box">
+          <input type="text" class="composer-input" placeholder="Type a message or press the microphone to talk..." aria-label="Message composer">
+          
+          <div class="composer-actions">
+            <!-- Stop Speech quick button if character is talking -->
+            <button class="icon-btn" title="Stop character speaking" style="color: var(--error);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+              </svg>
+            </button>
+
+            <!-- Microphone Button -->
+            <button class="icon-btn mic-btn" title="Speak via microphone (Processed listening)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+              </svg>
+            </button>
+
+            <!-- Send button -->
+            <button class="icon-btn send-btn" title="Send message">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="composer-footer">
+          <div class="state-badges-row">
+            <span>System State:</span>
+            <span class="state-indicator-badge ready">● Ready</span>
+            <span class="state-indicator-badge listening" style="opacity: 0.4;">● Listening</span>
+            <span class="state-indicator-badge thinking" style="opacity: 0.4;">● Thinking</span>
+            <span class="state-indicator-badge speaking" style="border: 1px solid var(--jade-action);">● Speaking</span>
+          </div>
+          <div>Press Enter to send • Click microphone to speak</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>

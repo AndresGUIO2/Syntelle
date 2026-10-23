@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Syntelle Mobile Workspace - 390px (Light & Dark Variants)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #E2E8F0;
+    color: #172B24;
+    padding: 32px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    line-height: 1.4;
+  }
+
+  .showcase-header {
+    text-align: center;
+    max-width: 600px;
+  }
+
+  .showcase-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0F172A;
+  }
+
+  .showcase-sub {
+    font-size: 14px;
+    color: #475569;
+    margin-top: 6px;
+  }
+
+  .devices-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 36px;
+  }
+
+  /* 390px Mobile Frame */
+  .mobile-device {
+    width: 390px;
+    height: 844px;
+    border-radius: 44px;
+    padding: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 10px #1E293B;
+    background: #1E293B;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mobile-screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 34px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Theme Tokens */
+  .theme-light {
+    --page: #F7FAF8;
+    --surface: #FFFFFF;
+    --subtle-surface: #EDF4EF;
+    --main-text: #172B24;
+    --secondary-text: #52665C;
+    --jade-action: #0F766E;
+    --action-hover: #115E59;
+    --text-on-jade: #FFFFFF;
+    --decorative-divider: #D9E5DD;
+    --essential-border: #71877C;
+    --error: #B42318;
+    --warning: #8A4B08;
+    background-color: var(--page);
+    color: var(--main-text);
+  }
+
+  .theme-dark {
+    --page: #0D1714;
+    --surface: #15251E;
+    --subtle-surface: #1C3027;
+    --main-text: #ECF5EF;
+    --secondary-text: #A7BDB1;
+    --jade-action: #5ED2AD;
+    --action-hover: #83DEC0;
+    --text-on-jade: #0D1714;
+    --decorative-divider: #2C493A;
+    --essential-border: #698275;
+    --error: #FF9D95;
+    --warning: #F2C064;
+    background-color: var(--page);
+    color: var(--main-text);
+  }
+
+  /* App Mobile Header */
+  .m-header {
+    height: 52px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--decorative-divider);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .m-brand {
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .m-brand span { font-size: 11px; font-weight: 400; color: var(--secondary-text); }
+
+  .m-header-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pill-tool {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--subtle-surface);
+    border: 1px solid var(--decorative-divider);
+    border-radius: 9999px;
+    color: var(--secondary-text);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* Stacked Layout on Mobile: Dominant portrait above transcript */
+  .m-portrait-stage {
+    position: relative;
+    height: 270px;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  .m-portrait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 15%;
+    display: block;
+  }
+
+  .m-stage-status {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .m-badge {
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .m-state-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--jade-action);
+  }
+
+  .m-portrait-caption-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .m-caption-text {
+    font-size: 11px;
+    color: #FFFFFF;
+    line-height: 1.3;
+    max-width: 72%;
+  }
+
+  .m-btn-stop {
+    background: var(--error);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Allowances Mini-Bar */
+  .m-allowance-bar {
+    padding: 6px 14px;
+    background: var(--subtle-surface);
+    border-bottom: 1px solid var(--decorative-divider);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--secondary-text);
+    flex-shrink: 0;
+  }
+
+  /* Conversation Area */
+  .m-convo-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .m-bubble {
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 10px 12px;
+    border-radius: 12px;
+    max-width: 88%;
+  }
+
+  .m-bubble.bot {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--decorative-divider);
+    color: var(--main-text);
+  }
+
+  .m-bubble.user {
+    align-self: flex-end;
+    background: var(--jade-action);
+    color: var(--text-on-jade);
+    font-weight: 500;
+  }
+
+  /* Mobile Bottom Composer */
+  .m-composer {
+    padding: 10px 14px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--decorative-divider);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .m-input-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--page);
+    border: 1px solid var(--essential-border);
+    border-radius: 10px;
+    padding: 4px 6px 4px 12px;
+  }
+
+  .m-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--main-text);
+    outline: none;
+  }
+
+  .m-btn-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+  }
+
+  .m-btn-icon.mic {
+    background: var(--subtle-surface);
+    color: var(--jade-action);
+    border: 1px solid var(--decorative-divider);
+  }
+
+  .m-btn-icon.send {
+    background: var(--jade-action);
+    color: var(--text-on-jade);
+  }
+
+  .device-label {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+  }
+</style>
+</head>
+<body>
+
+  <div class="showcase-header">
+    <h1 class="showcase-title">Syntelle Mobile App View (390 px)</h1>
+    <p class="showcase-sub">Practical stacked layout placing the expressive portrait character dominant on top with fluid conversational interaction below.</p>
+  </div>
+
+  <div class="devices-row">
+    
+    <!-- Mobile Light Theme -->
+    <div>
+      <div class="mobile-device">
+        <div class="mobile-screen theme-light">
+          <!-- Mobile Header -->
+          <header class="m-header">
+            <div class="m-brand">
+              Syntelle <span>by Colors Studio</span>
+            </div>
+            <div class="m-header-tools">
+              <span class="pill-tool">EN</span>
+              <span class="pill-tool">Upload</span>
+            </div>
+          </header>
+
+          <!-- Dominant Portrait Stage -->
+          <section class="m-portrait-stage">
+            <img class="m-portrait-img" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXzl1S3325Qhvxuy98Dw0zVqazWWs_OmndjK5Qm25LPw3swlvFPLx-fHrlxxrdyO15Ho_ZuGbLZEgu2UDUeAc3psCLva_wCJnwVqrbhg08nUtM5amQfqe2dRMHSogJTVuCc0-Pukycp6OWChmzsPZjJaEq0BYCkNZ9KcpiXJ7OG19uwnfXIhhcaLFzVfNK0BzC-EDtCddwoikXqG-kIsMNZbj9rvIHDozWj5ZVqREvZbg9zTvsCIU" alt="Elena Character portrait">
+            
+            <div class="m-stage-status">
+              <div class="m-badge">
+                <span class="m-state-dot"></span>
+                <span>Elena • Speaking</span>
+              </div>
+              <div class="m-badge" style="font-weight: 400; font-size: 10px;">
+                Saved in browser
+              </div>
+            </div>
+
+            <div class="m-portrait-caption-bar">
+              <div class="m-caption-text">
+                "Hello! I am ready to explore today's learning module with you."
+              </div>
+              <button class="m-btn-stop">Stop</button>
+            </div>
+          </section>
+
+          <!-- Allowances -->
+          <div class="m-allowance-bar">
+            <span>Speech: <strong>2:45 / 3m</strong></span>
+            <span>Listening: <strong>5:10 / 6m</strong></span>
+          </div>
+
+          <!-- Transcript -->
+          <div class="m-convo-area">
+            <div class="m-bubble bot">
+              Hello! I’m Elena, your Syntelle sample character. Speak with your microphone or type below.
+            </div>
+
+            <div class="m-bubble user">
+              Can you explain active listening?
+            </div>
+
+            <div class="m-bubble bot">
+              Active listening means fully concentrating on what is being shared, validating emotions, and clarifying before replying.
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="m-composer">
+            <div class="m-input-box">
+              <input type="text" class="m-input" placeholder="Type or tap microphone..." aria-label="Type message">
+              <button class="m-btn-icon mic" title="Microphone">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                </svg>
+              </button>
+              <button class="m-btn-icon send" title="Send">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+            <div style="font-size: 10px; color: var(--secondary-text); text-align: center;">
+              Ready • 24h custom character limit: 1
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">390px Mobile • Light Theme</div>
+    </div>
+
+    <!-- Mobile Dark Theme -->
+    <div>
+      <div class="mobile-device">
+        <div class="mobile-screen theme-dark">
+          <!-- Mobile Header -->
+          <header class="m-header">
+            <div class="m-brand">
+              Syntelle <span>by Colors Studio</span>
+            </div>
+            <div class="m-header-tools">
+              <span class="pill-tool">EN</span>
+              <span class="pill-tool">Upload</span>
+            </div>
+          </header>
+
+          <!-- Dominant Portrait Stage -->
+          <section class="m-portrait-stage">
+            <img class="m-portrait-img" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXzl1S3325Qhvxuy98Dw0zVqazWWs_OmndjK5Qm25LPw3swlvFPLx-fHrlxxrdyO15Ho_ZuGbLZEgu2UDUeAc3psCLva_wCJnwVqrbhg08nUtM5amQfqe2dRMHSogJTVuCc0-Pukycp6OWChmzsPZjJaEq0BYCkNZ9KcpiXJ7OG19uwnfXIhhcaLFzVfNK0BzC-EDtCddwoikXqG-kIsMNZbj9rvIHDozWj5ZVqREvZbg9zTvsCIU" alt="Elena Character portrait">
+            
+            <div class="m-stage-status">
+              <div class="m-badge">
+                <span class="m-state-dot"></span>
+                <span>Elena • Speaking</span>
+              </div>
+              <div class="m-badge" style="font-weight: 400; font-size: 10px;">
+                Saved in browser
+              </div>
+            </div>
+
+            <div class="m-portrait-caption-bar">
+              <div class="m-caption-text">
+                "Hello! I am ready to explore today's learning module with you."
+              </div>
+              <button class="m-btn-stop">Stop</button>
+            </div>
+          </section>
+
+          <!-- Allowances -->
+          <div class="m-allowance-bar">
+            <span>Speech: <strong>2:45 / 3m</strong></span>
+            <span>Listening: <strong>5:10 / 6m</strong></span>
+          </div>
+
+          <!-- Transcript -->
+          <div class="m-convo-area">
+            <div class="m-bubble bot">
+              Hello! I’m Elena, your Syntelle sample character. Speak with your microphone or type below.
+            </div>
+
+            <div class="m-bubble user">
+              Can you explain active listening?
+            </div>
+
+            <div class="m-bubble bot">
+              Active listening means fully concentrating on what is being shared, validating emotions, and clarifying before replying.
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="m-composer">
+            <div class="m-input-box">
+              <input type="text" class="m-input" placeholder="Type or tap microphone..." aria-label="Type message">
+              <button class="m-btn-icon mic" title="Microphone">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                </svg>
+              </button>
+              <button class="m-btn-icon send" title="Send">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+            <div style="font-size: 10px; color: var(--secondary-text); text-align: center;">
+              Ready • 24h custom character limit: 1
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">390px Mobile • Dark Theme</div>
+    </div>
+
+  </div>
+
+</body>
+</html>

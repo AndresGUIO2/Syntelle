@@ -1,0 +1,17 @@
+{
+  "version": "speech-context/1",
+  "head": {
+    "idle_degrees": [0.22, 0.1, 0.08],
+    "maximum_nod_degrees": 1.1,
+    "maximum_turn_degrees": 0.22,
+    "minimum_gesture_gap_seconds": 2.4
+  },
+  "blink": {
+    "rate_per_minute": 16,
+    "minimum_gap_ms": 800,
+    "pause_probability": 0.45,
+    "ending_probability": 0.55,
+    "onset_probability": 0.2,
+    "nod_probability": 0.25
+  }
+}

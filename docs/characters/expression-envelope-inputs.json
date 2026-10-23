@@ -1,0 +1,5 @@
+{"version":"expression-envelope-input/1","characters":[
+ {"id":"syntelle","package":"apps/web/src/experiments/motion/rgbd/syntelle/package.json"},
+ {"id":"cafe","package":"apps/web/src/experiments/motion/rgbd/cafe/package.json"},
+ {"id":"woodland","package":"apps/web/src/experiments/motion/rgbd/woodland/package.json"}
+]}

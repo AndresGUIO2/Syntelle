@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 160" width="100%" height="100%">
+  <defs>
+    <!-- Gradiente de 4 tonos -->
+    <linearGradient id="cyber-sunset-ring" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE"></stop>
+      <stop offset="33%" stop-color="#3B82F6"></stop>
+      <stop offset="66%" stop-color="#7C3AED"></stop>
+      <stop offset="100%" stop-color="#FF3366"></stop>
+    </linearGradient>
+
+    <!-- Glow suave detrás de la o colorida y del punto -->
+    <filter id="soft-bloom" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="10" result="blur1"></feGaussianBlur>
+      <feGaussianBlur stdDeviation="4" result="blur2"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="blur1"></feMergeNode>
+        <feMergeNode in="blur2"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(0, 0)">
+    
+    <!-- Glow trasero de la o colorida -->
+    <circle cx="218" cy="80" r="23" fill="none" stroke="url(#cyber-sunset-ring)" stroke-width="18" opacity="0.22" filter="url(#soft-bloom)"></circle>
+
+    <!-- Glow trasero del punto -->
+    <circle cx="366" cy="101" r="11.5" fill="#00F2FE" opacity="0.20" filter="url(#soft-bloom)"></circle>
+
+    <!-- Letras blancas -->
+    <g stroke-linecap="round" stroke-linejoin="round">
+      <!-- c -->
+      <path d="M 80 62 A 23 23 0 1 0 80 98" fill="none" stroke="#24212B" stroke-width="11.5"></path>
+
+      <!-- primera o -->
+      <circle cx="128" cy="80" r="23" fill="none" stroke="#24212B" stroke-width="11.5"></circle>
+
+      <!-- l -->
+      <path d="M 174 34 L 174 103" fill="none" stroke="#24212B" stroke-width="11.5"></path>
+
+      <!-- segunda o con contorno -->
+      <circle cx="218" cy="80" r="23" fill="none" stroke="#151B35" stroke-width="15.5"></circle>
+      <circle cx="218" cy="80" r="23" fill="none" stroke="url(#cyber-sunset-ring)" stroke-width="11.5"></circle>
+
+      <!-- r -->
+      <path d="M 264 58 L 264 103" fill="none" stroke="#24212B" stroke-width="11.5"></path>
+      <path d="M 264 74 A 18 18 0 0 1 292 58" fill="none" stroke="#24212B" stroke-width="11.5"></path>
+
+      <!-- s -->
+      <path d="M 338 64 C 338 55, 312 53, 312 68
+           C 312 85, 338 78, 338 93
+           C 338 108, 312 106, 312 97" fill="none" stroke="#24212B" stroke-width="11.5"></path>
+    </g>
+
+    <!-- Punto final con contorno -->
+    <circle cx="366" cy="101" r="9.5" fill="#00F2FE" stroke="#151B35" stroke-width="3.8"></circle>
+
+    <!-- Tagline -->
+    <text x="60" y="136" font-family="'Inter', 'Montserrat', 'Helvetica', sans-serif" font-weight="600" font-size="13" fill="#64748B" letter-spacing="10">
+      STUDIO
+    </text>
+  </g>
+</svg>

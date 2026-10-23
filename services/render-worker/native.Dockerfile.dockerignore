@@ -1,0 +1,16 @@
+**
+!packages
+!packages/render-contract
+!packages/render-contract/**
+!services
+!services/render-worker
+!services/render-worker/go.mod
+!services/render-worker/go.mod/**
+!services/render-worker/go.sum
+!services/render-worker/go.sum/**
+!services/render-worker/cmd
+!services/render-worker/cmd/**
+!services/render-worker/internal
+!services/render-worker/internal/**
+!services/render-worker/native
+!services/render-worker/native/**

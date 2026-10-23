@@ -1,0 +1,13 @@
+Review and correct an automatic dental segmentation proposal for a semi-realistic character. This is image analysis only. Do not generate or modify an image.
+
+Four images share the exact same full-image framing: (1) clean original EI mouth crop enlarged 4x, (2) normalized coordinate grid, (3) MediaPipe lip contours, and (4) Flash's proposed mask over the same original. Blue is upper teeth; pink is lower teeth. No manual dental masks are supplied. The MediaPipe orange inner-lip contour bounds the mouth opening; it is not a dental boundary. The clean image is the visual authority; markings can conceal enamel.
+
+Audit Flash's proposal against the clean image, especially omitted lateral enamel, contamination with gums/lips/cavity, row separation and any genuinely visible tongue. Supply your best corrected complete contours for all three regions. Do not merely agree with Flash or expand a region without visible evidence. In each region's notes explain the visual issue and your change, uncertainty or reason for no change. Your output is an unreviewed candidate, not approval of a working automatic pipeline.
+
+Coordinates are [x,y] normalized to the FULL input image, 0..1000. The grid has no margins. Use simple polygons ordered around each perimeter; no crossing, duplicate closing vertex or overlapping upper/lower/tongue regions. Trace only visible enamel, not tooth roots or an imagined complete dental arch. Multiple polygons are allowed for separated visible pieces. Tongue must be empty when not visibly identifiable. Preserve the source's actual shape and texture by defining contours only. Do not include explanation outside the required JSON. Keep the response concise and complete.
+
+Flash's exact proposal:
+{{PREVIOUS_CONTOURS}}
+
+Deterministic checks (geometry checks do not establish visual accuracy):
+{{VALIDATION_REPORT}}

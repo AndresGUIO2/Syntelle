@@ -1,0 +1,94 @@
+{
+  "version": "observed-iris/1",
+  "source_sha256": "becfc653fd2958a99231302365f4ef24861b4ea5effab43ac557fd1bdc643b36",
+  "motion_build_id": "8a7cb9863de0f170ddd6336af1200fa12c5d7ca383438ab68989200606283c89",
+  "crop": {
+    "x": 441,
+    "y": 183,
+    "width": 141,
+    "height": 29
+  },
+  "eyes": [
+    {
+      "center": [
+        30.979949951171875,
+        12.50266432762146
+      ],
+      "radii": [
+        8.768258666992187,
+        7.5022776734828955
+      ],
+      "width_px": 34.51971435546875,
+      "bounds_px": [
+        [
+          1.3980484313964845,
+          1.3980484313964845
+        ],
+        [
+          0.4893169509887696,
+          0.41067672672271727
+        ]
+      ],
+      "edge_radius_scale": 1.06,
+      "reductions": [
+        {
+          "axis": 1,
+          "requested_px": 0.690394287109375,
+          "safe_negative_positive_px": [
+            0.6040950012207031,
+            0.5070083045959473
+          ]
+        }
+      ],
+      "maximum_protected_boundary_fraction": 0.01810686680124923
+    },
+    {
+      "center": [
+        112.84178161621094,
+        12.552820652723312
+      ],
+      "radii": [
+        8.081537475585938,
+        6.852245307564736
+      ],
+      "width_px": 34.87652587890625,
+      "bounds_px": [
+        [
+          1.5694436645507814,
+          1.5694436645507814
+        ],
+        [
+          0.6277774658203126,
+          0.5198782138824464
+        ]
+      ],
+      "edge_radius_scale": 0.9700000000000001,
+      "reductions": [
+        {
+          "axis": 1,
+          "requested_px": 0.697530517578125,
+          "safe_negative_positive_px": [
+            0.697530517578125,
+            0.5776424598693848
+          ]
+        }
+      ],
+      "maximum_protected_boundary_fraction": 0.018623941056248056
+    }
+  ],
+  "assets": {
+    "sclera.png": {
+      "file": "sclera.png",
+      "sha256": "204e097d1632eb537f5b621a476a5c1b1c4e78e43adc79c23b32f0199ee99466"
+    },
+    "ownership.png": {
+      "file": "ownership.png",
+      "sha256": "4435506e0f630e67bfeca35b4e4cec5f53e9251d2a913322e23f85012d9ab6f0"
+    }
+  },
+  "validation": {
+    "valid": true,
+    "hidden_iris_generated": false,
+    "neutral_source_exact": true
+  }
+}

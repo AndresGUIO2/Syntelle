@@ -1,0 +1,10 @@
+{
+ "version":"joint-expression-input/1",
+ "original":"E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+ "landmarks":".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json",
+ "expressions":"apps/web/src/experiments/motion/expressions/syntelle",
+ "oral":"apps/web/src/experiments/viseme-a/characters/syntelle/package.json",
+ "foreground":".tools/foreground-11/prepared/syntelle/foreground.webp",
+ "smile":".tools/expressive-performance-67/references/smile/generated-smile.jpg",
+ "laugh":".tools/expressive-performance-67/references/laugh/generated-laugh.jpg"
+}

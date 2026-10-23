@@ -1,0 +1,23 @@
+{
+  "version": "gaze-input/1",
+  "characters": [
+    {
+      "id": "syntelle",
+      "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+      "motion": "apps/web/src/experiments/motion/rgbd/syntelle/package.json",
+      "landmarks": ".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json"
+    },
+    {
+      "id": "cafe",
+      "original": ".tools/semantic-oral-06/corpus/cafe/original.png",
+      "motion": "apps/web/src/experiments/motion/rgbd/cafe/package.json",
+      "landmarks": ".tools/rgbd-motion-18/prepared-current/cafe/inputs/landmarks.json"
+    },
+    {
+      "id": "woodland",
+      "original": ".tools/semantic-oral-06/corpus/woodland/original.png",
+      "motion": "apps/web/src/experiments/motion/rgbd/woodland/package.json",
+      "landmarks": ".tools/rgbd-motion-18/prepared-current/woodland/inputs/landmarks.json"
+    }
+  ]
+}

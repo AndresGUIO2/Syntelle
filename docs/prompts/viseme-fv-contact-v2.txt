@@ -1,0 +1,6 @@
+{{ORIGINAL_FV_PROMPT}}
+
+Additional anatomical acceptance requirements for this correction:
+Create the labiodental contact used while sustaining an English F or V sound. The lower lip rolls slightly inward so that its wet inner edge gently touches the biting edges of the UPPER central incisors. The contact must be directly visible. The LOWER teeth remain completely concealed behind the lower lip. There is no exposed second dental row, tongue, broad smile or open vowel cavity. Keep the upper lip relaxed. Do not replace this action with clenched teeth, a grin, or two close dental rows: those are not F/V.
+
+The first image is the exact immutable original portrait and is the identity, framing and lighting authority. Supporting dental imagery describes the same character's selected dentition; it is not a replacement portrait. Change only the local mouth articulation and subtle physically necessary nearby soft tissue. Preserve the rest of the original portrait. No text, labels, overlays, grids or dental diagrams in the output.

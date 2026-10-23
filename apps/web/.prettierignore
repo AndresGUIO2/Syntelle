@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+**/*.json
+src/experiments/**/assets/
+src/experiments/**/characters/
+src/experiments/**/poses/
+src/experiments/**/completed/
+src/experiments/**/semantic/
+src/experiments/**/backgrounds/

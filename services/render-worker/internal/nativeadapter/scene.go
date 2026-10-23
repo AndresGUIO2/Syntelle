@@ -1,0 +1,224 @@
+// Package nativeadapter binds immutable character assets and the original
+// animation behavior to the native media scene interface.
+package nativeadapter
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"time"
+
+	"syntelle/render-contract"
+	"syntelle/render-worker/internal/nativeanimation"
+	"syntelle/render-worker/internal/nativeframe"
+	"syntelle/render-worker/internal/nativemedia"
+	"syntelle/render-worker/internal/nativerender"
+)
+
+type renderer interface {
+	Render(context.Context, nativerender.FrameState, *image.RGBA) error
+}
+
+func (s *scene) Close() error {
+	if closer, ok := s.renderer.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func (s *scene) RendererBackend() string {
+	if backend, ok := s.renderer.(interface{ Backend() string }); ok {
+		return backend.Backend()
+	}
+	return "native-cpu/1"
+}
+
+// Animation/renderer state has one owner: nativemedia's video loop. The
+// preparation lane reads only immutable Config and publishes immutable clips.
+type scene struct {
+	previewSequence          uint64
+	previewStart             time.Duration
+	config                   nativeanimation.Config
+	engine                   *nativeanimation.Engine
+	renderer                 renderer
+	initialized              bool
+	generation               uint64
+	animationSession         uint64
+	mediaTime, animationTime time.Duration
+	clipPrepared             *nativeanimation.PreparedSpeech
+	speech                   *nativeanimation.Speech
+}
+
+func Load(assetDir string) (nativemedia.SceneFactory, string, error) {
+	assets, err := nativerender.Load(assetDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("load native scene assets: %w", err)
+	}
+	return LoadAssets(assets)
+}
+
+// LoadForeground is the live worker path. Offline opaque comparisons retain Load.
+func LoadForeground(assetDir string) (nativemedia.SceneFactory, string, error) {
+	assets, err := nativerender.LoadCharacter(assetDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("load native foreground assets: %w", err)
+	}
+	return LoadAssets(assets)
+}
+
+// LoadAssets reuses already loaded immutable resources for review/probe hosts.
+func LoadAssets(assets *nativerender.Assets) (nativemedia.SceneFactory, string, error) {
+	if assets == nil {
+		return nil, "", errors.New("native scene assets unavailable")
+	}
+	config, err := nativeanimation.LoadBundle(assets.MotionJSON, assets.GazeJSON, assets.ExpressionJSON, assets.OralJSON)
+	if err != nil {
+		return nil, "", fmt.Errorf("load native scene animation: %w", err)
+	}
+	config.MotionScale = assets.MotionScale
+	packageHash := assets.PackageHash
+	if len(packageHash) != 64 {
+		return nil, "", errors.New("native scene character identity unavailable")
+	}
+	factory := func(settings rendercontract.Settings) (nativemedia.Scene, error) {
+		if err := settings.Validate(); err != nil {
+			return nil, fmt.Errorf("prepare native scene settings: %w", err)
+		}
+		r, err := nativerender.New(assets)
+		if err != nil {
+			return nil, fmt.Errorf("prepare native scene renderer: %w", err)
+		}
+		return &scene{config: config, engine: nativeanimation.NewEngine(config), renderer: r}, nil
+	}
+	return factory, packageHash, nil
+}
+func (s *scene) Render(ctx context.Context, input nativemedia.FrameInput, dst *image.RGBA) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state, err := s.sample(input)
+	if err != nil {
+		return err
+	}
+	return s.renderer.Render(ctx, state, dst)
+}
+
+func (s *scene) RenderFrame(ctx context.Context, input nativemedia.FrameInput, dst *image.RGBA, target *nativeframe.Surface) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	state, err := s.sample(input)
+	if err != nil {
+		return false, err
+	}
+	if renderer, ok := s.renderer.(interface {
+		RenderFrame(context.Context, nativerender.FrameState, *image.RGBA, *nativeframe.Surface) (bool, error)
+	}); ok {
+		return renderer.RenderFrame(ctx, state, dst, target)
+	}
+	return false, s.renderer.Render(ctx, state, dst)
+}
+
+func (s *scene) Readback(ctx context.Context, dst *image.RGBA) error {
+	if renderer, ok := s.renderer.(interface {
+		Readback(context.Context, *image.RGBA) error
+	}); ok {
+		return renderer.Readback(ctx, dst)
+	}
+	return nil
+}
+
+// PrepareSpeech reads only immutable configuration. It runs on the media
+// preparation lane; session admission/history remains with sample's owner.
+func (s *scene) PrepareSpeech(ctx context.Context, clip nativemedia.SpeechState) (*nativeanimation.PreparedSpeech, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	samples := make([]float32, len(clip.Samples))
+	for i, v := range clip.Samples {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+		samples[i] = float32(v) / 32768
+	}
+	visemes := make([]nativeanimation.NativeViseme, len(clip.Visemes))
+	for i, v := range clip.Visemes {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+		visemes[i] = nativeanimation.NativeViseme{ID: v.ID, OffsetMS: v.OffsetMS}
+	}
+	prepared, err := nativeanimation.PrepareSpeech(ctx, samples, clip.SampleRate, visemes, nativeanimation.SpeechSeed(clip.Text), s.config)
+	if err != nil {
+		return nil, fmt.Errorf("prepare native scene speech: %w", err)
+	}
+	// Invalid optional performance does not prevent original PCM replay.
+	if len(clip.Performance) > 0 {
+		if err := json.Unmarshal(clip.Performance, &prepared.Performance); err != nil {
+			prepared.Performance = nil
+		}
+	}
+	return prepared, ctx.Err()
+}
+func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, error) {
+	if s.initialized && input.MediaTime < s.mediaTime {
+		return nativerender.FrameState{}, errors.New("native scene media clock moved backwards")
+	}
+	if !s.initialized {
+		s.mediaTime = input.MediaTime
+		s.generation = input.Generation
+		s.initialized = true
+	}
+	if input.Generation != s.generation {
+		s.generation = input.Generation
+		s.animationSession++
+		s.speech = nil
+		s.clipPrepared = nil
+	}
+	delta := input.MediaTime - s.mediaTime
+	if !input.Paused {
+		s.animationTime += delta
+	}
+	s.mediaTime = input.MediaTime
+	clip := input.Speech
+	if clip.Active && clip.Prepared == nil {
+		return nativerender.FrameState{}, errors.New("native scene speech analysis is not ready")
+	}
+	if clip.Prepared != nil && clip.Prepared != s.clipPrepared {
+		performance := s.engine.AdmitPerformance(clip.Prepared.Performance, clip.Text, float64(input.MediaTime)/float64(time.Millisecond))
+		s.speech = nativeanimation.BindSpeech(clip.Prepared, performance)
+		s.clipPrepared = clip.Prepared
+		s.animationSession++
+	}
+	position := clip.Position.Seconds()
+	if !clip.Active && s.speech != nil {
+		position = s.speech.Duration
+	}
+	speech := nativeanimation.SpeechState{Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech}
+	settings := nativeanimation.Settings{Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused}
+	if clip.Preview && !settings.ReducedMotion {
+		settings.AutomaticExpressions = true
+	}
+	f := s.engine.Sample(float64(s.animationTime)/float64(time.Millisecond), speech, settings)
+	if input.PreviewSequence != s.previewSequence {
+		s.previewSequence = input.PreviewSequence
+		s.previewStart = s.animationTime
+	}
+	if input.PreviewKind != "" && !clip.Active && !clip.Waiting && !input.Settings.ReducedMotion {
+		f = nativeanimation.PreviewFrameRepeated(f, input.PreviewKind, (s.animationTime - s.previewStart).Seconds(), input.PreviewAmount, input.PreviewRepetitions, s.config)
+	}
+
+	// Waiting for audio retains the original resting mouth and manual smile.
+	// Articulation starts only when PCM playback becomes active.
+	restingSmile := !clip.Active && (!clip.Waiting || s.config.SpeakingSmile) && f.Laugh == 0
+	if s.config.ReferenceLaugh && clip.Preview && f.Laugh < 1./240 {
+		restingSmile = true
+	}
+	return nativerender.FrameState{Head: [3]float64{f.Head.Yaw, f.Head.Pitch, f.Head.Roll}, Breath: f.Breath, From: f.Mouth.From, To: f.Mouth.To, Amount: f.Mouth.Amount, Closure: f.EyeClosure, Gaze: f.Gaze, Smile: f.Smile, Brows: f.Brows, Laugh: f.Laugh, RestingSmile: restingSmile, Background: input.Settings.Background, Blur: input.Settings.Blur}, nil
+}

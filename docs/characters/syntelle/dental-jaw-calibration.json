@@ -1,0 +1,6 @@
+{
+  "version": "jaw-clearance/1",
+  "method": "lip-aperture-delta",
+  "minimum_clearance_mouth_width_ratio": 0.0175,
+  "notes": "Local visual calibration after SZ showed nearly touching enamel. Use both inner lip boundaries; preserve the EI reference, opaque tooth textures and rigid lower-row motion. This clearance is a recorded visual parameter, not validated universal anatomy."
+}

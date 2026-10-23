@@ -1,0 +1,12 @@
+{
+  "status": "owner-authorized",
+  "budget_id": "authorized-character-performance-2026-10-20",
+  "limits": {"image": 2, "analysis": 0},
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "cached_landmarks": ".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json",
+  "prompt": "docs/characters/laughter-reference-prompt.txt",
+  "model": "gemini-nano-banana-2.1",
+  "response_format": {"type": "image", "mime_type": "image/jpeg", "aspect_ratio": "3:4", "image_size": "1K"},
+  "transport_retries": 0,
+  "stop_on_provider_error": true
+}

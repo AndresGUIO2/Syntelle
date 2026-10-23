@@ -1,0 +1,7 @@
+Edit the supplied character to close BOTH eyes naturally for a quiet, relaxed blink. Both eyelids must meet completely, with no visible iris, pupil or sclera. Preserve the original eyelash appearance, eyebrow shape, eyelid anatomy, identity, age, skin texture, lighting, hair and neutral expression. Do not smile, squint, squeeze the eyes, lift the cheeks, move the eyebrows or change the mouth.
+
+The FIRST image is the exact immutable original portrait and is the identity reference. The SECOND image is an automatically extracted square crop of that original. Return the SAME square framing as the SECOND image, with the face at the same size, position and orientation. Only change the eyelid closure. No text, annotations, extra views or borders.
+
+This image will supply localized eyelid texture, not a replacement portrait. Maintain sharp eyelid/eyelash detail, including the closed lash line. Do not apply a new beauty treatment or alter facial proportions.
+
+{{CORRECTION}}

@@ -1,0 +1,10 @@
+{
+  "schema": "syntelle-oral-material/1",
+  "original_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "reference_pose": "EI",
+  "previous_package": "../../../.tools/oral-artifacts-05/package",
+  "upper": "../../../.tools/oral-repair-07/material/upper-teeth.png",
+  "lower": "../../../.tools/oral-repair-07/material/lower-teeth.png",
+  "protected_upper": "../../../.tools/dentition-completion-04/correction/replay/upper-protected.png",
+  "protected_lower": "../../../.tools/dentition-completion-04/correction/replay/lower-protected.png"
+}

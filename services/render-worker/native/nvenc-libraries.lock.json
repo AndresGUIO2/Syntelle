@@ -1,0 +1,37 @@
+{
+  "platform": "linux/amd64",
+  "selection": "auto-nvenc-with-openh264-fallback",
+  "ffmpeg": {
+    "version": "8.0.3",
+    "repository": "https://github.com/FFmpeg/FFmpeg.git",
+    "commit": "8ae0b34901ba60a802f183ee75a250a9fc3e09a5",
+    "libraries": ["avcodec", "avutil"],
+    "encoder": "h264_nvenc",
+    "linkage": "shared",
+    "programs": false,
+    "license": "LGPL-2.1-or-later"
+  },
+  "nv_codec_headers": {
+    "version": "13.0.19.0",
+    "repository": "https://github.com/FFmpeg/nv-codec-headers.git",
+    "commit": "e844e5b26f46bb77479f063029595293aa8f812d",
+    "minimum_driver": "570.0"
+  },
+  "video": {
+    "profile": "baseline",
+    "gpu_input": "CUDA I420 AVHWFramesContext pool of two; shared primary CUDA context; one frame in flight",
+    "level": "3.1 at 720x960; 4.0 at packed 1440x960",
+    "preset": "p5",
+    "tune": "ll",
+    "rate_control": "vbr",
+    "target_and_max_bitrate": 2500000,
+    "vbv_seconds": 1,
+    "b_frames": 0,
+    "lookahead": 0,
+    "output_delay_frames": 0,
+    "surfaces": 2,
+    "forced_idr": true,
+    "color": "limited-range BT.601 matrix; BT.709 primaries and transfer"
+  },
+  "qualification": "phase 67 direct-surface encoded clips byte identical to controlled upload reference; actual Windows cadence and bounded cached-speech controls pass; inherited every-frame decoded 40 dB remains open"
+}

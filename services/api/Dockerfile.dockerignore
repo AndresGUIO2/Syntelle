@@ -1,0 +1,14 @@
+**
+!packages
+!packages/render-contract
+!packages/render-contract/**
+!services
+!services/api
+!services/api/go.mod
+!services/api/go.mod/**
+!services/api/go.sum
+!services/api/go.sum/**
+!services/api/cmd
+!services/api/cmd/**
+!services/api/internal
+!services/api/internal/**

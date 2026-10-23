@@ -1,0 +1,35 @@
+[project]
+name = "syntelle-processor"
+version = "0.1.0"
+description = "Internal Syntelle image validation service"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi[standard-no-fastapi-cloud-cli]>=0.115,<1",
+    "pydantic>=2,<3",
+    "pillow>=12,<14",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+preparation = [
+    "httpx>=0.28,<1",
+    "mediapipe==1.1.1",
+    "numpy>=2,<3",
+    "psutil>=7,<8",
+    "psycopg[binary]>=3.3.6,<4",
+    "pymatting==1.1.16",
+    "scipy==1.18.1",
+    "python-dotenv==1.2.4",
+    "torch>=2.6,<3",
+    "transformers>=4.48,<5",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.28,<1", "pytest>=8,<10"]
+
+[tool.fastapi]
+entrypoint = "app.main:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

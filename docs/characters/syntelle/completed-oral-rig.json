@@ -1,0 +1,16 @@
+{
+  "version": "completed-oral-rig/1",
+  "coordinates": "aligned mouth crop pixels; x=734, y=998, width=329, height=221",
+  "source_pose": "EI",
+  "reviewer": "assistant-internal",
+  "purpose": "Single-character experiment; not automatic visitor preparation",
+  "retarget": {
+    "FV": { "lower_inner_center_y": 84.5, "outer_motion_fraction": 1, "falloff_power": 0.65 },
+    "O": { "upper_inner_center_y": 86, "outer_motion_fraction": 1, "falloff_power": 1 },
+    "CHSHR": { "upper_inner_center_y": 77, "lower_inner_center_y": 99, "outer_motion_fraction": 0.6, "falloff_power": 0.65 }
+  },
+  "lower_translation_y": { "Rest": 0, "A": 2, "EI": 0, "O": 24, "U": 9, "MBP": 0, "SZ": -7, "FV": 14, "CHSHR": 14 },
+  "rounded_lower_occlusion": "O/U translation is derived from the completed incisal profile and the complete aperture, with 2px hidden coverage",
+  "lighting": { "contact_shadow_strength": 0.16, "contact_shadow_width_px": 3, "depth_strength": 0.08, "closed_gap_px": 0.8 },
+  "material_policy": "Upper anchored to face; lower translated rigidly; no individual tooth movement, alpha fading, shutters or constant cavity fills"
+}

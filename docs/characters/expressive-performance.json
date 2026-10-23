@@ -1,0 +1,20 @@
+{
+  "version": "expressive-reference-input/1",
+  "status": "owner-authorized",
+  "budget_id": "authorized-expressive-performance-2026-10-22",
+  "limits": { "image": 4, "analysis": 0 },
+  "character": "syntelle",
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "model": "gemini-nano-banana-2.1",
+  "response_format": { "type": "image", "mime_type": "image/jpeg", "aspect_ratio": "3:4", "image_size": "1K" },
+  "prompts": {
+    "smile": "Edit the supplied immutable portrait into a clearly broader warm smile. Preserve the exact identity, face scale, camera angle, head position, hairstyle, clothing, lighting and background. Change only the facial expression: lift both mouth corners together with the cheeks and a natural subtle lower-eyelid response. Show a broad smile with lips gently parted, without a laugh or an exaggerated grin. Keep the face frontal and both eyes open. Preserve natural lip thickness, coherent lip edges and mouth interior. Do not add labels, grids, rectangles, annotations or extra faces. Return one complete portrait, not a collage. This image is an expression reference; preserve everything outside the facial expression region.",
+    "laugh": "Edit the supplied immutable portrait into a brief natural delighted laugh. Preserve the exact identity, face scale, camera angle, head position, hairstyle, clothing, lighting and background. Change only facial expression: raised cheeks, gently narrowed smiling eyes with visible pupils, and a moderately open laughing mouth with coherent lip edges and a single natural dental arrangement. Do not tilt or move the head, shut the eyes completely, exaggerate the opening or add hands. No labels, grids, annotations, rectangles or extra faces. Return one complete portrait, not a collage. This image supplies facial expression shape and soft-tissue appearance; dental identity must remain consistent with the original person. Preserve all other regions."
+  },
+  "maximum_corrections_per_expression": 1,
+  "transport_retries": 0,
+  "stop_on_provider_error": true,
+  "install_only_after_composition_review": true,
+  "reuse_existing_visemes_and_dentition": true,
+  "reuse_existing_laughter_audio": true
+}

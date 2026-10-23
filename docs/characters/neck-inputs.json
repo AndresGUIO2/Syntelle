@@ -1,0 +1,8 @@
+{
+  "version": "neck-input/1",
+  "characters": [
+    { "id": "syntelle", "prepared": ".tools/rgbd-motion-18/prepared-current/syntelle" },
+    { "id": "cafe", "prepared": ".tools/rgbd-motion-18/prepared-current/cafe" },
+    { "id": "woodland", "prepared": ".tools/rgbd-motion-18/prepared-current/woodland" }
+  ]
+}

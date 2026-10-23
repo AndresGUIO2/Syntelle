@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.tools/
+.vite/
+node_modules/
+dist/
+dist-demo-baseline/
+dist-demo-protected/
+dist-stream-player/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+test-results/
+playwright-report/
+.DS_Store

@@ -1,0 +1,159 @@
+
+[VISEME_DESCRIPTION]
+
+Subtle “A” vowel viseme, as in “father.”  Vertical mouth opening with minimal jaw drop. Keep the mouth natural, not exaggerated. but visibly opened. 
+
+Strong readable E/I viseme: the mouth is slightly open and clearly stretched horizontally, with mild tension at the lip corners. The lips should look gently widened for an “ee/ih” vowel sound, not relaxed. Keep the jaw mostly stable with minimal drop. Do not create a real smile (but almost) , rounded lips, an O/U shape, or a generic neutral speaking mouth. 
+
+Subtle rounded “O” vowel viseme. Small controlled oval mouth opening with gently rounded lips. Natural jaw drop. Keep the mouth compact, soft, and natural. Do not create a surprised expression, wide-open mouth, kiss mouth, or exaggerated puckered lips. The mouth should look like a natural spoken “O” sound, not a surprised “wow” face and not a “U” vowel shape. 
+
+Small rounded and slightly puckered mouth for the “U” vowel. Narrow opening, lips slightly forward, natural and subtle.
+
+Closed pressed lips for M, B and P sounds. Lips together with slight pressure. No teeth visible.
+
+Clear S/Z sibilant viseme: the jaw is almost closed, with the upper and lower teeth very close together behind the lips. The lips form a thin, narrow horizontal slit, slightly tense and lightly retracted at the corners, but not smiling. The mouth should look like the person is producing a sharp “sss” or “zzz” sound. Very little or no dark inner mouth is visible.
+
+Clear F/V consonant viseme: the upper front teeth visibly and lightly rest against the center of the lower lip; the lower lip is slightly tucked inward under the upper teeth. The mouth opening is small and controlled, with minimal jaw drop. Lips are narrow and slightly tense. Almost no dark inner mouth is visible. Do not show lower teeth. Do not create a vowel-like open mouth, rounded mouth, smile, or neutral talking mouth.
+
+Mouth shape for CH, SH, J and soft R-like sounds. Slightly rounded and narrowed lips, natural articulation, not exaggerated.
+
+
+---- GENERAL PROMPT
+
+Use the provided image as the exact identity and composition reference.
+
+
+
+Edit only the mouth area. Keep everything else unchanged:
+
+- same person
+
+- same face shape
+
+- same head position
+
+- same eyes open
+
+- same gaze
+
+- same hair
+
+- same clothing
+
+- same lighting
+
+- same background
+
+- same camera angle
+
+- same framing
+
+- same skin tone
+
+- same image resolution and aspect ratio
+
+- same nose
+
+
+
+Do not change the expression except for the mouth shape required for lip sync.
+
+Do not add head movement.
+
+Do not change the eyebrows.
+
+Do not change the eyes.
+
+Do not change the nose.
+
+Do not change the cheeks except very subtly if needed by the mouth shape.
+
+Do not add text.
+
+Do not stylize.
+
+Do not beautify.
+
+Do not change identity.
+
+do not change textures or colors at all, it must be identical
+
+
+
+Create the mouth shape for the viseme: [VISEME_DESCRIPTION].
+
+
+
+[VISEME_DESCRIPTION]
+
+
+
+---- medio PARPADEO
+
+Use the provided avatar image as the exact identity and composition reference.
+
+Edit only the eyes and eyelids. Keep everything else unchanged:
+
+* same person
+* same face shape
+* same head position
+* same gaze direction
+* same eyebrows
+* same nose
+* same cheeks
+* same mouth
+* same hair
+* same clothing
+* same lighting
+* same background
+* same camera angle
+* same framing
+* same skin tone
+* same image resolution and aspect ratio
+
+Create a natural half-blink frame: both upper eyelids are lowered about halfway, partially covering the eyes. The eyes should look like they are in the middle of a normal blink, not sleepy, angry, sad, or seductive. The pupils and irises should still be partially visible and keep the same gaze direction. Eyebrows must remain unchanged. Mouth must remain unchanged.
+
+Do not add head movement.
+Do not change the expression.
+Do not change the eyebrows.
+Do not change the mouth.
+Do not stylize.
+Do not beautify.
+Do not change identity.
+Do not add text.
+
+
+
+----PARPADEO
+
+Use the provided avatar image as the exact identity and composition reference.
+
+Edit only the eyes and eyelids. Keep everything else unchanged:
+
+* same person
+* same face shape
+* same head position
+* same eyebrows
+* same nose
+* same cheeks
+* same mouth
+* same hair
+* same clothing
+* same lighting
+* same background
+* same camera angle
+* same framing
+* same skin tone
+* same image resolution and aspect ratio
+
+Create a natural full blink frame: both eyes are gently closed with relaxed eyelids, as in a normal blink. The eyelids should close naturally over the eyes without changing the eyebrows or facial expression. No squinting, no smiling, no frowning, no sleepy expression, no emotional expression. Mouth must remain unchanged.
+
+Do not add head movement.
+Do not change the eyebrows.
+Do not change the mouth.
+Do not change the nose.
+Do not change the cheeks except extremely subtly if needed by the eyelids.
+Do not stylize.
+Do not beautify.
+Do not change identity.
+Do not add text.

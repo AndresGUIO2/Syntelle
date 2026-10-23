@@ -1,0 +1,35 @@
+{
+  "schema": "syntelle-gemini-contour-loop-settings/1",
+  "version": "gemini-contour-loop/1",
+  "model": "gemini-3.8-flash",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
+  "maximum_requests": 2,
+  "correction_rounds": 1,
+  "retries": 0,
+  "follow_redirects": false,
+  "store": false,
+  "timeout_seconds": 180,
+  "generation_config": {"thinking_level": "medium", "temperature": 1, "max_output_tokens": 8192},
+  "input": {
+    "pose": "EI",
+    "crop_padding_mouth_width_ratio": 0.2,
+    "display_scale": 4,
+    "display_resampling": "LANCZOS",
+    "media_resolution": "high",
+    "native_pixels_unchanged": true,
+    "manual_mask_inputs": false
+  },
+  "grid": {"normalized_step": 100, "line_opacity": 0.3, "font_size": 13},
+  "mediapipe": {"source": "cached variant-landmarks.json", "inner_color": [255, 170, 40], "outer_color": [30, 200, 235], "line_width": 2, "boundary_check": "diagnostic only; never clip Gemini contours"},
+  "render": {
+    "supersampling": 4, "resampling": "LANCZOS", "overlay_opacity": 0.45, "preview_scale": 4,
+    "colors": {"upper_teeth": [30, 185, 240], "lower_teeth": [215, 120, 230], "tongue": [245, 165, 50]}
+  },
+  "documentation": [
+    "https://ai.google.dev/gemini-api/docs/image-understanding",
+    "https://ai.google.dev/gemini-api/docs/media-resolution",
+    "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
+    "https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker",
+    "https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/python/solutions/face_mesh_connections.py"
+  ]
+}

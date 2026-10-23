@@ -1,0 +1,9 @@
+The first image is the immutable identity and appearance source. The second image is an automatically cropped detail of that same source, supplied only to show facial detail.
+
+Produce one restrained, natural, closed-mouth smile of this exact person. Preserve identity, age, facial proportions, head position, camera, framing, hairstyle, gaze, eyebrows, clothing, accessories, lighting and background.
+
+Change the expression coherently across the whole lips and adjacent cheeks. Let the lips gently broaden and form a smooth continuous smile arc, with a subtle cheek lift and believable nasolabial transitions. The middle of the lips must participate naturally. Preserve the person's original lip volume and texture.
+
+Keep the lips closed. Do not introduce visible teeth, tongue or a new mouth cavity. Keep eyebrows neutral and retain the original eye opening and gaze so independent eyebrow and blink animation remain possible. No broad grin, laugh, exaggerated cheek bulges, hooked or sharply upturned corners, pouting, asymmetric smirk, beauty retouching or face redesign.
+
+Return the same portrait composition with only this small facial-expression change. Do not include labels, comparison panels, grid lines, masks or explanatory text.

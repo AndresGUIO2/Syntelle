@@ -1,0 +1,9 @@
+{
+  "version": "argon-mask-replay/1",
+  "source_pose": "EI",
+  "experiment": ".tools/gemini-contour-argon-ei-01",
+  "transform_experiment": ".tools/gemini-contour-loop-ei-01",
+  "occlusion": "teeth-over-tongue",
+  "supersampling": 4,
+  "notes": "Owner authorized replay on cached poses. No provider requests, no manual contour correction. Preserve full tongue evidence and each pose's own soft tissue."
+}

@@ -1,0 +1,411 @@
+{
+  "schema": "syntelle-oral-review/1",
+  "reviewer": "assistant-internal",
+  "source_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "coordinates": {
+    "space": "base-canvas-pixels",
+    "annotation_origin": [
+      740,
+      998
+    ]
+  },
+  "reference": {
+    "automatic_original": "docs/characters/syntelle/dental-selection.json",
+    "preserve_a_endpoint": false,
+    "mask_feather_px": 0,
+    "notes": "Argon masks from cached EI. Teeth-over-tongue ownership, no manual contour edits or new generation.",
+    "dental_inset_px": 1,
+    "argon_original_masks": "docs/characters/syntelle/argon-composition.json"
+  },
+  "inpainting": {
+    "method": "TELEA",
+    "radius_px": 3,
+    "dilate_px": 2,
+    "cavity_reference_point": [
+      157,
+      94
+    ],
+    "dark_fill_poses": [
+      "SZ",
+      "FV"
+    ]
+  },
+  "poses": {
+    "Rest": {
+      "status": "accepted",
+      "upper_visible": false,
+      "lower_visible": false,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [],
+      "tongue": [],
+      "notes": "Immutable closed-mouth base."
+    },
+    "A": {
+      "status": "accepted",
+      "upper_visible": true,
+      "lower_visible": true,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [
+        [
+          [
+            113,
+            72
+          ],
+          [
+            196,
+            72
+          ],
+          [
+            196,
+            85
+          ],
+          [
+            113,
+            85
+          ]
+        ],
+        [
+          [
+            91,
+            101
+          ],
+          [
+            220,
+            101
+          ],
+          [
+            220,
+            114
+          ],
+          [
+            91,
+            114
+          ]
+        ]
+      ],
+      "tongue": [],
+      "notes": "Original A soft tissue with the automatically selected original dental reference. Original A remains cached unchanged."
+    },
+    "EI": {
+      "status": "accepted",
+      "upper_visible": true,
+      "lower_visible": true,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [
+        [
+          [
+            79,
+            64
+          ],
+          [
+            132,
+            62
+          ],
+          [
+            183,
+            63
+          ],
+          [
+            228,
+            67
+          ],
+          [
+            227,
+            80
+          ],
+          [
+            194,
+            85
+          ],
+          [
+            132,
+            85
+          ],
+          [
+            97,
+            80
+          ]
+        ],
+        [
+          [
+            73,
+            90
+          ],
+          [
+            117,
+            94
+          ],
+          [
+            165,
+            95
+          ],
+          [
+            210,
+            91
+          ],
+          [
+            234,
+            85
+          ],
+          [
+            235,
+            94
+          ],
+          [
+            200,
+            102
+          ],
+          [
+            148,
+            105
+          ],
+          [
+            101,
+            102
+          ],
+          [
+            75,
+            97
+          ]
+        ]
+      ],
+      "tongue": [],
+      "notes": "Original EI soft tissue. Reference selection is computed from all cached original poses, not forced to EI."
+    },
+    "O": {
+      "status": "accepted",
+      "upper_visible": false,
+      "lower_visible": false,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [],
+      "tongue": [],
+      "notes": "Original rounded pose has no separately exposed dental row. Do not project canonical teeth through its lip crease; preserve the original cavity/highlights."
+    },
+    "U": {
+      "status": "accepted",
+      "upper_visible": false,
+      "lower_visible": false,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [],
+      "tongue": [],
+      "notes": "Original rounded pose has no separately exposed dental row. Do not project canonical teeth through its lip crease; preserve the original cavity/highlights."
+    },
+    "MBP": {
+      "status": "accepted",
+      "upper_visible": false,
+      "lower_visible": false,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [],
+      "tongue": [],
+      "notes": "Closed pressed lips; no teeth."
+    },
+    "SZ": {
+      "status": "review_only",
+      "upper_visible": true,
+      "lower_visible": true,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [
+        [
+          [
+            81,
+            73
+          ],
+          [
+            119,
+            68
+          ],
+          [
+            177,
+            67
+          ],
+          [
+            227,
+            73
+          ],
+          [
+            237,
+            84
+          ],
+          [
+            214,
+            94
+          ],
+          [
+            163,
+            97
+          ],
+          [
+            113,
+            93
+          ],
+          [
+            86,
+            88
+          ]
+        ]
+      ],
+      "tongue": [],
+      "notes": "Raw SZ and the selected-reference composition remain inspection-only. Dental row spacing and phonetic appearance require owner review; do not promote this pose from a geometry or utility score."
+    },
+    "FV": {
+      "status": "review_only",
+      "upper_visible": true,
+      "lower_visible": false,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [
+        [
+          [
+            92,
+            66
+          ],
+          [
+            141,
+            62
+          ],
+          [
+            185,
+            63
+          ],
+          [
+            220,
+            67
+          ],
+          [
+            232,
+            80
+          ],
+          [
+            230,
+            95
+          ],
+          [
+            191,
+            104
+          ],
+          [
+            142,
+            104
+          ],
+          [
+            105,
+            96
+          ],
+          [
+            94,
+            86
+          ]
+        ]
+      ],
+      "tongue": [],
+      "notes": "Rejected phonetic articulation: raw output shows lower teeth and lacks upper-tooth/lower-lip contact. Corrected endpoint remains inspection-only."
+    },
+    "CHSHR": {
+      "status": "accepted",
+      "upper_visible": true,
+      "lower_visible": true,
+      "lower_translation": [
+        0,
+        0
+      ],
+      "remove": [
+        [
+          [
+            118,
+            79
+          ],
+          [
+            146,
+            76
+          ],
+          [
+            175,
+            77
+          ],
+          [
+            198,
+            80
+          ],
+          [
+            197,
+            86
+          ],
+          [
+            166,
+            88
+          ],
+          [
+            138,
+            86
+          ],
+          [
+            119,
+            85
+          ]
+        ],
+        [
+          [
+            113,
+            95
+          ],
+          [
+            141,
+            96
+          ],
+          [
+            167,
+            96
+          ],
+          [
+            192,
+            93
+          ],
+          [
+            195,
+            99
+          ],
+          [
+            170,
+            103
+          ],
+          [
+            141,
+            104
+          ],
+          [
+            115,
+            101
+          ]
+        ]
+      ],
+      "tongue": [],
+      "notes": "Narrow rounded consonant group. No distinct tongue tip visible; preserve all unmasked cavity tissue."
+    }
+  },
+  "review_version": "10-argon-composition-trial",
+  "reviewed_at": "2026-10-19",
+  "review_method": "Owner selected Argon contours for local composition trial; existing per-pose removal/protection retained except reference EI."
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "syntelle-oral-validation-batch/1",
+  "budget_id": "authorized-four-portrait-validation-2026-10-19",
+  "corpus": "oral-corpus.json",
+  "authorized_limits": {"image": 32, "analysis": 36},
+  "authorization": "Owner approved up to 32 viseme generations and 36 contour analyses, no retries, stop on provider errors.",
+  "model": "gemini-nano-banana-2.1",
+  "resolution": "1K",
+  "retries": 0,
+  "generation_order": ["EI", "A", "O", "U", "MBP", "SZ", "FV", "CHSHR"],
+  "development": ["cafe", "woodland"],
+  "held_out": ["blue", "window"]
+}

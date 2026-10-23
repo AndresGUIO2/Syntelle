@@ -1,0 +1,30 @@
+{
+  "status": "libyuv-owner-selected-default-ispc-optional",
+  "platform": "linux/amd64",
+  "ispc": {
+    "version": "1.32.0",
+    "url": "https://github.com/ispc/ispc/releases/download/v1.32.0/ispc-v1.32.0-linux.tar.gz",
+    "sha256": "faf266bda2b702d68976ffd26bbd36c1ddba43424cc3c44f25b092cd1aa1f64a",
+    "targets": ["sse2-i32x4", "avx2-i32x8"],
+    "flags": ["-O2", "--opt=disable-fma", "--pic"],
+    "fast_math": false
+  },
+  "libyuv": {
+    "repository": "https://chromium.googlesource.com/libyuv/libyuv",
+    "commit": "47ba8e2160b71a7cf95c0720cd8944ab771e533e",
+    "cmake": {"CMAKE_BUILD_TYPE": "Release", "CMAKE_DISABLE_FIND_PACKAGE_JPEG": true},
+    "target": "yuv",
+    "entry_point": "ABGRToI420",
+    "initial_exact_conversion_tests": "failed-rounding-compatibility-preserved-in-phase-60",
+    "scalar_byte_equivalence": false,
+    "optimized_color_contract": {
+      "matrix": "BT.601 studio range",
+      "maximum_float_matrix_error_levels": 2,
+      "neutral_black_white": "exact",
+      "minimum_recorded_face_psnr_vs_scalar_db": 45,
+      "validation": "passed-phase-61"
+    }
+  },
+  "default_build": "native.Dockerfile; libyuv enabled; ISPC disabled; NVENC auto with OpenH264 fallback",
+  "experiment_build": "simd.Dockerfile; explicit EXPERIMENT_TAGS only"
+}

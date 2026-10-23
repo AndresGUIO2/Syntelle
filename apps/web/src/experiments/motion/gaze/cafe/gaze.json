@@ -1,0 +1,85 @@
+{
+  "version": "observed-iris/1",
+  "source_sha256": "056835109482e3d3542d2b1ed394c132664abab656bf510e2af8e35e47940e01",
+  "motion_build_id": "3f415366d2794ce51feca76b027ba8412a0ba6e4e3530adea2b1cd8cac8bd467",
+  "crop": {
+    "x": 422,
+    "y": 216,
+    "width": 184,
+    "height": 37
+  },
+  "eyes": [
+    {
+      "center": [
+        37.49803924560547,
+        15.991546392440796
+      ],
+      "radii": [
+        10.374509887695313,
+        9.196478641033174
+      ],
+      "width_px": 47.13519287109375,
+      "bounds_px": [
+        [
+          2.3567596435546876,
+          2.3567596435546876
+        ],
+        [
+          0.942703857421875,
+          0.942703857421875
+        ]
+      ],
+      "edge_radius_scale": 0.9400000000000001,
+      "reductions": [],
+      "maximum_protected_boundary_fraction": 0.01963220228921138
+    },
+    {
+      "center": [
+        147.5430450439453,
+        16.42112046480179
+      ],
+      "radii": [
+        9.8472021484375,
+        8.560145101547242
+      ],
+      "width_px": 46.5352783203125,
+      "bounds_px": [
+        [
+          2.094087524414063,
+          2.094087524414063
+        ],
+        [
+          0.837635009765625,
+          0.8245469627380371
+        ]
+      ],
+      "edge_radius_scale": 0.88,
+      "reductions": [
+        {
+          "axis": 1,
+          "requested_px": 0.93070556640625,
+          "safe_negative_positive_px": [
+            0.93070556640625,
+            0.9161632919311523
+          ]
+        }
+      ],
+      "maximum_protected_boundary_fraction": 0.019808881457130476
+    }
+  ],
+  "assets": {
+    "sclera.png": {
+      "file": "sclera.png",
+      "sha256": "f4799c0cd847bd41b0aec3e775d8a1f2459da395fca43a49e014ee21fc47112a"
+    },
+    "ownership.png": {
+      "file": "ownership.png",
+      "sha256": "9cc5f1b4c99f895b4b5cf2f3834173d24a9af48d0852905bf02deb05c3507482"
+    }
+  },
+  "validation": {
+    "valid": true,
+    "hidden_iris_generated": false,
+    "neutral_source_exact": true
+  }
+}
