@@ -35,6 +35,8 @@ func (s *scene) RendererBackend() string {
 	return "native-cpu/1"
 }
 
+func (s *scene) EmotionsAvailable() bool { return s.config.Emotions }
+
 // Animation/renderer state has one owner: nativemedia's video loop. The
 // preparation lane reads only immutable Config and publishes immutable clips.
 type scene struct {
@@ -200,8 +202,8 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 	if !clip.Active && s.speech != nil {
 		position = s.speech.Duration
 	}
-	speech := nativeanimation.SpeechState{Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech}
-	settings := nativeanimation.Settings{Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused}
+	speech := nativeanimation.SpeechState{Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech, ReplyID: clip.TurnID}
+	settings := nativeanimation.Settings{EmotionControl: input.EmotionControl, EmotionTime: input.EmotionTime, Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused, EmotionBaseline: input.Settings.EmotionBaseline}
 	if clip.Preview && !settings.ReducedMotion {
 		settings.AutomaticExpressions = true
 	}
@@ -216,9 +218,9 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 
 	// Waiting for audio retains the original resting mouth and manual smile.
 	// Articulation starts only when PCM playback becomes active.
-	restingSmile := !clip.Active && (!clip.Waiting || s.config.SpeakingSmile) && f.Laugh == 0
+	restingSmile := f.Emotion == (rendercontract.EmotionWeights{}) && !clip.Active && (!clip.Waiting || s.config.SpeakingSmile) && f.Laugh == 0
 	if s.config.ReferenceLaugh && clip.Preview && f.Laugh < 1./240 {
 		restingSmile = true
 	}
-	return nativerender.FrameState{Head: [3]float64{f.Head.Yaw, f.Head.Pitch, f.Head.Roll}, Breath: f.Breath, From: f.Mouth.From, To: f.Mouth.To, Amount: f.Mouth.Amount, Closure: f.EyeClosure, Gaze: f.Gaze, Smile: f.Smile, Brows: f.Brows, Laugh: f.Laugh, RestingSmile: restingSmile, Background: input.Settings.Background, Blur: input.Settings.Blur}, nil
+	return nativerender.FrameState{Emotion: f.Emotion, Head: [3]float64{f.Head.Yaw, f.Head.Pitch, f.Head.Roll}, Breath: f.Breath, From: f.Mouth.From, To: f.Mouth.To, Amount: f.Mouth.Amount, Closure: f.EyeClosure, Gaze: f.Gaze, Smile: f.Smile, Brows: f.Brows, Laugh: f.Laugh, RestingSmile: restingSmile, Background: input.Settings.Background, Blur: input.Settings.Blur}, nil
 }

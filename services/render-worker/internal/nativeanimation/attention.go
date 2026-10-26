@@ -161,6 +161,7 @@ func (d *speakingDirector) sample(ms float64, speaking bool, idle attention, see
 }
 
 type attentionDirector struct {
+	natural              bool
 	active               bool
 	session              uint64
 	changedAt            float64
@@ -173,6 +174,9 @@ func newAttention(seed uint32) attentionDirector {
 	return attentionDirector{session: ^uint64(0), idleWeight: 1, idleFrom: 1, speaking: newSpeaking(seed)}
 }
 func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config) attention {
+	if speech.Active {
+		d.natural = speech.plan() != nil && speech.plan().natural
+	}
 	if d.active != speech.Active || d.session != speech.Session {
 		d.active = speech.Active
 		d.session = speech.Session
@@ -180,12 +184,21 @@ func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config) att
 		d.from = d.previous
 		d.idleFrom = d.idleWeight
 	}
-	t := ease((ms - d.changedAt) / 600)
+	duration := 600.
+	if d.natural {
+		duration = 240
+	}
+	t := ease((ms - d.changedAt) / duration)
 	goal := Head{}
 	if speech.Active {
 		goal = gestureAt(speech.plan(), speech.Position)
 	}
 	d.previous = blendHead(d.from, goal, t)
+	if d.natural && speech.Active {
+		// Preserve the previous phrase's residual while the new audio-clock
+		// trajectory starts at full strength, without a second onset fade.
+		d.previous = Head{d.from.Yaw*(1-t) + goal.Yaw, d.from.Pitch*(1-t) + goal.Pitch, d.from.Roll*(1-t) + goal.Roll}
+	}
 	a := idleAttention(ms, c.Seed, c.Expressive)
 	if c.Conversational {
 		a = d.speaking.sample(ms, speech.Active, a, c.Seed, c.Expressive)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 	"syntelle/api/internal/httpapi"
+	"syntelle/render-contract"
 )
 
 type Speech interface {
@@ -29,18 +30,21 @@ type Recognition interface {
 	Run(context.Context, string, <-chan []byte, func(RecognitionEvent)) error
 }
 type Event struct {
-	Type           string              `json:"type"`
-	ConversationID string              `json:"conversation_id"`
-	TurnID         string              `json:"turn_id"`
-	Character      string              `json:"character,omitempty"`
-	Language       string              `json:"language,omitempty"`
-	Voice          string              `json:"voice,omitempty"`
-	Instructions   string              `json:"instructions,omitempty"`
-	Text           string              `json:"text,omitempty"`
-	Reason         string              `json:"reason,omitempty"`
-	Audio          []byte              `json:"audio_base64,omitempty"`
-	Data           any                 `json:"data,omitempty"`
-	Baseline       *ExpressionBaseline `json:"expression_baseline,omitempty"`
+	EmotionDecision *rendercontract.EmotionDecision `json:"-"`
+
+	EmotionActivation *rendercontract.EmotionActivation `json:"-"`
+	Type              string                            `json:"type"`
+	ConversationID    string                            `json:"conversation_id"`
+	TurnID            string                            `json:"turn_id"`
+	Character         string                            `json:"character,omitempty"`
+	Language          string                            `json:"language,omitempty"`
+	Voice             string                            `json:"voice,omitempty"`
+	Instructions      string                            `json:"instructions,omitempty"`
+	Text              string                            `json:"text,omitempty"`
+	Reason            string                            `json:"reason,omitempty"`
+	Audio             []byte                            `json:"audio_base64,omitempty"`
+	Data              any                               `json:"data,omitempty"`
+	Baseline          *ExpressionBaseline               `json:"expression_baseline,omitempty"`
 }
 type Service struct {
 	Store       *Store
@@ -396,13 +400,51 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				emit("ready", event.TurnID, "", turns)
 				continue
 			}
+			if event.Type == "emotion_decision" && cid != "" && event.ConversationID == cid && event.EmotionDecision != nil {
+				d := event.EmotionDecision
+				if d.Version != rendercontract.EmotionPolicyVersion || !d.Effective.Valid() || d.Baseline.Normalized() != baseline.Emotion.Normalized() || d.Regulation.Normalized() != baseline.Regulation.Normalized() {
+					continue
+				}
+				key := fmt.Sprintf("%s-emotion-policy-%s-%d-%d-%d", cid, d.Instance, d.Generation, d.PolicyRevision, d.Sequence)
+				op, err := s.Store.Reserve(ctx, "emotion-decision", key, rendercontract.EmotionPolicyVersion, cid, d.TurnID, d, false)
+				if err != nil {
+					continue
+				}
+				if err = s.Store.Finish(ctx, op.ID, "received", d, nil, map[string]string{"source": "private-pcm-policy"}, nil); err != nil {
+					continue
+				}
+				// Rejections are evidence, never new experienced context.
+				if d.Reason == "accepted" || d.Reason == "sustained" || d.Reason == "intensity_limited" || d.Reason == "clock_transition" || d.Reason == "configuration" || d.Reason == "reply_ended" {
+					value := d.Effective
+					baseline.LastEmotion = &value
+					baseline.EmotionPhase = d.Phase
+				}
+				continue
+			}
 			if cid == "" || event.ConversationID != cid || !identifier.MatchString(event.TurnID) {
 				continue
 			}
 			switch event.Type {
+			case "emotion_activated":
+				if event.TurnID != turnID || event.EmotionActivation == nil || !event.EmotionActivation.Emotion.Valid() || event.EmotionActivation.PhraseIndex < 0 || event.EmotionActivation.PhraseIndex >= 32 || event.EmotionActivation.Baseline.Normalized() != baseline.Emotion.Normalized() {
+					continue
+				}
+				activated := event.EmotionActivation
+				key := fmt.Sprintf("%s-emotion-%d-%d", event.TurnID, activated.PhraseIndex, activated.Generation)
+				op, err := s.Store.Reserve(ctx, "emotion-activation", key, "performance-intent/3", cid, event.TurnID, activated, false)
+				if err != nil {
+					emit("persistence_warning", event.TurnID, "Emotional performance state could not be saved.", nil)
+					continue
+				}
+				if err = s.Store.Finish(ctx, op.ID, "received", activated, nil, map[string]string{"source": "private-pcm-activation"}, nil); err != nil {
+					continue
+				}
+				value := activated.Emotion
+				baseline.LastEmotion = &value
+				baseline.EmotionPhase = ""
 			case "expression_baseline":
 				if event.Baseline != nil && event.Baseline.valid() {
-					baseline = *event.Baseline
+					baseline = updateExpressionBaseline(baseline, *event.Baseline)
 				}
 			case "configure":
 				if len([]rune(event.Instructions)) > 2000 || (event.Voice != "en-US-Ava:DragonHDLatestNeural" && event.Voice != "en-US-Andrew:DragonHDLatestNeural") {
@@ -417,6 +459,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					}
 				}
 				instructions = event.Instructions
+				baseline.LastEmotion = nil
 				voice = event.Voice
 				if err := s.Store.Instructions(ctx, cid, instructions); err != nil {
 					emit("error", event.TurnID, "Instructions could not be saved.", nil)
@@ -424,7 +467,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				}
 			case "submit", "speak":
 				if event.Baseline != nil && event.Baseline.valid() {
-					baseline = *event.Baseline
+					baseline = updateExpressionBaseline(baseline, *event.Baseline)
 				}
 				clearUtterance()
 				utterance.take()

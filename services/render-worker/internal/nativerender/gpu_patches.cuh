@@ -89,13 +89,18 @@ KERNEL void syntelle_oral(GPUOralParams p,const GPUOralTriangle *triangles,const
     int at=index_1d(),w=p.dims[0],h=p.dims[1];if(at>=w*h)return;int x=at%w,y=at/w;double px=x+.5,py=y+.5;Color color={{0,0,0,0}};
     const unsigned char *a=oral_tex(atlas,p,p.dims[5]),*b=oral_tex(atlas,p,p.dims[8]);
     double alpha=pmix(a[at*4],b[at*4],p.values[0])/255;
-    if(alpha>=.5/255)for(int j=0;j<p.dims[14];j++){
+    bool movingCoverage=(p.dims[12]&2)!=0;
+    if(movingCoverage || alpha>=.5/255)for(int j=0;j<p.dims[14];j++){
         GPUOralTriangle t=triangles[j];double e0=oral_edge(t.p+2,t.p+4,px,py),e1=oral_edge(t.p+4,t.p,px,py),e2=oral_edge(t.p,t.p+2,px,py);
         if(e0<0 || e1<0 || e2<0 || (e0==0&&!t.flags[0]) || (e1==0&&!t.flags[1]) || (e2==0&&!t.flags[2]))continue;
         double wa=e0/t.area,wb=e1/t.area,wc=e2/t.area,from[2],to[2];
         for(int k=0;k<2;k++){from[k]=t.from[k]*wa+t.from[2+k]*wb+t.from[4+k]*wc;to[k]=t.to[k]*wa+t.to[2+k]*wb+t.to[4+k]*wc;}
         if(p.values[0]==0&&!p.dims[12]){from[0]=px;from[1]=py;}
         if(p.values[0]==1&&!p.dims[12]){to[0]=px;to[1]=py;}
+        if(movingCoverage){
+            alpha=pmix(oral_sample(atlas,p,p.dims[5],from[0]-.5,from[1]-.5).v[0],oral_sample(atlas,p,p.dims[8],to[0]-.5,to[1]-.5).v[0],p.values[0]);
+            if(alpha<.5/255)continue;
+        }
         color=oral_shade(atlas,p,x,y,from,to,alpha);
     }
     patch_over(subject,original,skin,sw,x+p.dims[2],y+p.dims[3],color,sp.dims);

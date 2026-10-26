@@ -40,10 +40,11 @@ type PerformanceAnchor struct {
 	Repetitions *int     `json:"repetitions,omitempty"`
 }
 type PerformanceIntent struct {
-	Version string              `json:"version"`
-	Text    string              `json:"text"`
-	Tone    string              `json:"tone"`
-	Cues    []PerformanceAnchor `json:"cues"`
+	Emotion *rendercontract.EmotionTarget `json:"emotion,omitempty"`
+	Version string                        `json:"version"`
+	Text    string                        `json:"text"`
+	Tone    string                        `json:"tone"`
+	Cues    []PerformanceAnchor           `json:"cues"`
 }
 type Performance struct {
 	Intent   *PerformanceIntent `json:"intent,omitempty"`
@@ -53,6 +54,7 @@ type Performance struct {
 	ReplyID  string             `json:"reply_id,omitempty"`
 }
 type Plan struct {
+	natural     bool         // Application-owned trajectory profile; never decoded from JSON.
 	Version     string       `json:"version"`
 	Duration    float64      `json:"duration"`
 	Cues        []Cue        `json:"cues"`
@@ -82,6 +84,7 @@ type PreparedSpeech struct {
 	Performance *Performance
 }
 type SpeechState struct {
+	ReplyID  string  `json:"reply_id"`
 	Active   bool    `json:"active"`
 	Waiting  bool    `json:"waiting"`
 	Position float64 `json:"position"`
@@ -388,6 +391,7 @@ func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visem
 func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 	plan := prepared.plan
 	plan.Performance = performance
+	plan.natural = prepared.directed && performance != nil && performance.Intent != nil && performance.Intent.Version == "performance-intent/3"
 	if prepared.directed {
 		plan.Gestures = []Gesture{}
 		if performance != nil {
@@ -395,9 +399,13 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 				if !isHeadCue(cue.Kind) || cue.Time+cue.Duration > prepared.duration {
 					continue
 				}
+				if plan.natural {
+					plan.Gestures = append(plan.Gestures, naturalGestures(cue, prepared.bounds, SpeechSeed(performance.Intent.Text), len(plan.Gestures))...)
+					continue
+				}
 				pitch, yaw, roll := -1.05, 0.0, 0.
 				duration := cue.Duration
-				if performance.Intent != nil && performance.Intent.Version == "performance-intent/2" {
+				if performance.Intent != nil && rendercontract.DirectedPerformance(performance.Intent.Version) {
 					if cue.Kind == "nod" {
 						pitch = -1.5
 						duration = math.Min(duration, rendercontract.NodCycleSeconds*float64(rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)))
@@ -410,13 +418,13 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 				}
 				if cue.Kind == "shake" {
 					pitch, yaw = 0, 1.5
-					if performance.Intent != nil && performance.Intent.Version == "performance-intent/2" && cue.Repetitions != nil {
+					if performance.Intent != nil && rendercontract.DirectedPerformance(performance.Intent.Version) && cue.Repetitions != nil {
 						yaw = prepared.bounds.Yaw * .95
 						duration = math.Min(duration, rendercontract.ShakeCycleSeconds*float64(rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)))
 					}
 				} else if cue.Kind == "emphasis" {
 					pitch = -.55
-					if performance.Intent != nil && performance.Intent.Version == "performance-intent/2" {
+					if performance.Intent != nil && rendercontract.DirectedPerformance(performance.Intent.Version) {
 						pitch = -.9
 					}
 				}
@@ -431,7 +439,7 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 				if cue.Amount != nil {
 					amount = unit(*cue.Amount)
 				}
-				if (cue.Kind == "nod" || cue.Kind == "shake" && cue.Repetitions != nil) && performance.Intent != nil && performance.Intent.Version == "performance-intent/2" {
+				if (cue.Kind == "nod" || cue.Kind == "shake" && cue.Repetitions != nil) && performance.Intent != nil && rendercontract.DirectedPerformance(performance.Intent.Version) {
 					count := rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)
 					if count == 0 {
 						continue
@@ -460,6 +468,13 @@ func gestureAt(plan *Plan, position float64) Head {
 	for _, g := range plan.Gestures {
 		phase := (position - g.Time) / g.Duration
 		if phase <= 0 || phase >= 1 {
+			continue
+		}
+		if plan.natural {
+			h := naturalGestureAt(g, phase)
+			result.Pitch += h.Pitch
+			result.Yaw += h.Yaw
+			result.Roll += h.Roll
 			continue
 		}
 		if g.Kind == "shake_cycle" {

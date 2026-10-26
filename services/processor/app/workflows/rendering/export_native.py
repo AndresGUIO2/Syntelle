@@ -141,6 +141,9 @@ def export(destination: Path, expressions_dir: Path | None = None, motion_scale:
         texture("gaze/" + filename, folders["gaze"] / filename)
     expressions = packages["expressions"]
     texture("expressions/" + expressions["field"]["file"], expression_dir / expressions["field"]["file"])
+    if expressions.get("emotion_rig"):
+        filename = expressions["emotion_rig"]["field"]["file"]
+        texture("expressions/" + filename, expression_dir / filename)
     if expressions.get("smile", {}).get("material"):
         filename = expressions["smile"]["material"]["file"]
         texture("expressions/" + filename, expression_dir / filename)

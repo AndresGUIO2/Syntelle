@@ -40,14 +40,19 @@ func (a *acousticSchedule) supplement(v PerformanceValidation, boundaries, energ
 				at, distance = candidate, d
 			}
 		}
-		if distance >= .8 || at < .15 || at+.85 > duration {
+		start, length := at, .85
+		if v.Intent.Version == "performance-intent/3" {
+			length = .72
+			start = math.Max(0, at-rendercontract.NaturalGestureLead("emphasis", length))
+		}
+		if distance >= .8 || at < .15 || start+length > duration {
 			continue
 		}
 		heads, near := 0, false
 		for _, other := range v.Resolved {
 			if headCue(other.Kind) {
 				heads += rendercontract.GestureRepetitions(other.Kind, other.Repetitions)
-				if math.Abs(other.Time-at) < 2.2 || (at < other.Time+other.Duration && at+.85 > other.Time) {
+				if math.Abs(other.Time-start) < 2.2 || (start < other.Time+other.Duration && start+length > other.Time) {
 					near = true
 				}
 			}
@@ -59,7 +64,7 @@ func (a *acousticSchedule) supplement(v PerformanceValidation, boundaries, energ
 		if index := int(at / .02); index < len(energy) {
 			amount += .5 * energy[index] / peak
 		}
-		v.Resolved = append(v.Resolved, ResolvedCue{Kind: "emphasis", Time: at, Duration: .85, Amount: &amount, Source: "acoustic"})
+		v.Resolved = append(v.Resolved, ResolvedCue{Kind: "emphasis", Time: start, Duration: length, Amount: &amount, Source: "acoustic"})
 	}
 	sort.SliceStable(v.Resolved, func(i, j int) bool { return v.Resolved[i].Time < v.Resolved[j].Time })
 	return v

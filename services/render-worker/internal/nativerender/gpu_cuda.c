@@ -71,7 +71,7 @@ struct GPUContext {
 _Static_assert(sizeof(GPUVertex)==48,"vertex ABI");
 _Static_assert(sizeof(GPUTriangle)==176,"triangle ABI");
 _Static_assert(sizeof(GPUAxis)==24,"axis ABI");
-_Static_assert(sizeof(GPUParams)==88,"parameter ABI");
+_Static_assert(sizeof(GPUParams)==208,"parameter ABI");
 
 static int reserve(GPUContext *g,int slot,size_t n) {
     if(slot<0 || slot>=24 || n>128*1024*1024) return -1001;
@@ -139,7 +139,7 @@ int syntelle_gpu_share(GPUContext *g,int slot,const void *source,size_t n,const 
     // Only read-only kernel inputs qualify. Subject, patches, projected geometry,
     // bins, backgrounds and output/encoder surfaces remain session-owned.
     if(slot!=1 && slot!=2 && slot!=4 && slot!=5 && slot!=11 && slot!=14 &&
-       slot!=16 && slot!=17 && slot!=18 && slot!=19 && slot!=20 && slot!=21 && slot!=22) return -1001;
+       slot!=16 && slot!=17 && slot!=18 && slot!=19 && slot!=20 && slot!=21 && slot!=22 && slot!=23) return -1001;
     int status=driver.push(g->context);if(status)return status;
     pthread_mutex_lock(&shared_lock);
     SharedBuffer *entry=shared_buffers;
@@ -209,7 +209,7 @@ int syntelle_gpu_run(GPUContext *g,const GPUParams *p,unsigned char *out,int str
     status=reserve(g,9,(size_t)p->bw*p->bh*4);
     if(!status) status=reserve(g,10,(size_t)p->outw*p->outh*4);
     if(!status) {
-        void *args[]={ (void*)p,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
+        void *args[]={ (void*)p,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[23],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
         status=driver.launch(g->body,(p->bw*p->bh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
     }
     if(!status) {

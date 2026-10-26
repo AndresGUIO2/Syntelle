@@ -6,16 +6,22 @@ import (
 	"errors"
 	"math"
 	"os"
+	"syntelle/render-contract"
 	"time"
 )
 
 type ExpressionBaseline struct {
-	Smile float64 `json:"smile"`
-	Brows float64 `json:"brows"`
+	Regulation   rendercontract.EmotionRegulation `json:"emotion_regulation"`
+	EmotionPhase string                           `json:"emotion_phase,omitempty"`
+
+	Emotion     rendercontract.EmotionBaseline `json:"emotion_baseline"`
+	LastEmotion *rendercontract.EmotionTarget  `json:"last_activated_emotion,omitempty"`
+	Smile       float64                        `json:"smile"`
+	Brows       float64                        `json:"brows"`
 }
 
 func (b ExpressionBaseline) valid() bool {
-	return !math.IsNaN(b.Smile) && !math.IsNaN(b.Brows) && b.Smile >= 0 && b.Smile <= 1 && b.Brows >= 0 && b.Brows <= 1
+	return b.Regulation.Valid() && b.Emotion.Valid() && !math.IsNaN(b.Smile) && !math.IsNaN(b.Brows) && b.Smile >= 0 && b.Smile <= 1 && b.Brows >= 0 && b.Brows <= 1
 }
 
 type PerformanceProfile struct {
@@ -59,6 +65,7 @@ func LoadPerformanceProfile(path, packageHash string) (*PerformanceProfile, erro
 	return &p, nil
 }
 func (s *Service) directionContext(b ExpressionBaseline, voiceLanguage ...string) string {
+	b.Emotion = b.Emotion.Normalized()
 	capabilities := []string{"nod", "shake", "emphasis", "tilt", "brows"}
 	if s.Performance != nil {
 		capabilities = nil
@@ -83,7 +90,7 @@ func (s *Service) directionContext(b ExpressionBaseline, voiceLanguage ...string
 		}
 		capabilities = kept
 	}
-	value, _ := json.Marshal(map[string]any{"prepared_capabilities": capabilities, "manual_expression_baseline": b, "baseline_policy": "temporary-targets-then-return", "speaking_smile_maximum": .5})
+	value, _ := json.Marshal(map[string]any{"prepared_capabilities": capabilities, "emotion_regulation": map[string]any{"version": rendercontract.EmotionPolicyVersion, "settings": b.Regulation.Normalized(), "temperament": b.Regulation.Profile(), "ceilings": map[string]float64{"joyful": rendercontract.EmotionCeiling("joyful"), "playful": rendercontract.EmotionCeiling("playful"), "affectionate": rendercontract.EmotionCeiling("affectionate"), "curious": rendercontract.EmotionCeiling("curious"), "sad": rendercontract.EmotionCeiling("sad"), "angry": rendercontract.EmotionCeiling("angry"), "fearful": rendercontract.EmotionCeiling("fearful"), "surprised": rendercontract.EmotionCeiling("surprised"), "disgusted": rendercontract.EmotionCeiling("disgusted")}}, "manual_expression_baseline": b, "baseline_policy": "temporary-targets-then-return", "legacy_speaking_smile_maximum": .5, "emotion_policy": "temporary-contextual-targets-then-return-to-owner-baseline"})
 	return "\nApplication-owned performance context: " + string(value)
 }
 func (s *Service) filterCapabilities(v PerformanceValidation) PerformanceValidation {

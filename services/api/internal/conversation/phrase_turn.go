@@ -123,7 +123,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 		}
 		archive, stop := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 		defer stop()
-		if archiveErr := s.Store.Finish(archive, op.ID, opStatus, result, result.Usage, map[string]any{"adapter": adapter, "direction": "performance-intent/2"}, nil); archiveErr != nil && modelErr == nil {
+		if archiveErr := s.Store.Finish(archive, op.ID, opStatus, result, result.Usage, map[string]any{"adapter": adapter, "direction": "performance-intent/3"}, nil); archiveErr != nil && modelErr == nil {
 			modelErr = archiveErr
 		}
 		modelDone <- phraseModelResult{result, modelErr}
@@ -172,7 +172,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			emit("error", "Invalid prepared phrase audio.", nil)
 			return
 		}
-		intent := PerformanceIntent{Version: "performance-intent/2", Text: job.phrase.Text, Tone: job.phrase.Tone, Cues: job.phrase.Cues}
+		intent := PerformanceIntent{Version: phraseVersion(job.phrase.Version), Emotion: job.phrase.Emotion, Text: job.phrase.Text, Tone: job.phrase.Tone, Cues: job.phrase.Cues}
 		direction := resolvePerformance(ValidatePerformance(intent, job.phrase.Text), audio.Audio, audio.Duration/1000, acoustic, clock/1000)
 		direction = s.filterCapabilities(direction)
 		direction = budget.admit(direction, clock/1000)
@@ -182,6 +182,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			return
 		}
 		payload["performance"] = direction
+		payload["emotion_phrase_index"] = count
 		direction, err = s.appendLaughter(cid, id, voice, language, payload, direction)
 		if err != nil {
 			emit("error", "Cached laughter could not be prepared.", nil)

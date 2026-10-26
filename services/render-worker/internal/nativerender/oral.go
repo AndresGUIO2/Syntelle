@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"syntelle/render-contract"
 )
 
 // OralAssets contains the immutable, source-bound resources used by the existing
@@ -182,16 +183,18 @@ func NewOralAssets(packageJSON []byte, load func(string) (*Texture, error)) (*Or
 }
 
 type OralRenderer struct {
-	laughLips        *Texture
-	assets           *OralAssets
-	output           *Texture
-	lastFrom         string
-	lastTo           string
-	lastAmount       float64
-	lastSmile        float64
-	joint            *JointExpression
-	laugh, lastLaugh float64
-	hasLast          bool
+	emotionRig           *EmotionRig
+	emotion, lastEmotion rendercontract.EmotionWeights
+	laughLips            *Texture
+	assets               *OralAssets
+	output               *Texture
+	lastFrom             string
+	lastTo               string
+	lastAmount           float64
+	lastSmile            float64
+	joint                *JointExpression
+	laugh, lastLaugh     float64
+	hasLast              bool
 }
 
 func NewOralRenderer(assets *OralAssets) *OralRenderer {
@@ -222,7 +225,7 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 		amount = 0
 	}
 	amount = float64(float32(amount))
-	if emit == nil && renderer.hasLast && renderer.lastFrom == fromID && renderer.lastTo == toID && renderer.lastAmount == amount && renderer.lastSmile == smile && renderer.lastLaugh == renderer.laugh {
+	if emit == nil && renderer.hasLast && renderer.lastFrom == fromID && renderer.lastTo == toID && renderer.lastAmount == amount && renderer.lastSmile == smile && renderer.lastLaugh == renderer.laugh && renderer.lastEmotion == renderer.emotion {
 		return renderer.output, nil
 	}
 	assets := renderer.assets
@@ -264,6 +267,14 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 			laughing = &p
 		}
 	}
+	hasOralEmotion := false
+	if renderer.emotionRig != nil && renderer.emotionRig.Oral != nil {
+		for index, weight := range renderer.emotion {
+			if weight > 0 && renderer.emotionRig.Oral.States[rendercontract.EmotionStates[index]] != nil {
+				hasOralEmotion = true
+			}
+		}
+	}
 	position := func(id, axis int) float64 {
 		value := patchMix(mesh.Rest[id][axis], mesh.Open[id][axis], amount)
 		if expression != nil {
@@ -272,6 +283,17 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 				delta = patchMix(delta, patchMix(laughing.RestDelta[id][axis], laughing.OpenDelta[id][axis], amount), renderer.laugh)
 			}
 			value += delta * smile
+		}
+		if renderer.emotionRig != nil && renderer.emotionRig.Oral != nil {
+			for state, weight := range renderer.emotion {
+				if weight == 0 {
+					continue
+				}
+				deltas, ok := renderer.emotionRig.Oral.States[rendercontract.EmotionStates[state]][fromID+"-"+toID]
+				if ok && id < len(deltas.RestDelta) && id < len(deltas.OpenDelta) {
+					value += patchMix(deltas.RestDelta[id][axis], deltas.OpenDelta[id][axis], amount) * weight
+				}
+			}
 		}
 		return value
 	}
@@ -318,7 +340,13 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 	state := oralShadeState{from: from, to: to, amount: amount, cavityAmount: cavityAmount,
 		inner: inner, minimum: minimum, maximum: maximum, upper: upper, lower: lower,
 		semantic: from.definition.ApertureSDF != "" && to.definition.ApertureSDF != ""}
-	state.joint = expression != nil
+	// Emotional lip geometry also moves source ownership, even when this
+	// emotion supplies no smile. Endpoint UV shortcuts require a neutral mesh.
+	state.joint = expression != nil || hasOralEmotion
+	state.deformedCoverage = state.joint && renderer.emotionRig != nil && renderer.emotionRig.EditCoverage == "deformed-oral-coverage/1"
+	if hasOralEmotion {
+		state.semantic = false
+	}
 	if expression != nil && (fromID == "Rest" || toID == "Rest") {
 		state.semantic = false
 	}
@@ -328,6 +356,11 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 	}
 	if laughing != nil && renderer.joint.Laugh.Mode == "boundary-laugh/1" {
 		triangles = laughing.Triangles
+	}
+	if hasOralEmotion {
+		if prepared := renderer.emotionRig.Oral.Triangles[fromID+"-"+toID]; len(prepared) > 0 {
+			triangles = prepared
+		}
 	}
 	for _, ids := range triangles {
 		var points [3][2]float64
@@ -347,10 +380,12 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 	}
 	renderer.lastFrom, renderer.lastTo, renderer.lastAmount, renderer.hasLast, renderer.lastSmile = fromID, toID, amount, true, smile
 	renderer.lastLaugh = renderer.laugh
+	renderer.lastEmotion = renderer.emotion
 	return renderer.output, nil
 }
 
 type oralShadeState struct {
+	deformedCoverage     bool
 	joint                bool
 	from, to             oralPose
 	amount, cavityAmount float64
@@ -386,7 +421,7 @@ func (renderer *OralRenderer) drawTriangle(mesh *oralMesh, ids [3]int, p [3][2]f
 			alpha := patchMix(float64(state.from.mask.Pixels[at]), float64(state.to.mask.Pixels[at]), state.amount) / 255
 			// The output is applied source-atop. A zero stored alpha contributes
 			// no RGB to the character, so do not calculate invisible fragments.
-			if alpha < .5/255 {
+			if !state.deformedCoverage && alpha < .5/255 {
 				continue
 			}
 			a, b, c = a/area, b/area, c/area
@@ -399,6 +434,14 @@ func (renderer *OralRenderer) drawTriangle(mesh *oralMesh, ids [3]int, p [3][2]f
 			}
 			if state.amount == 1 && !state.joint {
 				to = point
+			}
+			if state.deformedCoverage {
+				// Edit ownership follows the same source coordinates as the lip
+				// texture. A stationary destination mask clips moving corners.
+				alpha = patchMix(patchChannel(state.from.mask, from[0]-.5, from[1]-.5, 0), patchChannel(state.to.mask, to[0]-.5, to[1]-.5, 0), state.amount) / 255
+				if alpha < .5/255 {
+					continue
+				}
 			}
 			renderer.output.Set(x, y, renderer.shade(x, y, from, to, alpha, state))
 		}
@@ -512,7 +555,7 @@ func (renderer *OralRenderer) shade(x, y int, fromUV, toUV [2]float64, alpha flo
 			}
 		}
 	}
-	// Alpha was read from the unwarped mask domain before shading.
+	// Edit alpha is resolved in its selected ownership domain before shading.
 	color[3] = alpha
 	return color
 }

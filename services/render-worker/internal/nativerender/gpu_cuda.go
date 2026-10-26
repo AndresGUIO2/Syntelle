@@ -42,6 +42,9 @@ type gpuAxis struct {
 type gpuParams struct {
 	Dims                [16]int32
 	Smile, Brows, Units float64
+	EmotionDims         [8]int32
+	EmotionUnits        float64
+	EmotionWeights      [10]float64
 }
 
 type cudaRenderer struct {
@@ -140,7 +143,7 @@ func (g *cudaRenderer) immutable(slot int, data unsafe.Pointer, bytes int) error
 	}
 	digest := sha256.Sum256(unsafe.Slice((*byte)(data), bytes))
 	if status := C.syntelle_gpu_share(g.native, C.int(slot), data, C.size_t(bytes), (*C.uchar)(unsafe.Pointer(&digest[0]))); status != 0 {
-		return fmt.Errorf("share immutable cuda buffer (native code %d)", int(status))
+		return fmt.Errorf("share immutable cuda buffer %d (native code %d)", slot, int(status))
 	}
 	return nil
 }
@@ -165,7 +168,7 @@ func (g *cudaRenderer) initialize(r *Renderer) error {
 	for _, item := range []struct {
 		slot    int
 		texture *Texture
-	}{{0, r.subjectTexture}, {1, r.assets.ExpressionField}, {2, r.assets.SmileMaterial}} {
+	}{{0, r.subjectTexture}, {1, r.assets.ExpressionField}, {2, r.assets.SmileMaterial}, {23, r.assets.EmotionField}} {
 		if err := g.texture(item.slot, item.texture); err != nil {
 			return err
 		}
@@ -328,6 +331,11 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 	}
 	p := gpuParams{Dims: [16]int32{int32(r.body.Width), int32(r.body.Height), int32(r.subjectTexture.Width), int32(r.subjectTexture.Height), int32(w), 960, int32(g.tilesX), int32(len(g.triangles)),
 		int32(r.assets.Expression.Crop.X), int32(r.assets.Expression.Crop.Y), int32(r.assets.Expression.Crop.Width), int32(r.assets.Expression.Crop.Height)}, Smile: s.Smile, Brows: s.Brows, Units: r.assets.Expression.Units}
+	if rig := r.assets.Expression.EmotionRig; rig != nil {
+		p.EmotionDims = [8]int32{int32(rig.Crop.X), int32(rig.Crop.Y), int32(rig.Crop.Width), int32(rig.Crop.Height), int32(rig.FieldSize[0]), int32(rig.FieldSize[1]), int32(rig.InverseIterations), 0}
+		p.EmotionUnits = rig.Units
+		p.EmotionWeights = s.Emotion
+	}
 	if r.assets.Expression.Joint != nil && !s.RestingSmile {
 		p.Smile = 0
 	}
@@ -542,10 +550,11 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			return err
 		}
 	}
-	if resetReference || skin || !g.hasState || s.From != g.lastState.From || s.To != g.lastState.To || s.Amount != g.lastState.Amount {
+	if resetReference || skin || !g.hasState || s.From != g.lastState.From || s.To != g.lastState.To || s.Amount != g.lastState.Amount || s.Emotion != g.lastState.Emotion {
 		g.oralTriangles = g.oralTriangles[:0]
 		var params gpuOralParams
 		r.oral.laugh = legacyLaugh
+		r.oral.emotion = s.Emotion
 		_, err := r.oral.drawExpression(s.From, s.To, s.Amount, smile, func(mesh *oralMesh, ids [3]int, points [3][2]float64, state *oralShadeState) {
 			area := patchEdge(points[0], points[1], points[2])
 			if math.Abs(area) < 1e-10 {
@@ -578,6 +587,9 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			if state.joint {
 				params.Dims[12] = 1
 			}
+			if state.deformedCoverage {
+				params.Dims[12] |= 2
+			}
 			if state.semantic {
 				params.Dims[13] = 1
 			}
@@ -606,7 +618,7 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			return err
 		}
 	}
-	if resetReference || skin || !g.hasState || s.Closure != g.lastState.Closure || s.Gaze != g.lastState.Gaze || s.Laugh != g.lastState.Laugh {
+	if resetReference || skin || !g.hasState || s.Closure != g.lastState.Closure || s.Gaze != g.lastState.Gaze || s.Laugh != g.lastState.Laugh || s.Emotion != g.lastState.Emotion {
 		e := r.eyes
 		rect := r.eyePatch.Rect
 		p := gpuEyeParams{Dims: [12]int32{int32(e.opened.Width), int32(e.opened.Height), int32(rect.X), int32(rect.Y)}, Values: [8]float64{float64(float32(clamp(s.Closure, 0, 1))), e.eyeSplit, e.lashBand}}

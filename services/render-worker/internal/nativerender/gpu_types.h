@@ -7,6 +7,7 @@ typedef struct {
     int bw,bh,sw,sh,outw,outh,tiles_x,triangle_count;
     int ex,ey,ew,eh,fw,fh,mw,mh;
     double smile,brows,units;
+    int emotion_dims[8]; double emotion_units,emotion_weights[10];
 } GPUParams;
 typedef struct { double p[6],from[6],to[6],area; int flags[4]; } GPUOralTriangle;
 typedef struct { int dims[16]; double values[60]; } GPUOralParams;

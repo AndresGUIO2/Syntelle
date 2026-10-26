@@ -36,6 +36,9 @@ type SpeechState struct {
 }
 
 type FrameInput struct {
+	EmotionControl *nativeanimation.EmotionSnapshot
+	EmotionTime    float64
+
 	PreviewKind        string
 	PreviewRepetitions int
 	PreviewAmount      float64

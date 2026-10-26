@@ -169,6 +169,12 @@ func TestStreamingFixtureHost(t *testing.T) {
 		}
 		conversations.Performance = &profile
 	}
+	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_EMOTIONS") == "1" {
+		conversations.Model = &emotionDirectorFixture{streamModelFixture: model}
+	}
+	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_GESTURES") == "1" {
+		conversations.Model = &gestureDirectorFixture{streamModelFixture: model}
+	}
 	service, err := Open(ctx, store.Pool, conversations, accountsService.Resolve, Config{WorkerToken: fixtureWorkerToken, MaximumSessions: 2, PackageHash: manifest.Hash, ValidatePrincipal: accountsService.ValidatePrincipal})
 	if err != nil {
 		t.Fatal(err)
@@ -186,10 +192,60 @@ func TestStreamingFixtureHost(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
+		case "/__fixture__/directions":
+			if model, ok := conversations.Model.(*emotionDirectorFixture); ok {
+				model.mu.Lock()
+				defer model.mu.Unlock()
+				writeJSON(w, 200, model.directions)
+			} else {
+				writeJSON(w, 200, []string{})
+			}
+		case "/__fixture__/emotion-evidence":
+			rows, err := store.Pool.Query(r.Context(), "SELECT jsonb_build_object('id',id,'kind',kind,'status',status,'request',request,'result',result,'diagnostics',diagnostics) FROM syntelle_conversation.operations WHERE kind IN ('emotion-activation','emotion-decision','speech-delivery') ORDER BY id")
+			if err != nil {
+				http.Error(w, "fixture evidence query failed", 500)
+				return
+			}
+			defer rows.Close()
+			values := []json.RawMessage{}
+			for rows.Next() {
+				var value json.RawMessage
+				if rows.Scan(&value) != nil {
+					http.Error(w, "fixture evidence scan failed", 500)
+					return
+				}
+				values = append(values, value)
+			}
+			if rows.Err() != nil {
+				http.Error(w, "fixture evidence rows failed", 500)
+				return
+			}
+			writeJSON(w, 200, values)
 		case "/__fixture__/mail":
 			mailer.mu.Lock()
 			defer mailer.mu.Unlock()
 			writeJSON(w, 200, map[string]any{"email": mailer.email, "code": mailer.code, "challenge_id": mailer.challenge, "sent": mailer.sent, "fixture_only": true})
+		case "/__fixture__/emotions":
+			rows, queryErr := store.Pool.Query(r.Context(), "SELECT result FROM syntelle_conversation.operations WHERE kind='emotion-activation' AND status='received' ORDER BY id")
+			if queryErr != nil {
+				http.Error(w, "fixture query failed", 500)
+				return
+			}
+			defer rows.Close()
+			values := []json.RawMessage{}
+			for rows.Next() {
+				var v json.RawMessage
+				if rows.Scan(&v) != nil {
+					http.Error(w, "fixture scan failed", 500)
+					return
+				}
+				values = append(values, v)
+			}
+			if rows.Err() != nil {
+				http.Error(w, "fixture rows failed", 500)
+				return
+			}
+			writeJSON(w, 200, values)
 		case "/__fixture__/counts":
 			writeJSON(w, 200, map[string]int32{"model": model.calls.Load(), "speech": voice.calls.Load(), "recognition": recognition.calls.Load()})
 		case "/__fixture__/stop":

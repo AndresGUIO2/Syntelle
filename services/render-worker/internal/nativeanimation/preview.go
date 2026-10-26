@@ -25,11 +25,11 @@ func PreviewFrameRepeated(base Frame, kind string, seconds, intensity float64, r
 	}
 	n := rendercontract.GestureRepetitions(kind, count)
 	maximum := 2.
-	if kind == "nod" {
-		maximum = rendercontract.NodCycleSeconds * float64(n)
+	if kind == "nod" || kind == "double_nod" {
+		maximum = rendercontract.NaturalNodCycleSeconds * float64(n)
 	}
 	if kind == "shake" {
-		maximum = rendercontract.ShakeCycleSeconds * float64(n)
+		maximum = rendercontract.NaturalShakeCycleSeconds * float64(n)
 	}
 	if n == 0 || seconds <= 0 || seconds >= maximum || !ValidPreview(kind) || !patchPreviewAmount(intensity) {
 		return base
@@ -58,18 +58,21 @@ func PreviewFrameRepeated(base Frame, kind string, seconds, intensity float64, r
 	default:
 		duration := .72
 		if kind == "nod" {
-			duration = rendercontract.NodCycleSeconds * float64(n)
+			duration = rendercontract.NaturalNodCycleSeconds * float64(n)
 		}
 		if kind == "double_nod" {
-			duration = 1.12
+			duration = rendercontract.NaturalNodCycleSeconds * float64(n)
 		}
 		if kind == "shake" {
-			duration = rendercontract.ShakeCycleSeconds * float64(n)
+			duration = rendercontract.NaturalShakeCycleSeconds * float64(n)
 		}
 		if kind == "tilt" {
 			duration = 1.15
 		}
 		gesture := Gesture{Time: 0, Duration: duration, Kind: kind, Pitch: -c.Bounds.Pitch * .95 * intensity}
+		if kind == "double_nod" {
+			gesture.Kind = "nod"
+		}
 		if kind == "shake" {
 			gesture.Pitch = 0
 			gesture.Yaw = c.Bounds.Yaw * .95 * intensity
@@ -80,10 +83,10 @@ func PreviewFrameRepeated(base Frame, kind string, seconds, intensity float64, r
 			gesture.Roll = c.Bounds.Roll * .95 * intensity
 		}
 		gestures := []Gesture{gesture}
-		if kind == "nod" || kind == "shake" {
-			cycle := rendercontract.NodCycleSeconds
+		if kind == "nod" || kind == "double_nod" || kind == "shake" {
+			cycle := rendercontract.NaturalNodCycleSeconds
 			if kind == "shake" {
-				cycle = rendercontract.ShakeCycleSeconds
+				cycle = rendercontract.NaturalShakeCycleSeconds
 			}
 			gestures = nil
 			for i := 0; i < n; i++ {
@@ -93,7 +96,7 @@ func PreviewFrameRepeated(base Frame, kind string, seconds, intensity float64, r
 				gestures = append(gestures, g)
 			}
 		}
-		head := gestureAt(&Plan{Gestures: gestures}, seconds)
+		head := gestureAt(&Plan{Gestures: gestures, natural: true}, seconds)
 		// Reserve the gesture range instead of clipping it against the idle posture.
 		reserve := ease(seconds/.12) * (1 - ease((seconds-duration+.16)/.16))
 		base.Head = Head{clamp(base.Head.Yaw*(1-reserve)+head.Yaw, -c.Bounds.Yaw, c.Bounds.Yaw), clamp(base.Head.Pitch*(1-reserve)+head.Pitch, -c.Bounds.Pitch, c.Bounds.Pitch), clamp(base.Head.Roll*(1-reserve)+head.Roll, -c.Bounds.Roll, c.Bounds.Roll)}

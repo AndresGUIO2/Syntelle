@@ -272,7 +272,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		id = input.ResumeFrom
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	session := &streamSession{id: id, cid: cid, principal: principal, settings: input.Settings, state: "starting", created: time.Now(), lastSeen: time.Now(), cancel: cancel, commandMu: make(chan struct{}, 1)}
+	session := &streamSession{emotionPolicyRevision: 1, id: id, cid: cid, principal: principal, settings: input.Settings, state: "starting", created: time.Now(), lastSeen: time.Now(), cancel: cancel, commandMu: make(chan struct{}, 1)}
 	if hadMessages {
 		session.lastMessage = session.created
 	}
@@ -447,7 +447,7 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 		if c.Type == "speak" {
 			kind = "speak"
 		}
-		err = channel.Send(ctx, conversation.Event{Type: kind, ConversationID: session.cid, TurnID: turnID, Text: c.Text, Baseline: &conversation.ExpressionBaseline{Smile: settings.Smile, Brows: settings.Brows}})
+		err = channel.Send(ctx, conversation.Event{Type: kind, ConversationID: session.cid, TurnID: turnID, Text: c.Text, Baseline: &conversation.ExpressionBaseline{Smile: settings.Smile, Brows: settings.Brows, Emotion: settings.EmotionBaseline, Regulation: settings.EmotionRegulation}})
 		s.setState(session, "preparing", "")
 	case "interrupt":
 		s.mu.Lock()
@@ -483,7 +483,7 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 		_ = s.store.finish(ctx, session.id, turnID, "complete")
 	case "configure":
 		if c.Settings != nil {
-			err = channel.Send(ctx, conversation.Event{Type: "expression_baseline", ConversationID: session.cid, TurnID: turnID, Baseline: &conversation.ExpressionBaseline{Smile: c.Settings.Smile, Brows: c.Settings.Brows}})
+			err = channel.Send(ctx, conversation.Event{Type: "expression_baseline", ConversationID: session.cid, TurnID: turnID, Baseline: &conversation.ExpressionBaseline{Smile: c.Settings.Smile, Brows: c.Settings.Brows, Emotion: c.Settings.EmotionBaseline, Regulation: c.Settings.EmotionRegulation}})
 		}
 		if modelChange {
 			err = channel.Send(ctx, conversation.Event{Type: "configure", ConversationID: session.cid, TurnID: turnID, Instructions: c.Settings.Instructions, Voice: c.Settings.Voice})
@@ -493,9 +493,12 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 		}
 		if err == nil {
 			s.mu.Lock()
+			if settings.EmotionBaseline.Normalized() != c.Settings.EmotionBaseline.Normalized() || settings.EmotionRegulation.Normalized() != c.Settings.EmotionRegulation.Normalized() || settings.AutomaticExpressions != c.Settings.AutomaticExpressions || settings.ReducedMotion != c.Settings.ReducedMotion {
+				session.emotionPolicyRevision++
+			}
 			session.settings = *c.Settings
 			s.mu.Unlock()
-			s.toWorker(envelope("configure", session.id, map[string]any{"settings": *c.Settings}))
+			s.toWorker(envelope("configure", session.id, map[string]any{"settings": *c.Settings, "emotion_policy_revision": session.emotionPolicyRevision}))
 			_ = s.store.finish(ctx, session.id, turnID, "complete")
 		}
 	}

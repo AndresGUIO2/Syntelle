@@ -33,6 +33,7 @@ type speechPart struct {
 }
 
 type clip struct {
+	phraseIndex int
 	preview     bool
 	samples     []int16
 	visemes     []Viseme

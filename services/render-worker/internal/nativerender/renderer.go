@@ -10,13 +10,15 @@ import (
 	"os"
 	"slices"
 	"sync/atomic"
+	"syntelle/render-contract"
 	"syntelle/render-worker/internal/nativeframe"
 )
 
 // FrameState contains presentation state, never wall-clock callback arrival.
 type FrameState struct {
-	Head            [3]float64 `json:"head"`
-	Breath          float64    `json:"breath"`
+	Emotion         rendercontract.EmotionWeights `json:"emotion,omitempty"`
+	Head            [3]float64                    `json:"head"`
+	Breath          float64                       `json:"breath"`
 	From, To        string
 	Amount, Closure float64
 	Gaze            [2][2]float64
@@ -64,10 +66,12 @@ type Renderer struct {
 	fringe             []fringeTriangle
 	lastSort           string
 	lastMouth          struct {
+		Emotion  rendercontract.EmotionWeights
 		From, To string
 		Amount   float64
 	}
 	lastEye struct {
+		Emotion rendercontract.EmotionWeights
 		Laugh   float64
 		Closure float64
 		Gaze    [2][2]float64
@@ -110,6 +114,7 @@ func newRenderer(a *Assets, mode string) (*Renderer, error) {
 	}
 	r.mouthPatch = r.newPatch(oral.Crop)
 	if a.Expression.Joint != nil {
+		r.oral.emotionRig = a.Expression.EmotionRig
 		r.oral.joint = a.Expression.Joint
 		r.oral.laughLips = a.LaughLips
 		r.expressionPatch = r.newPatch(a.Expression.Crop)
@@ -232,20 +237,23 @@ func (r *Renderer) Render(ctx context.Context, state FrameState, dst *image.RGBA
 		legacyLaugh = 0
 	}
 	r.skinChanged = r.prepareSkin(jointSmile, legacyLaugh)
-	mouthChanged := r.skinChanged || !r.initialized || r.lastMouth.From != state.From || r.lastMouth.To != state.To || r.lastMouth.Amount != state.Amount
+	mouthChanged := r.skinChanged || !r.initialized || r.lastMouth.From != state.From || r.lastMouth.To != state.To || r.lastMouth.Amount != state.Amount || r.lastMouth.Emotion != state.Emotion
 	if mouthChanged {
 		r.oral.laugh = legacyLaugh
+		r.oral.emotion = state.Emotion
 		oral, err := r.oral.DrawExpression(state.From, state.To, state.Amount, jointSmile)
 		if err != nil {
 			return err
 		}
 		r.patchOver(r.mouthPatch, oral)
 		r.lastMouth.From, r.lastMouth.To, r.lastMouth.Amount = state.From, state.To, state.Amount
+		r.lastMouth.Emotion = state.Emotion
 	}
-	eyesChanged := r.skinChanged || !r.initialized || r.lastEye.Closure != state.Closure || r.lastEye.Gaze != state.Gaze || r.lastEye.Laugh != state.Laugh
+	eyesChanged := r.skinChanged || !r.initialized || r.lastEye.Closure != state.Closure || r.lastEye.Gaze != state.Gaze || r.lastEye.Laugh != state.Laugh || r.lastEye.Emotion != state.Emotion
 	if eyesChanged {
 		r.patchOver(r.eyePatch, r.eyes.DrawExpression(state.Closure, state.Gaze, r.laughSquint(state)))
 		r.lastEye.Closure, r.lastEye.Gaze, r.lastEye.Laugh = state.Closure, state.Gaze, state.Laugh
+		r.lastEye.Emotion = state.Emotion
 	}
 	r.prepareReference(state)
 	r.lastReference = state.Laugh
@@ -519,15 +527,22 @@ func (r *Renderer) fragment(u, v float64, s *FrameState) Color {
 		s = &copy
 	}
 	w, h := float64(r.assets.Motion.Canvas.Width), float64(r.assets.Motion.Canvas.Height)
-	if s.Smile > 0 || s.Brows > 0 {
+	if s.Smile > 0 || s.Brows > 0 || s.Emotion != (rendercontract.EmotionWeights{}) {
 		tx, ty := u*w-.5, v*h-.5
 		rect := r.assets.Expression.Crop
 		// A zero first displacement leaves every inverse iteration at the same
 		// coordinate. Avoid all five lookups outside the prepared field.
-		if tx >= float64(rect.X)-.5 && tx <= float64(rect.X+rect.Width)-.5 && ty >= float64(rect.Y)-.5 && ty <= float64(rect.Y+rect.Height)-.5 {
+		if insideField(tx, ty, rect) || r.assets.Expression.EmotionRig != nil && insideField(tx, ty, r.assets.Expression.EmotionRig.Crop) {
 			x, y := tx, ty
-			for range 5 {
+			iterations := 5
+			if rig := r.assets.Expression.EmotionRig; rig != nil && s.Emotion != (rendercontract.EmotionWeights{}) {
+				iterations = rig.InverseIterations
+			}
+			for range iterations {
 				dx, dy := r.displacement(x, y, s)
+				edx, edy := r.emotionDisplacement(x, y, s.Emotion)
+				dx += edx
+				dy += edy
 				nextX, nextY := tx-dx, ty-dy
 				// Exact fixed points remain unchanged in every later iteration.
 				// Protected/neutral field regions commonly meet this on step one.

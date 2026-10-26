@@ -64,8 +64,15 @@ func (r *Renderer) jointSmile(s FrameState) float64 {
 }
 
 func (r *Renderer) laughSquint(s FrameState) float64 {
+	tension := emotionSquint(s.Emotion)
+	if rig := r.assets.Expression.EmotionRig; rig != nil && len(rig.EyelidTension) == 10 {
+		tension = 0
+		for i, weight := range s.Emotion {
+			tension += weight * rig.EyelidTension[i]
+		}
+	}
 	if joint := r.assets.Expression.Joint; joint != nil && joint.Laugh != nil {
-		return clamp(s.Laugh*joint.Laugh.EyeClosure, 0, .4)
+		return clamp(s.Laugh*joint.Laugh.EyeClosure+tension, 0, .4)
 	}
 	return 0
 }

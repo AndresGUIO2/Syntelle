@@ -8,13 +8,13 @@ import (
 
 func TestNodPreviewIsQuickVisibleAndScalesWithIntensity(t *testing.T) {
 	c := Config{Bounds: Bounds{3, 1.2, .3}}
-	peak := .62 * .42
+	peak := .82 * .34
 	full := PreviewFrameAtIntensity(Frame{}, "nod", peak, 1, c)
 	half := PreviewFrameAtIntensity(Frame{}, "nod", peak, .5, c)
 	if math.Abs(full.Head.Pitch) < c.Bounds.Pitch*.94 || math.Abs(half.Head.Pitch/full.Head.Pitch-.5) > 1e-9 {
 		t.Fatal("preview did not use its prepared range or requested intensity", full, half)
 	}
-	if PreviewFrameAtIntensity(Frame{}, "nod", .73, 1, c) != (Frame{}) {
+	if PreviewFrameAtIntensity(Frame{}, "nod", .93, 1, c) != (Frame{}) {
 		t.Fatal("nod did not finish promptly")
 	}
 	for _, value := range []float64{-1, 2, math.NaN(), math.Inf(1)} {
@@ -29,17 +29,17 @@ func TestRepeatedNodsUseOneCompleteCurveAndRestoreBaseline(t *testing.T) {
 	for _, n := range []int{1, 2, 4, 5, 7, 8} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			for i := 0; i < n; i++ {
-				peak := (float64(i) + .42) * .62
+				peak := (float64(i) + .34) * .82
 				frame := PreviewFrameRepeated(Frame{}, "nod", peak, 1, n, c)
 				if math.Abs(frame.Head.Pitch+3.8) > 1e-8 {
 					t.Fatal("incomplete nod", i, frame)
 				}
-				if got := PreviewFrameRepeated(Frame{}, "nod", float64(i+1)*.62, 1, n, c); math.Abs(got.Head.Pitch) > 1e-8 {
+				if got := PreviewFrameRepeated(Frame{}, "nod", float64(i+1)*.82, 1, n, c); math.Abs(got.Head.Pitch) > 1e-8 {
 					t.Fatal("nod did not return", i, got)
 				}
 			}
 			base := Frame{Smile: .7, Brows: .4, Head: Head{Pitch: .3}}
-			if got := PreviewFrameRepeated(base, "nod", float64(n)*.62+.01, 1, n, c); got != base {
+			if got := PreviewFrameRepeated(base, "nod", float64(n)*.82+.01, 1, n, c); got != base {
 				t.Fatal("baseline not restored", got)
 			}
 		})
@@ -73,8 +73,8 @@ func TestShakeAndTiltUsePreparedRangeAndRestoreBaseline(t *testing.T) {
 	for _, n := range []int{1, 4, 8} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			for i := 0; i < n; i++ {
-				for _, side := range []struct{ phase, yaw float64 }{{.25, 2.85}, {.75, -2.85}} {
-					at := (float64(i) + side.phase) * .92
+				for _, side := range []struct{ phase, yaw float64 }{{.24, 2.85}, {.70, -2.85 * .82}} {
+					at := (float64(i) + side.phase) * 1.16
 					full := PreviewFrameRepeated(Frame{}, "shake", at, 1, n, c)
 					half := PreviewFrameRepeated(Frame{}, "shake", at, .5, n, c)
 					if math.Abs(full.Head.Yaw-side.yaw) > 1e-8 || math.Abs(half.Head.Yaw-side.yaw*.5) > 1e-8 {
@@ -83,7 +83,7 @@ func TestShakeAndTiltUsePreparedRangeAndRestoreBaseline(t *testing.T) {
 				}
 			}
 			base := Frame{Head: Head{Yaw: .3}, Smile: .7}
-			if got := PreviewFrameRepeated(base, "shake", float64(n)*.92+.01, 1, n, c); got != base {
+			if got := PreviewFrameRepeated(base, "shake", float64(n)*1.16+.01, 1, n, c); got != base {
 				t.Fatal("baseline did not return", got)
 			}
 		})

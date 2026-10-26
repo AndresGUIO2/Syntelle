@@ -62,6 +62,15 @@ type commandResult struct {
 }
 
 type streamSession struct {
+	emotionInstance         string
+	retiredEmotionInstances []string
+
+	emotionPolicyRevision       uint64
+	lastEmotionDecisionSequence uint64
+
+	lastEmotionTurn          string
+	lastEmotionPhrase        int
+	lastEmotionGeneration    uint64
 	id, cid                  string
 	principal                accounts.Principal
 	settings                 accounts.Settings

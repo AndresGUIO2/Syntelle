@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syntelle/render-contract"
 )
 
 type Rect struct{ X, Y, Width, Height int }
@@ -54,7 +55,30 @@ type Motion struct {
 		Curves             [][]float64
 	}
 }
+type EmotionRig struct {
+	EyelidTension []float64 `json:"eyelid_tension"`
+	EditCoverage  string    `json:"edit_coverage"`
+	Oral          *struct {
+		Version    string
+		States     map[string]map[string]JointPair
+		Triangles  map[string][][3]int
+		Validation struct{ Valid bool }
+	} `json:"oral"`
+	InverseIterations int `json:"inverse_iterations"`
+	Version           string
+	SourceSHA         string `json:"source_sha256"`
+	MotionBuild       string `json:"motion_build_id"`
+	OralBuild         string `json:"oral_build_id"`
+	Crop              Rect
+	Units             float64 `json:"units_per_byte"`
+	Field             struct{ File, SHA256 string }
+	FieldSize         [2]int `json:"field_size"`
+	States            []string
+	Validation        struct{ Valid bool }
+}
+
 type Expression struct {
+	EmotionRig  *EmotionRig `json:"emotion_rig"`
 	Version     string
 	SourceSHA   string `json:"source_sha256"`
 	MotionBuild string `json:"motion_build_id"`
@@ -129,6 +153,7 @@ type Assets struct {
 	Motion                                         Motion
 	MotionJSON, OralJSON, GazeJSON, ExpressionJSON json.RawMessage
 	Foreground, ExpressionField, SmileMaterial     *Texture
+	EmotionField                                   *Texture
 	Expression                                     Expression
 	SkinFrames                                     []*Texture
 	LaughFrames                                    []*Texture
@@ -284,6 +309,72 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 		a.ExpressionField, err = load("expressions/" + a.Expression.Field.File)
 		if err != nil {
 			return nil, err
+		}
+		if rig := a.Expression.EmotionRig; rig != nil {
+			if rig.EyelidTension != nil {
+				if len(rig.EyelidTension) != 10 || rig.EyelidTension[0] != 0 {
+					return nil, errors.New("invalid emotional eyelid calibration")
+				}
+				for _, value := range rig.EyelidTension {
+					if !patchFinite(value) || value < 0 || value > .4 {
+						return nil, errors.New("emotional eyelid calibration exceeds prepared range")
+					}
+				}
+			}
+			if rig.EditCoverage != "" && rig.EditCoverage != "deformed-oral-coverage/1" {
+				return nil, errors.New("unsupported emotional edit coverage")
+			}
+			if rig.InverseIterations < 5 || rig.InverseIterations > 16 || rig.Version != "emotion-rig/1" || !rig.Validation.Valid || rig.SourceSHA != a.Motion.OriginalSHA || rig.MotionBuild != a.Motion.BuildID || rig.OralBuild != a.Motion.OralBuildID || !validRect(rig.Crop) || !patchFinite(rig.Units) || rig.Units <= 0 || len(rig.States) != 10 {
+				return nil, errors.New("invalid source-bound emotion rig")
+			}
+			if rig.Oral != nil {
+				if rig.Oral.Version != "joint-emotion-articulation/1" || !rig.Oral.Validation.Valid {
+					return nil, errors.New("invalid emotional articulation")
+				}
+				for name, triangles := range rig.Oral.Triangles {
+					pair, ok := a.Oral.pairs[name]
+					if !ok || !pair.Safe || pair.Mesh == nil || len(triangles) == 0 {
+						return nil, errors.New("emotion topology binding mismatch")
+					}
+					for _, triangle := range triangles {
+						for _, index := range triangle {
+							if index < 0 || index >= len(pair.Mesh.Rest) {
+								return nil, errors.New("emotion triangle index exceeds geometry")
+							}
+						}
+					}
+				}
+				for state, pairs := range rig.Oral.States {
+					if rendercontract.EmotionIndex(state) <= 0 {
+						return nil, errors.New("unknown emotional lip action")
+					}
+					for name, delta := range pairs {
+						pair, ok := a.Oral.pairs[name]
+						if !ok || !pair.Safe || pair.Mesh == nil || len(rig.Oral.Triangles[name]) == 0 || len(delta.RestDelta) != len(pair.Mesh.Rest) || len(delta.OpenDelta) != len(pair.Mesh.Open) {
+							return nil, errors.New("emotion lip geometry binding mismatch")
+						}
+						for _, points := range [][][2]float64{delta.RestDelta, delta.OpenDelta} {
+							for _, point := range points {
+								if !patchFinite(point[0]) || !patchFinite(point[1]) {
+									return nil, errors.New("non-finite emotional articulation")
+								}
+							}
+						}
+					}
+				}
+			}
+			for i, state := range rig.States {
+				if state != rendercontract.EmotionStates[i] {
+					return nil, errors.New("invalid emotion field ordering")
+				}
+			}
+			a.EmotionField, err = load("expressions/" + rig.Field.File)
+			if err != nil {
+				return nil, err
+			}
+			if a.EmotionField.Width != rig.FieldSize[0] || a.EmotionField.Height != rig.FieldSize[1]*10 {
+				return nil, errors.New("invalid emotion atlas dimensions")
+			}
 		}
 		if a.Expression.Smile != nil {
 			a.SmileMaterial, err = load("expressions/" + a.Expression.Smile.Material.File)

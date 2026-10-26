@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"syntelle/render-contract"
 )
 
 type Head struct {
@@ -21,23 +22,28 @@ type Mouth struct {
 	Amount float64 `json:"amount"`
 }
 type Frame struct {
-	Head       Head          `json:"head"`
-	Breath     float64       `json:"breath"`
-	Mouth      Mouth         `json:"mouth"`
-	EyeClosure float64       `json:"eye_closure"`
-	Gaze       [2][2]float64 `json:"gaze"`
-	Smile      float64       `json:"smile"`
-	Brows      float64       `json:"brows"`
-	Laugh      float64       `json:"laugh,omitempty"`
+	Emotion    rendercontract.EmotionWeights `json:"emotion,omitempty"`
+	Head       Head                          `json:"head"`
+	Breath     float64                       `json:"breath"`
+	Mouth      Mouth                         `json:"mouth"`
+	EyeClosure float64                       `json:"eye_closure"`
+	Gaze       [2][2]float64                 `json:"gaze"`
+	Smile      float64                       `json:"smile"`
+	Brows      float64                       `json:"brows"`
+	Laugh      float64                       `json:"laugh,omitempty"`
 }
 type Settings struct {
-	Movement             bool    `json:"movement"`
-	Blinking             bool    `json:"blinking"`
-	AutomaticExpressions bool    `json:"automatic_expressions"`
-	Smile                float64 `json:"smile"`
-	Brows                float64 `json:"brows"`
-	ReducedMotion        bool    `json:"reduced_motion"`
-	Paused               bool    `json:"paused"`
+	EmotionControl *EmotionSnapshot `json:"-"`
+	EmotionTime    float64          `json:"-"`
+
+	EmotionBaseline      rendercontract.EmotionBaseline `json:"emotion_baseline"`
+	Movement             bool                           `json:"movement"`
+	Blinking             bool                           `json:"blinking"`
+	AutomaticExpressions bool                           `json:"automatic_expressions"`
+	Smile                float64                        `json:"smile"`
+	Brows                float64                        `json:"brows"`
+	ReducedMotion        bool                           `json:"reduced_motion"`
+	Paused               bool                           `json:"paused"`
 }
 
 func DefaultSettings() Settings {
@@ -90,25 +96,27 @@ type GazeEye struct {
 	Bounds [2][2]float64 `json:"bounds_px"`
 }
 type Config struct {
-	MotionScale    float64
-	Expressive     bool
-	Seed           uint32
-	BlinkSeed      uint32
-	Blink          BlinkSettings
-	Behavior       Behavior
-	Breathing      *Breathing
-	Bounds         Bounds
-	FaceHeight     float64
-	BreathFraction float64
-	BreathPeriod   float64
-	Eyes           [2]GazeEye
-	Expressions    bool
-	SmileAvailable bool
-	SpeakingSmile  bool
-	LaughAvailable bool
-	ReferenceLaugh bool
-	Directed       bool
-	Conversational bool
+	EmotionRestOpening *[10]float64
+	Emotions           bool
+	MotionScale        float64
+	Expressive         bool
+	Seed               uint32
+	BlinkSeed          uint32
+	Blink              BlinkSettings
+	Behavior           Behavior
+	Breathing          *Breathing
+	Bounds             Bounds
+	FaceHeight         float64
+	BreathFraction     float64
+	BreathPeriod       float64
+	Eyes               [2]GazeEye
+	Expressions        bool
+	SmileAvailable     bool
+	SpeakingSmile      bool
+	LaughAvailable     bool
+	ReferenceLaugh     bool
+	Directed           bool
+	Conversational     bool
 }
 
 // Load reads the unmodified prepared JSON. LoadBundle also binds the oral seed.
@@ -133,6 +141,11 @@ func Load(motionJSON, gazeJSON, expressionJSON []byte) (Config, error) {
 		Eyes []GazeEye `json:"eyes"`
 	}
 	var ex struct {
+		EmotionRig *struct {
+			RestOpening []float64 `json:"rest_opening"`
+			Version     string
+			Validation  struct{ Valid bool }
+		} `json:"emotion_rig"`
 		Smile     json.RawMessage `json:"smile"`
 		Reference *struct {
 			Version     string
@@ -163,6 +176,20 @@ func Load(motionJSON, gazeJSON, expressionJSON []byte) (Config, error) {
 	c := Config{Seed: m.Seed, BlinkSeed: m.Seed, Blink: m.Blink, Behavior: m.Behavior, Breathing: m.Breathing, Bounds: m.Projection.Bounds, FaceHeight: m.Anatomy.FaceHeight, BreathFraction: m.Motion.Fraction, BreathPeriod: m.Motion.Period, Expressions: len(expressionJSON) > 0, SmileAvailable: len(ex.Smile) > 0 && string(ex.Smile) != "null", Directed: true, Conversational: true}
 	copy(c.Eyes[:], g.Eyes)
 	c.SpeakingSmile = ex.Joint != nil && ex.Joint.Version == "joint-expression-articulation/1" && ex.Joint.Validation.Valid
+	c.Emotions = ex.EmotionRig != nil && ex.EmotionRig.Version == "emotion-rig/1" && ex.EmotionRig.Validation.Valid
+	if c.Emotions && ex.EmotionRig.RestOpening != nil {
+		if len(ex.EmotionRig.RestOpening) != 10 {
+			return Config{}, errors.New("invalid emotional rest opening length")
+		}
+		for i, value := range ex.EmotionRig.RestOpening {
+			if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > .4 || (i == 0 && value != 0) {
+				return Config{}, errors.New("invalid emotional rest opening")
+			}
+		}
+		opening := [10]float64{}
+		copy(opening[:], ex.EmotionRig.RestOpening)
+		c.EmotionRestOpening = &opening
+	}
 	c.Expressive = c.SpeakingSmile
 	c.LaughAvailable = c.SpeakingSmile && ex.Joint.LaughterReady
 	c.ReferenceLaugh = ex.Reference != nil && ex.Reference.Version == "reference-laughter/1" && ex.Reference.Validation.Valid

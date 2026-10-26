@@ -1,6 +1,9 @@
 package nativeanimation
 
-import "math"
+import (
+	"math"
+	"syntelle/render-contract"
+)
 
 type expression struct{ Smile, Brows float64 }
 type expressionCue struct{ time, duration, smile, brows float64 }
@@ -67,6 +70,8 @@ func expressionCueAt(cues []expressionCue, position float64) expression {
 }
 
 type expressionDirector struct {
+	naturalBrows                          bool
+	browMotion                            browMotion
 	v2Seen                                bool
 	cachedPlan                            *Plan
 	cues                                  []expressionCue
@@ -142,7 +147,8 @@ func (d *expressionDirector) sample(ms float64, manual expression, automatic, re
 	}
 	result := expression{1 - (1-d.manualCurrent.Smile)*(1-autoSmile), 1 - (1-d.manualCurrent.Brows)*(1-d.previousAuto.Brows)}
 	if plan != nil && plan.Performance != nil && plan.Performance.Intent != nil {
-		d.v2Seen = plan.Performance.Intent.Version == "performance-intent/2"
+		d.v2Seen = rendercontract.DirectedPerformance(plan.Performance.Intent.Version)
+		d.naturalBrows = plan.Performance.Intent.Version == "performance-intent/3"
 	}
 	if d.v2Seen {
 		target := d.manualCurrent
@@ -156,6 +162,9 @@ func (d *expressionDirector) sample(ms float64, manual expression, automatic, re
 					continue
 				}
 				weight := ease(phase/.25) * (1 - ease((phase-.65)/.35))
+				if d.naturalBrows && (cue.Kind == "brows" || cue.Kind == "emphasis") {
+					weight = ease(phase/.28) * (1 - ease((phase-.42)/.58))
+				}
 				if cue.Kind == "brows" || cue.Kind == "emphasis" {
 					amount := *cue.Amount
 					if cue.Kind == "emphasis" {
@@ -180,6 +189,12 @@ func (d *expressionDirector) sample(ms float64, manual expression, automatic, re
 		}
 		d.v2Current = expression{blend(d.v2Current.Smile, target.Smile, weight), blend(d.v2Current.Brows, target.Brows, weight)}
 		result = d.v2Current
+		if d.naturalBrows {
+			// An analytic audio-clock envelope already supplies smooth motion;
+			// filtering it a second time delays the visible speech accent.
+			result.Brows = d.browMotion.sample(ms, target.Brows, active, speech.Session, reduced || instantManual)
+			d.v2Current.Brows = result.Brows
+		}
 	}
 	return result
 }

@@ -16,10 +16,11 @@ import (
 // PerformanceIntent is an internal direction language, never a renderer command.
 // An anchor must identify exactly one verbatim span of the spoken text.
 type PerformanceIntent struct {
-	Version string           `json:"version"`
-	Text    string           `json:"text"`
-	Tone    string           `json:"tone"`
-	Cues    []PerformanceCue `json:"cues"`
+	Emotion *rendercontract.EmotionTarget `json:"emotion,omitempty"`
+	Version string                        `json:"version"`
+	Text    string                        `json:"text"`
+	Tone    string                        `json:"tone"`
+	Cues    []PerformanceCue              `json:"cues"`
 }
 type PerformanceCue struct {
 	Kind        string   `json:"kind"`
@@ -63,6 +64,9 @@ func ResolvePerformance(v PerformanceValidation, wav []byte, duration float64) P
 }
 func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64) PerformanceValidation {
 	v.Timing = "audio-energy/1-approximate-text-spans"
+	if v.Intent.Version == "performance-intent/3" {
+		v.Timing = "audio-energy/2-approximate-gesture-peaks"
+	}
 	v.Resolved = []ResolvedCue{}
 	if len(wav) < 44 || string(wav[:4]) != "RIFF" || string(wav[8:12]) != "WAVE" || duration <= 0 {
 		v.Omitted = append(v.Omitted, "audio_unavailable")
@@ -146,7 +150,7 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 		}
 		repeats := rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)
 		length := .85
-		if cue.Kind == "nod" && v.Intent.Version == "performance-intent/2" {
+		if cue.Kind == "nod" && rendercontract.DirectedPerformance(v.Intent.Version) {
 			length = rendercontract.NodCycleSeconds * float64(repeats)
 		}
 		if cue.Kind == "double_nod" {
@@ -161,11 +165,25 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 		}
 		if cue.Kind == "shake" {
 			length = 1.25
-			if v.Intent.Version == "performance-intent/2" && cue.Repetitions != nil {
+			if rendercontract.DirectedPerformance(v.Intent.Version) && cue.Repetitions != nil {
 				length = rendercontract.ShakeCycleSeconds * float64(repeats)
 			}
 		}
-		time = math.Max(.15, math.Min(time-.15, duration-length))
+		lead, minimum := .15, .15
+		if v.Intent.Version == "performance-intent/3" {
+			switch cue.Kind {
+			case "nod", "double_nod":
+				length = rendercontract.NaturalNodCycleSeconds * float64(repeats)
+			case "shake":
+				length = rendercontract.NaturalShakeCycleSeconds * float64(repeats)
+			case "brows":
+				length = .95
+			case "emphasis":
+				length = .72
+			}
+			lead, minimum = rendercontract.NaturalGestureLead(cue.Kind, length), 0
+		}
+		time = math.Max(minimum, math.Min(time-lead, duration-length))
 		if (headCue(cue.Kind) && (heads+repeats > 8 || time-last < 2.2 || time < end)) || duration-time < length {
 			v.Omitted = append(v.Omitted, "gesture_spacing")
 			continue
@@ -177,7 +195,7 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			heads += repeats
 		}
 	}
-	if v.Intent.Version == "performance-intent/2" {
+	if rendercontract.DirectedPerformance(v.Intent.Version) {
 		v = acoustic.supplement(v, boundaries, energy, peak, duration, offset)
 	}
 	return v
@@ -185,8 +203,8 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 
 // ValidatePerformance drops bad optional metadata; valid text always survives.
 func ValidatePerformance(intent PerformanceIntent, spoken string) PerformanceValidation {
-	result := PerformanceValidation{Intent: PerformanceIntent{Version: intent.Version, Text: spoken, Tone: intent.Tone, Cues: []PerformanceCue{}}, Omitted: []string{}}
-	if intent.Version != "performance-intent/1" && intent.Version != "performance-intent/2" {
+	result := PerformanceValidation{Intent: PerformanceIntent{Version: intent.Version, Text: spoken, Tone: intent.Tone, Emotion: validEmotion(intent.Emotion), Cues: []PerformanceCue{}}, Omitted: []string{}}
+	if intent.Version != "performance-intent/1" && !rendercontract.DirectedPerformance(intent.Version) {
 		result.Omitted = append(result.Omitted, "unsupported_version")
 		return result
 	}
@@ -202,7 +220,7 @@ func ValidatePerformance(intent PerformanceIntent, spoken string) PerformanceVal
 			result.Omitted = append(result.Omitted, "invalid_anchor")
 			continue
 		}
-		if intent.Version == "performance-intent/2" && (cue.Amount == nil || math.IsNaN(*cue.Amount) || math.IsInf(*cue.Amount, 0) || *cue.Amount < 0 || *cue.Amount > 1) {
+		if rendercontract.DirectedPerformance(intent.Version) && (cue.Amount == nil || math.IsNaN(*cue.Amount) || math.IsInf(*cue.Amount, 0) || *cue.Amount < 0 || *cue.Amount > 1) {
 			result.Omitted = append(result.Omitted, "invalid_amount")
 			continue
 		}

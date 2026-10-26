@@ -139,8 +139,9 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 		return errors.New("native media capacity is unavailable")
 	}
 	input := struct {
-		Settings    rendercontract.Settings `json:"settings"`
-		PackageHash string                  `json:"package_hash"`
+		Settings       rendercontract.Settings `json:"settings"`
+		PackageHash    string                  `json:"package_hash"`
+		PolicyRevision uint64                  `json:"emotion_policy_revision"`
 	}{Settings: rendercontract.Defaults()}
 	if err := json.Unmarshal(command.Data, &input); err != nil {
 		return errors.New("invalid native media settings")
@@ -154,6 +155,10 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 	s, err := h.newSession(command.SessionID, input.Settings)
 	if err != nil {
 		return err
+	}
+	s.policyRevision = input.PolicyRevision
+	if s.policyRevision == 0 {
+		s.policyRevision = 1
 	}
 	h.mu.Lock()
 	if h.closing || h.ctx.Err() != nil || ctx.Err() != nil {

@@ -6,10 +6,13 @@ import "math"
 // calls and supplies monotonic, pause-aware animation time. Audio position is
 // independently supplied from emitted PCM samples; no timer advances speech.
 type Engine struct {
+	hadEmotionControl bool
+
 	config      Config
 	attention   attentionDirector
 	blink       blinkClock
 	expressions expressionDirector
+	emotions    emotionDirector
 	last        Frame
 	lastMS      float64
 	initialized bool
@@ -58,6 +61,24 @@ func (e *Engine) Sample(animationMS float64, speech SpeechState, settings Settin
 		gaze = gazeOffsets(c.Eyes, a.Head, a.Glance)
 	}
 	closure := e.blink.sample(ms, speech, settings.Blinking && !settings.ReducedMotion)
+	if settings.EmotionControl != nil && settings.EmotionControl.Negative(settings.EmotionTime) {
+		// Gate only automatic positive facial cues. Manual values are still
+		// composed by the original expression path, including its speech limit.
+		if plan := speech.plan(); plan != nil && plan.Performance != nil {
+			copySpeech := *speech.Speech
+			copyPlan := *plan
+			copyPerformance := *plan.Performance
+			copyPerformance.Resolved = nil
+			for _, cue := range plan.Performance.Resolved {
+				if cue.Kind != "smile" && cue.Kind != "laugh" {
+					copyPerformance.Resolved = append(copyPerformance.Resolved, cue)
+				}
+			}
+			copyPlan.Performance = &copyPerformance
+			copySpeech.Plan = &copyPlan
+			speech.Speech = &copySpeech
+		}
+	}
 	busy := speech.Waiting && !c.SpeakingSmile || speech.Active && (speech.Speech == nil || speech.Position < speech.Speech.Duration)
 	if !busy {
 		closed := func(s string) bool { return s == "Rest" || s == "MBP" }
@@ -65,7 +86,7 @@ func (e *Engine) Sample(animationMS float64, speech SpeechState, settings Settin
 	}
 	ex := expression{}
 	if c.Expressions {
-		ex = e.expressions.sample(ms, expression{settings.Smile, settings.Brows}, settings.AutomaticExpressions && !settings.ReducedMotion, false, speech, settings.Paused, busy, c)
+		ex = e.expressions.sample(ms, expression{settings.Smile, settings.Brows}, settings.AutomaticExpressions && !settings.ReducedMotion, settings.ReducedMotion, speech, settings.Paused, busy, c)
 	}
 	if busy && !c.SpeakingSmile {
 		ex.Smile = 0
@@ -105,6 +126,54 @@ func (e *Engine) Sample(animationMS float64, speech SpeechState, settings Settin
 	}
 	out := Frame{Head: a.Head, Breath: breath, Mouth: mouth, EyeClosure: closure, Gaze: gaze, Smile: ex.Smile, Brows: ex.Brows}
 	out.Laugh = laugh
+	if e.hadEmotionControl && settings.EmotionControl == nil {
+		base := baseTarget(settings.EmotionBaseline)
+		w := emotionWeights(base)
+		e.emotions = emotionDirector{initialized: true, baseline: settings.EmotionBaseline.Normalized(), current: w, from: w, target: w, energy: .5, energyFrom: .5, energyTarget: .5, duration: 500, at: ms}
+	}
+	e.hadEmotionControl = settings.EmotionControl != nil
+	if c.Emotions {
+		if settings.EmotionControl != nil {
+			out.Emotion, e.emotions.energy = settings.EmotionControl.Sample(settings.EmotionTime)
+		} else {
+			out.Emotion = e.emotions.sample(ms, speech, settings)
+		}
+		emotionStrength := 0.
+		for _, w := range out.Emotion {
+			emotionStrength += w
+		}
+		out.Brows *= 1 - .75*emotionStrength
+		if emotionStrength > 0 {
+			out.Smile = 1 - (1-out.Smile)*(1-emotionSmile(out.Emotion))
+		}
+		negative := 0.
+		for _, index := range []int{5, 6, 7, 8, 9} {
+			negative += out.Emotion[index]
+		}
+		out.Smile = math.Min(out.Smile, 1-.75*negative)
+		if !speech.Active && !speech.Waiting && out.Laugh == 0 {
+			opening := .4*out.Emotion[8] + .14*out.Emotion[7]
+			if c.EmotionRestOpening != nil {
+				opening = 0
+				for i, weight := range out.Emotion {
+					opening += weight * c.EmotionRestOpening[i]
+				}
+			}
+			if opening > 0 {
+				out.Mouth = Mouth{"Rest", "A", opening}
+			}
+		}
+		if moving {
+			strength := 0.
+			for _, w := range out.Emotion {
+				strength += w
+			}
+			gain := 1 + .3*(e.emotions.energy-.5)*strength
+			out.Head.Yaw = math.Max(-c.Bounds.Yaw, math.Min(c.Bounds.Yaw, out.Head.Yaw*gain))
+			out.Head.Pitch = math.Max(-c.Bounds.Pitch, math.Min(c.Bounds.Pitch, out.Head.Pitch*gain))
+			out.Head.Roll = math.Max(-c.Bounds.Roll, math.Min(c.Bounds.Roll, out.Head.Roll*gain))
+		}
+	}
 	e.last = out
 	e.lastMS = ms
 	e.initialized = true

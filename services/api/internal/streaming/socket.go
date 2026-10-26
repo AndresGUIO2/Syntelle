@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"syntelle/api/internal/httpapi"
+	"syntelle/render-contract"
 	"time"
 
 	"github.com/coder/websocket"
@@ -218,6 +219,36 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 				stop()
 			}
 			s.toPlayer(session, event)
+		case "emotion_decision":
+			var decision rendercontract.EmotionDecision
+			if json.Unmarshal(event.Data, &decision) != nil {
+				continue
+			}
+			s.mu.Lock()
+			valid := admitEmotionDecision(session, decision)
+			channel := session.channel
+			s.mu.Unlock()
+			if valid && channel != nil {
+				if err = channel.Send(p.ctx, conversation.Event{Type: "emotion_decision", ConversationID: session.cid, TurnID: decision.TurnID, EmotionDecision: &decision}); err != nil {
+					s.closeSession(session.id, "emotion state delivery failed")
+				}
+			}
+		case "emotion_activated":
+			var activation rendercontract.EmotionActivation
+			if json.Unmarshal(event.Data, &activation) != nil || !activation.Emotion.Valid() || activation.PhraseIndex < 0 || activation.PhraseIndex >= 32 {
+				continue
+			}
+			s.mu.Lock()
+			current := session.currentTurn
+			channel := session.channel
+			valid := admitEmotionActivation(session, activation)
+			s.mu.Unlock()
+			if !valid || channel == nil {
+				continue
+			}
+			if err = channel.Send(p.ctx, conversation.Event{Type: "emotion_activated", ConversationID: session.cid, TurnID: current, EmotionActivation: &activation}); err != nil {
+				s.closeSession(session.id, "emotion state delivery failed")
+			}
 		case "metrics":
 			archive, stop := context.WithTimeout(s.ctx, time.Second)
 			_ = s.store.metrics(archive, session.id, event.Data)

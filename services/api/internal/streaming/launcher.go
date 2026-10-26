@@ -76,7 +76,7 @@ func (s *Service) ensureWorker(ctx context.Context) error {
 	}
 }
 func (s *Service) deliverCreate(session *streamSession) bool {
-	return s.toWorker(envelope("create", session.id, map[string]any{"settings": session.settings, "package_hash": s.config.PackageHash, "width": 720, "height": 960, "fps": 30}))
+	return s.toWorker(envelope("create", session.id, map[string]any{"settings": session.settings, "emotion_policy_revision": session.emotionPolicyRevision, "package_hash": s.config.PackageHash, "width": 720, "height": 960, "fps": 30}))
 }
 func (s *Service) bootSession(parent context.Context, session *streamSession) {
 	defer s.wg.Done()

@@ -27,13 +27,15 @@ def field_from_image(image, scale):
     return (values-128)*scale
 
 
-def validate(field, crop):
+def validate(field, crop, *, inverse_iterations=None, brow_attenuation=0.):
     """Validate the actual quantized, bilinearly sampled field's local Jacobian."""
+    iterations = SETTINGS['inverse_iterations'] if inverse_iterations is None else inverse_iterations
     height, width = field.shape[:2]
     dx = crop['width']/width; dy = crop['height']/height
     minimum = 1.
     maximum_gradient = 0.
     for smile, brows in product(np.linspace(0, 1, 5), repeat=2):
+        brows *= 1-brow_attenuation*smile
         u = field[..., 0]*smile
         v = field[..., 1]*smile+field[..., 2]*brows
         ux = np.diff(u, axis=1)/dx; vx = np.diff(v, axis=1)/dx
@@ -47,10 +49,11 @@ def validate(field, crop):
     gy, gx = np.indices((height, width), np.float32)
     residual = 0.
     for smile, brows in ((1., 0.), (0., 1.), (1., 1.)):
+        brows *= 1-brow_attenuation*smile
         u = field[..., 0]*smile; v = field[..., 1]*smile+field[..., 2]*brows
         target_x = gx+u/dx; target_y = gy+v/dy
         source_x, source_y = target_x.copy(), target_y.copy()
-        for _ in range(SETTINGS['inverse_iterations']):
+        for _ in range(iterations):
             sampled = cv2.remap(field.astype(np.float32), source_x.astype(np.float32), source_y.astype(np.float32),
                                 cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
             source_x = target_x-sampled[..., 0]*smile/dx

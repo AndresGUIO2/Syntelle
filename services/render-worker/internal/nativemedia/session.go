@@ -2,6 +2,7 @@ package nativemedia
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,75 +22,83 @@ import (
 )
 
 type session struct {
-	previewKind        string
-	previewAmount      float64
-	previewRepetitions int
-	previewSequence    uint64
-	sendMu             sync.Mutex
-	frameMu            sync.Mutex
-	presentation       SpeechState
-	waiting            bool
-	videoPackets       rtp.Packetizer
-	audioPackets       rtp.Packetizer
-	videoBase          uint32
-	audioBase          uint32
-	id                 string
-	host               *Host
-	ctx                context.Context
-	cancel             context.CancelFunc
-	done               chan struct{}
-	wg                 sync.WaitGroup
-	mu                 sync.Mutex
-	settings           rendercontract.Settings
-	paused             bool
-	generation         uint64
-	revision           uint64
-	turn               string
-	ignored            map[string]bool
-	queue              []*clip
-	queuedBytes        int
-	preparationWake    chan struct{}
-	preparing          *preparationTask
-	nextIndex          int
-	complete           bool
-	playing            *clip
-	position           int
-	started            bool
-	mediaTime          time.Duration
-	lastTick           time.Time
-	lastRawTick        time.Duration
-	calibrationStart   time.Duration
-	calibrationEnd     time.Duration
-	created            time.Time
-	createdRaw         time.Duration
-	scene              Scene
-	frame              *image.RGBA
-	video              VideoEncoder
-	audio              AudioEncoder
-	peerMu             sync.Mutex
-	offerMu            sync.Mutex
-	peer               *webrtc.PeerConnection
-	videoTrack         *webrtc.TrackLocalStaticRTP
-	audioTrack         *webrtc.TrackLocalStaticRTP
-	candidates         []webrtc.ICECandidateInit
-	connected          atomic.Bool
-	keyframe           atomic.Bool
-	captured           atomic.Uint64
-	encoded            atomic.Uint64
-	audioFrames        atomic.Uint64
-	videoBytes         atomic.Uint64
-	audioBytes         atomic.Uint64
-	renderNS           atomic.Uint64
-	videoEncodeNS      atomic.Uint64
-	audioEncodeNS      atomic.Uint64
-	lateFrames         atomic.Uint64
-	deviceFrames       atomic.Uint64
-	repeatedVideoPTS   atomic.Uint64
+	emotionInstance string
+
+	emotionController nativeanimation.EmotionController
+	emotionClock      float64
+	emotionEpoch      uint64
+	policyRevision    uint64
+
+	emotionSuppressedTurn string
+	previewKind           string
+	previewAmount         float64
+	previewRepetitions    int
+	previewSequence       uint64
+	sendMu                sync.Mutex
+	frameMu               sync.Mutex
+	presentation          SpeechState
+	waiting               bool
+	videoPackets          rtp.Packetizer
+	audioPackets          rtp.Packetizer
+	videoBase             uint32
+	audioBase             uint32
+	id                    string
+	host                  *Host
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	done                  chan struct{}
+	wg                    sync.WaitGroup
+	mu                    sync.Mutex
+	settings              rendercontract.Settings
+	paused                bool
+	generation            uint64
+	revision              uint64
+	turn                  string
+	ignored               map[string]bool
+	queue                 []*clip
+	queuedBytes           int
+	preparationWake       chan struct{}
+	preparing             *preparationTask
+	nextIndex             int
+	complete              bool
+	playing               *clip
+	position              int
+	started               bool
+	mediaTime             time.Duration
+	lastTick              time.Time
+	lastRawTick           time.Duration
+	calibrationStart      time.Duration
+	calibrationEnd        time.Duration
+	created               time.Time
+	createdRaw            time.Duration
+	scene                 Scene
+	frame                 *image.RGBA
+	video                 VideoEncoder
+	audio                 AudioEncoder
+	peerMu                sync.Mutex
+	offerMu               sync.Mutex
+	peer                  *webrtc.PeerConnection
+	videoTrack            *webrtc.TrackLocalStaticRTP
+	audioTrack            *webrtc.TrackLocalStaticRTP
+	candidates            []webrtc.ICECandidateInit
+	connected             atomic.Bool
+	keyframe              atomic.Bool
+	captured              atomic.Uint64
+	encoded               atomic.Uint64
+	audioFrames           atomic.Uint64
+	videoBytes            atomic.Uint64
+	audioBytes            atomic.Uint64
+	renderNS              atomic.Uint64
+	videoEncodeNS         atomic.Uint64
+	audioEncodeNS         atomic.Uint64
+	lateFrames            atomic.Uint64
+	deviceFrames          atomic.Uint64
+	repeatedVideoPTS      atomic.Uint64
 }
 
 func (h *Host) newSession(id string, settings rendercontract.Settings) (*session, error) {
 	ctx, cancel := context.WithCancel(h.ctx)
-	s := &session{id: id, host: h, ctx: ctx, cancel: cancel, done: make(chan struct{}), settings: settings, ignored: map[string]bool{}, preparationWake: make(chan struct{}, 1), created: time.Now(), createdRaw: nativeclock.Now(), frame: image.NewRGBA(image.Rect(0, 0, h.config.Width, h.config.Height))}
+	s := &session{emotionInstance: rand.Text(), id: id, host: h, ctx: ctx, cancel: cancel, done: make(chan struct{}), settings: settings, ignored: map[string]bool{}, preparationWake: make(chan struct{}, 1), created: time.Now(), createdRaw: nativeclock.Now(), frame: image.NewRGBA(image.Rect(0, 0, h.config.Width, h.config.Height))}
 	var err error
 	s.scene, err = h.config.SceneFactory(settings)
 	if err == nil {
@@ -139,6 +148,8 @@ func (s *session) interrupt() {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
 	s.mu.Lock()
+	s.emotionController.End(s.emotionClock, true)
+	s.emotionEpoch++
 	s.rememberTurn()
 	s.previewKind = ""
 	s.waiting = false
@@ -163,7 +174,8 @@ func (s *session) configure(data json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var wrapped struct {
-		Settings json.RawMessage `json:"settings"`
+		Settings       json.RawMessage `json:"settings"`
+		PolicyRevision uint64          `json:"emotion_policy_revision"`
 	}
 	if err := json.Unmarshal(data, &wrapped); err != nil {
 		return errors.New("invalid native settings")
@@ -183,6 +195,17 @@ func (s *session) configure(data json.RawMessage) error {
 	}
 	if err := json.Unmarshal(data, &optional); err != nil {
 		return errors.New("invalid native pause setting")
+	}
+	if next.EmotionBaseline.Normalized() != s.settings.EmotionBaseline.Normalized() || next.EmotionRegulation.Normalized() != s.settings.EmotionRegulation.Normalized() {
+		s.emotionSuppressedTurn = s.turn
+	}
+	if next.EmotionBaseline.Normalized() != s.settings.EmotionBaseline.Normalized() || next.EmotionRegulation.Normalized() != s.settings.EmotionRegulation.Normalized() || next.AutomaticExpressions != s.settings.AutomaticExpressions || next.ReducedMotion != s.settings.ReducedMotion {
+		s.emotionEpoch++
+		if wrapped.PolicyRevision > 0 {
+			s.policyRevision = wrapped.PolicyRevision
+		} else {
+			s.policyRevision++
+		}
 	}
 	s.settings = next
 	if optional.Paused != nil {
@@ -298,6 +321,7 @@ func (s *session) conversation(raw json.RawMessage) error {
 	if index != s.nextIndex || parts >= maxQueuedParts || s.queuedBytes+len(decoded.samples)*2 > maxQueuedPCMBytes {
 		return errors.New("speech queue capacity or ordering exceeded")
 	}
+	decoded.phraseIndex = index
 	_, decoded.needsPreparation = s.scene.(SpeechPreparer)
 	s.queue = append(s.queue, decoded)
 	s.queuedBytes += len(decoded.samples) * 2
@@ -324,7 +348,19 @@ func (s *session) frameInput() FrameInput {
 	if state.Active && !s.paused && !s.lastTick.IsZero() {
 		state.Position = min(state.Duration, state.Position+s.tickElapsedLocked())
 	}
-	return FrameInput{PreviewKind: s.previewKind, PreviewAmount: s.previewAmount, PreviewRepetitions: s.previewRepetitions, PreviewSequence: s.previewSequence, MediaTime: mediaTime, Generation: s.generation, Settings: s.settings, Paused: s.paused, Speech: state}
+	var controlled *nativeanimation.EmotionSnapshot
+	clock := s.emotionClock
+	if !s.paused {
+		clock += float64(s.tickElapsedLocked()) / float64(time.Millisecond)
+	}
+	capability, available := s.scene.(interface{ EmotionsAvailable() bool })
+	if available && capability.EmotionsAvailable() && !state.Preview && (s.settings.EmotionRegulation.Normalized().Enabled || s.emotionController.Controlled(state.TurnID)) {
+		copyController := s.emotionController
+		copyController.Configure(clock, s.settings, state.TurnID)
+		value := copyController.Motion
+		controlled = &value
+	}
+	return FrameInput{EmotionControl: controlled, EmotionTime: clock, PreviewKind: s.previewKind, PreviewAmount: s.previewAmount, PreviewRepetitions: s.previewRepetitions, PreviewSequence: s.previewSequence, MediaTime: mediaTime, Generation: s.generation, Settings: s.settings, Paused: s.paused, Speech: state}
 }
 
 func (s *session) videoLoop() {
@@ -480,6 +516,17 @@ func (s *session) audioLoop() {
 			if !sent {
 				continue
 			}
+			for _, decision := range s.commitEmotions(block, true) {
+				s.host.emit(event("emotion_decision", s.id, decision.TurnID, decision))
+			}
+			for _, activation := range block.activations {
+				s.mu.Lock()
+				valid := activation.Generation == s.generation && s.emotionSuppressedTurn != activation.TurnID && activation.Baseline == s.settings.EmotionBaseline.Normalized() && !s.settings.EmotionRegulation.Normalized().Enabled
+				s.mu.Unlock()
+				if valid {
+					s.host.emit(event("emotion_activated", s.id, activation.TurnID, activation))
+				}
+			}
 			s.audioFrames.Add(1)
 		}
 	}
@@ -519,14 +566,21 @@ func (s *session) rendererBackend() string {
 
 type playbackNotification struct{ kind, turn string }
 type audioBlock struct {
-	generation uint64
-	pts        time.Duration
-	events     []playbackNotification
+	controller nativeanimation.EmotionController
+	clock      float64
+	epoch      uint64
+	policy     bool
+	decisions  []rendercontract.EmotionDecision
+
+	activations []rendercontract.EmotionActivation
+	generation  uint64
+	pts         time.Duration
+	events      []playbackNotification
 }
 
 // Adjacent prepared phrases fill the same Opus block without adding per-phrase
 // silence. Only the final utterance tail is zero padded to the codec frame size.
-func (s *session) nextAudioBlock(now time.Time, pcm []int16) audioBlock {
+func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	clear(pcm)
@@ -535,7 +589,28 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) audioBlock {
 	if s.createdRaw != 0 {
 		s.lastRawTick = nativeclock.Now()
 	}
-	block := audioBlock{generation: s.generation, pts: s.mediaTime}
+	block = audioBlock{generation: s.generation, pts: s.mediaTime, epoch: s.emotionEpoch, clock: s.emotionClock}
+	capability, emotional := s.scene.(interface{ EmotionsAvailable() bool })
+	block.policy = emotional && capability.EmotionsAvailable()
+	block.controller = s.emotionController
+	if s.policyRevision == 0 {
+		s.policyRevision = 1
+	}
+	if !s.paused {
+		block.clock += 20
+	}
+	if block.policy && block.controller.Configure(block.clock, s.settings, s.turn) {
+		block.decisions = append(block.decisions, block.controller.Evidence(nil, "configuration", "", -1, s.generation))
+	}
+	defer func() {
+		if block.policy && block.controller.Advance(block.clock, s.turn != "" && (s.started || !s.complete)) {
+			block.decisions = append(block.decisions, block.controller.Evidence(nil, "clock_transition", "", -1, s.generation))
+		}
+		for i := range block.decisions {
+			block.decisions[i].PolicyRevision = s.policyRevision
+			block.decisions[i].Instance = s.emotionInstance
+		}
+	}()
 	if s.paused {
 		return block
 	}
@@ -553,6 +628,10 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) audioBlock {
 			if len(s.queue) == 0 {
 				if filled == 0 && s.started {
 					if s.complete {
+						if block.policy && block.controller.HasPlayedProposal(s.turn) {
+							block.controller.End(block.clock, false)
+							block.decisions = append(block.decisions, block.controller.Evidence(nil, "reply_ended", s.turn, -1, s.generation))
+						}
 						block.events = append(block.events, playbackNotification{"playback_ended", s.turn})
 						s.rememberTurn()
 						s.started = false
@@ -572,6 +651,16 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) audioBlock {
 			s.waiting = false
 			s.revision++
 			block.events = append(block.events, playbackNotification{"playback_started", s.turn})
+			if emotional && capability.EmotionsAvailable() && !s.playing.preview && s.playing.prepared != nil {
+				p := s.playing.prepared.Performance
+				if p != nil && p.Intent != nil && p.Intent.Version == "performance-intent/3" {
+					if s.settings.EmotionRegulation.Normalized().Enabled || block.controller.Controlled(s.turn) {
+						block.decisions = append(block.decisions, block.controller.Propose(block.clock, p.Intent.Emotion, s.turn, s.playing.phraseIndex, s.generation))
+					} else if s.settings.AutomaticExpressions && !s.settings.ReducedMotion && s.emotionSuppressedTurn != s.turn && p.Intent.Emotion != nil && p.Intent.Emotion.Valid() {
+						block.activations = append(block.activations, rendercontract.EmotionActivation{TurnID: s.turn, PhraseIndex: s.playing.phraseIndex, Generation: s.generation, Emotion: *p.Intent.Emotion, Baseline: s.settings.EmotionBaseline.Normalized()})
+					}
+				}
+			}
 		}
 		if filled == 0 {
 			s.presentation = s.clipState(s.playing, s.position)

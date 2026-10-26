@@ -7,29 +7,38 @@ import (
 )
 
 type Settings struct {
-	Character            string  `json:"character"`
-	Instructions         string  `json:"instructions"`
-	Language             string  `json:"language"`
-	Voice                string  `json:"voice"`
-	Background           string  `json:"background"`
-	Blur                 float64 `json:"blur"`
-	Blinking             bool    `json:"blinking"`
-	Movement             bool    `json:"movement"`
-	AutomaticExpressions bool    `json:"automatic_expressions"`
-	Smile                float64 `json:"smile"`
-	Brows                float64 `json:"brows"`
-	ReducedMotion        bool    `json:"reduced_motion,omitempty"`
+	EmotionBaseline      EmotionBaseline   `json:"emotion_baseline"`
+	EmotionRegulation    EmotionRegulation `json:"emotion_regulation"`
+	Character            string            `json:"character"`
+	Instructions         string            `json:"instructions"`
+	Language             string            `json:"language"`
+	Voice                string            `json:"voice"`
+	Background           string            `json:"background"`
+	Blur                 float64           `json:"blur"`
+	Blinking             bool              `json:"blinking"`
+	Movement             bool              `json:"movement"`
+	AutomaticExpressions bool              `json:"automatic_expressions"`
+	Smile                float64           `json:"smile"`
+	Brows                float64           `json:"brows"`
+	ReducedMotion        bool              `json:"reduced_motion,omitempty"`
 }
 
 func Defaults() Settings {
 	return Settings{
-		Character: "syntelle", Language: "en-US", Voice: "en-US-Ava:DragonHDLatestNeural",
+		EmotionBaseline: EmotionBaseline{State: "neutral"},
+		Character:       "syntelle", Language: "en-US", Voice: "en-US-Ava:DragonHDLatestNeural",
 		Background: "light-studio", Blinking: true, Movement: true, AutomaticExpressions: true,
 		Instructions: "Be a clear, friendly assistant. Match the depth and length to the question, and explain fully when asked. Do not invent company knowledge.",
 	}
 }
 
 func (s Settings) Validate() error {
+	if !s.EmotionBaseline.Valid() {
+		return errors.New("choose a supported emotion and intensity")
+	}
+	if !s.EmotionRegulation.Valid() {
+		return errors.New("choose a supported temperament")
+	}
 	if s.Character != "syntelle" || (s.Language != "en-US" && s.Language != "es-CO") {
 		return errors.New("choose Syntelle and a supported language")
 	}
