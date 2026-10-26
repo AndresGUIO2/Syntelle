@@ -106,7 +106,7 @@ func timeline(ctx context.Context, events []NativeViseme, durationMS float64) ([
 				return nil, err
 			}
 		}
-		if event.ID < 0 || event.ID >= len(azurePoses) || math.IsNaN(event.OffsetMS) || math.IsInf(event.OffsetMS, 0) || event.OffsetMS < previous || event.OffsetMS > durationMS+100 {
+		if event.ID < 0 || event.ID >= len(azurePoses) || math.IsNaN(event.OffsetMS) || math.IsInf(event.OffsetMS, 0) || event.OffsetMS < previous || event.OffsetMS > durationMS+rendercontract.MaxNativeVisemeTailMS {
 			return nil, errors.New("invalid native Azure viseme timeline")
 		}
 		previous = event.OffsetMS

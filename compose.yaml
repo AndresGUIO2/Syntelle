@@ -34,6 +34,9 @@ services:
         condition: service_started
   api:
     logging: *local-logging
+    # Docker's host DNS returned REFUSED for Azure Speech; retain internal
+    # service resolution while using working external resolvers locally.
+    dns: [1.1.1.1, 8.8.8.8]
     build:
       context: .
       dockerfile: services/api/Dockerfile

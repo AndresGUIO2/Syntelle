@@ -13,13 +13,23 @@ import (
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/speech"
 )
 
-type azureSpeechProvider struct{ key, region string }
+type azureSpeechProvider struct {
+	key, region string
+	synthesis   sync.Mutex
+}
 
 func NewAzureProvider(key, region string) (Provider, error) {
-	return &azureSpeechProvider{key, region}, nil
+	return &azureSpeechProvider{key: key, region: region}, nil
 }
 func (p *azureSpeechProvider) Synthesize(ctx context.Context, input Input) (Result, error) {
 	result := Result{Mime: "audio/wav", Voice: input.Voice, Language: input.Language, SDKVersion: speechSDKVersion}
+	// HD synthesis can reject bursts even when the resource's published TPS
+	// allowance is higher. One API replica admits one paid call at a time.
+	p.synthesis.Lock()
+	defer p.synthesis.Unlock()
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	config, err := speech.NewSpeechConfigFromSubscription(p.key, p.region)
 	if err != nil {
 		return result, errors.New("Azure Speech configuration failed.")
@@ -59,6 +69,12 @@ func (p *azureSpeechProvider) Synthesize(ctx context.Context, input Input) (Resu
 		result.DurationMS = float64(outcome.Result.AudioDuration) / float64(time.Millisecond)
 		result.ProviderResultID = outcome.Result.ResultID
 		result.ProviderStatus = outcome.Result.Reason.String()
+		if outcome.Result.Reason != common.SynthesizingAudioCompleted {
+			if details, detailErr := speech.NewCancellationDetailsFromSpeechSynthesisResult(outcome.Result); detailErr == nil {
+				// SDK enum only: never retain provider details, text, or credentials.
+				result.ProviderStatus += "/" + details.ErrorCode.String()
+			}
+		}
 	}
 	lock.Lock()
 	result.Visemes = append([]Viseme(nil), events...)

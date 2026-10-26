@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"syntelle/api/internal/httpapi"
+	"syntelle/render-contract"
 	"time"
 	"unicode/utf16"
 )
@@ -48,6 +49,9 @@ type Result struct {
 	ProviderStatus   string         `json:"provider_status"`
 	Cached           bool           `json:"cached"`
 }
+
+const maxVisemeTailMS = rendercontract.MaxNativeVisemeTailMS
+
 type Provider interface {
 	Synthesize(context.Context, Input) (Result, error)
 }
@@ -85,7 +89,7 @@ func validateSpeechResult(result Result) error {
 	previous := -1.
 	spoken := false
 	for _, event := range result.Visemes {
-		if event.ID > 21 || event.OffsetMS < previous || event.OffsetMS < 0 || event.OffsetMS > result.DurationMS+100 {
+		if event.ID > 21 || event.OffsetMS < previous || event.OffsetMS < 0 || event.OffsetMS > result.DurationMS+maxVisemeTailMS {
 			return errors.New("Invalid native viseme timeline.")
 		}
 		previous = event.OffsetMS
@@ -183,7 +187,13 @@ func (service *Service) synthesizeBounded(ctx context.Context, input Input, limi
 		if cancelled {
 			message = "Speech request cancelled."
 		}
-		if e := service.ledger.Finish(context.WithoutCancel(ctx), id, &result, message, !cancelled); e != nil {
+		diagnostic := message
+		if result.ProviderStatus != "" {
+			diagnostic += " Provider status: " + result.ProviderStatus
+		} else if errors.Is(err, context.DeadlineExceeded) {
+			diagnostic += " Provider deadline exceeded."
+		}
+		if e := service.ledger.Finish(context.WithoutCancel(ctx), id, &result, diagnostic, !cancelled); e != nil {
 			return result, &speechFailure{503, "speech_archive_failed", "Speech evidence could not be committed."}
 		}
 		return result, &speechFailure{502, "speech_failed", message}

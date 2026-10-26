@@ -7,10 +7,11 @@ import (
 
 // Azure's 700 ms segmentation boundary is not the end of a conversational turn.
 // Allow another short pause after a final segment; interim speech suspends it.
-const utterancePause = 1100 * time.Millisecond
+const utterancePause = 1800 * time.Millisecond
 
-// A new SDK speech-start/interim event may never be followed by a result or
-// no-match callback. Do not leave an already confirmed phrase pending forever.
+// Speech-start and nonempty interim callbacks refresh this idle watchdog. If
+// recognition stops producing callbacks, do not leave confirmed text pending
+// forever; while callbacks continue, do not flush a phrase mid-continuation.
 const utteranceMaximumHold = 4 * time.Second
 
 // Owned exclusively by the socket event loop. Raw SDK results remain archived

@@ -3,7 +3,41 @@ package nativemedia
 import (
 	"encoding/binary"
 	"testing"
+
+	"syntelle/render-worker/internal/nativeanimation"
 )
+
+func TestVisemeTailAdmissionAgreesWithAnimation(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		tail  float64
+		valid bool
+	}{{"recorded 110 ms tail", 110, true}, {"maximum tail", 250, true}, {"beyond bound", 251, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := []Viseme{{ID: 1}, {ID: 0, OffsetMS: 1000 + tc.tail}}
+			clip, err := decodeClip(preparedSpeech{Audio: testWAV(sampleRate), DurationMS: 1000, Visemes: events}, "cached fixture")
+			if (err == nil) != tc.valid {
+				t.Fatalf("media admission: %v", err)
+			}
+			if !tc.valid {
+				return
+			}
+			if clip.visemes[1].OffsetMS != events[1].OffsetMS {
+				t.Fatal("provider event was altered")
+			}
+			derived, err := nativeanimation.Timeline([]nativeanimation.NativeViseme{{ID: 1}, {ID: 0, OffsetMS: events[1].OffsetMS}}, 1000)
+			if err != nil {
+				t.Fatal("animation disagrees with audio admission:", err)
+			}
+			for _, event := range derived {
+				if event.Time > 1 {
+					t.Fatal("derived timeline escaped PCM:", event)
+				}
+			}
+		})
+	}
+}
 
 func testWAV(samples int) []byte {
 	wav := make([]byte, 44+samples*2)

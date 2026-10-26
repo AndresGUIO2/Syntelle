@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"syntelle/render-contract"
 	"syntelle/render-worker/internal/nativeanimation"
 )
 
@@ -55,7 +56,7 @@ func decodeClip(prepared preparedSpeech, text string) (*clip, error) {
 	}
 	previous := -1.0
 	for _, v := range prepared.Visemes {
-		if v.ID < 0 || v.ID > 21 || math.IsNaN(v.OffsetMS) || math.IsInf(v.OffsetMS, 0) || v.OffsetMS < 0 || v.OffsetMS < previous || v.OffsetMS > prepared.DurationMS+100 {
+		if v.ID < 0 || v.ID > 21 || math.IsNaN(v.OffsetMS) || math.IsInf(v.OffsetMS, 0) || v.OffsetMS < 0 || v.OffsetMS < previous || v.OffsetMS > prepared.DurationMS+rendercontract.MaxNativeVisemeTailMS {
 			return nil, errors.New("invalid native viseme timeline")
 		}
 		previous = v.OffsetMS

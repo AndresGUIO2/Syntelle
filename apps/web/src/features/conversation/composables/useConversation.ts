@@ -45,6 +45,7 @@ export function useConversation(options: Options) {
   let micID = '',
     connectionBinding = '',
     disposed = false
+  let speechStoppedTurn = ''
   let microphoneAttempt = 0
   const socket = useConversationSocket(handleEvent, () => {
     if (currentTurn.value) {
@@ -66,8 +67,13 @@ export function useConversation(options: Options) {
     ended: () => {
       pending.value = false
       if (currentTurn.value) {
-        replaceTurn(currentTurn.value, { status: 'ready' })
-        send('playback_ended')
+        if (speechStoppedTurn === currentTurn.value) {
+          replaceTurn(currentTurn.value, { status: 'speech_failed' })
+          speechStoppedTurn = ''
+        } else {
+          replaceTurn(currentTurn.value, { status: 'ready' })
+          send('playback_ended')
+        }
         currentTurn.value = ''
       }
     },
@@ -191,6 +197,18 @@ export function useConversation(options: Options) {
       options.playback.value?.stop()
       replaceTurn(event.turn_id, { status: 'interrupted' })
     } else if (event.type === 'error') {
+      if (event.text === 'Speech preparation failed; no retry was made.') {
+        pending.value = false
+        error.value = 'Voice stopped before the reply finished; no retry was made.'
+        if (replySpeech.active()) {
+          speechStoppedTurn = event.turn_id
+          replySpeech.close()
+        } else {
+          replaceTurn(event.turn_id, { status: 'speech_failed' })
+          currentTurn.value = ''
+        }
+        return
+      }
       replySpeech.reset()
       options.playback.value?.stop()
       pending.value = false

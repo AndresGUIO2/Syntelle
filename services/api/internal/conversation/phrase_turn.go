@@ -155,6 +155,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 		case <-job.ready:
 		}
 		if job.err != nil {
+			status = "speech_failed"
 			emit("error", "Speech preparation failed; no retry was made.", nil)
 			return
 		}

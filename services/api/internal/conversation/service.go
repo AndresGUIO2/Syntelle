@@ -225,6 +225,11 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		maximumHold.Reset(utteranceMaximumHold)
 		held = maximumHold.C
 	}
+	refreshUtteranceHold := func() {
+		if utterance.id != "" {
+			holdUtterance()
+		}
+	}
 	emit := func(kind, id, text string, data any) {
 		send(ctx, Event{Type: kind, ConversationID: cid, TurnID: id, Text: text, Data: data})
 	}
@@ -344,6 +349,12 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 			flushUtterance()
 		case <-held:
+			// A queued SDK callback wins over the fallback deadline. Refresh the
+			// watchdog so an active continuation is not split by timer selection.
+			if len(recognized) > 0 {
+				refreshUtteranceHold()
+				continue
+			}
 			flushUtterance()
 		case event, open := <-incoming:
 			if !open {
@@ -510,10 +521,12 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			case "partial":
 				if strings.TrimSpace(event.Text) != "" {
 					pauseUtterance()
+					refreshUtteranceHold()
 				}
 				emit("transcript_partial", micID, utterance.preview(event.Text), nil)
 			case "start":
 				pauseUtterance()
+				refreshUtteranceHold()
 				emit("speech_detected", micID, "", nil)
 			case "end":
 				// A no-match result resolves an interim segment without inventing text.
@@ -797,7 +810,7 @@ func (s *Service) runTurn(ctx context.Context, cid, id, text, language, voice, i
 	}
 }
 func (s *Service) RunRecognition(ctx context.Context, cid, id, language string, pcm <-chan []byte, emit func(RecognitionEvent)) {
-	op, e := s.Store.Reserve(ctx, "recognition", id, "", cid, "", map[string]any{"language": language, "sample_rate": 16000, "bits": 16, "channels": 1, "segmentation_silence_ms": 700, "turn_settle_ms": utterancePause.Milliseconds(), "turn_assembly": "confirmed-segments/1", "sdk": "1.52.0"}, false)
+	op, e := s.Store.Reserve(ctx, "recognition", id, "", cid, "", map[string]any{"language": language, "sample_rate": 16000, "bits": 16, "channels": 1, "segmentation_silence_ms": 700, "turn_settle_ms": utterancePause.Milliseconds(), "turn_maximum_idle_hold_ms": utteranceMaximumHold.Milliseconds(), "turn_assembly": "confirmed-segments/2", "sdk": "1.52.0"}, false)
 	if e != nil {
 		emit(RecognitionEvent{Type: "error", Text: "Recognition request could not be committed."})
 		return
