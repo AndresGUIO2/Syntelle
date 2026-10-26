@@ -24,8 +24,8 @@ const NodCycleSeconds = .62
 
 const ShakeCycleSeconds = .92
 
-const NaturalNodCycleSeconds = .82
-const NaturalShakeCycleSeconds = 1.16
+const NaturalNodCycleSeconds = .42
+const NaturalShakeCycleSeconds = .58
 
 // NaturalGestureLead aligns the first expressive peak, not gesture onset,
 // with an approximate acoustic/text anchor. It never claims word alignment.

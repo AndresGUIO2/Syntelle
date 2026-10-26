@@ -4,7 +4,7 @@ Phase 90 improves the existing nod, shake, head tilt, emphasis and bilateral bro
 
 ## Behavior
 
-For `performance-intent/3`, nods use 820 ms cycles and shakes use 1,160 ms cycles. The existing quintic easing now follows an asymmetric stroke and return. The shake's second excursion is 82% of the first. Tilt briefly holds before returning; emphasis is a smaller, shorter nod. Automatic repetitions receive deterministic, slight timing/strength variation and a stable initial turn direction derived from the text and cue index. They never exceed the admitted window, repetition count or prepared range. Manual previews retain the user's exact intensity without this variation.
+The original phase-90 `performance-intent/3` used 820 ms nod cycles and 1,160 ms shake cycles; phase 95 below supersedes those durations. The existing quintic easing follows an asymmetric stroke and return. The shake's second excursion is 82% of the first. Tilt briefly holds before returning; emphasis is a smaller, shorter nod. Automatic repetitions receive deterministic, slight timing/strength variation and a stable initial turn direction derived from the text and cue index. They never exceed the admitted window, repetition count or prepared range. Manual previews retain the user's exact intensity without this variation.
 
 The previous 600 ms phrase-entry blend attenuated early gestures a second time. The new path samples each gesture directly on emitted PCM time while releasing the previous phrase's residual over 240 ms. It also removes a second smoothing filter from new bilateral brow accents. Brow entry and phrase boundaries ease for 120 ms; interruption and automatic-expression disable release for 240 ms. Reduced motion immediately shows the manual baseline. Pause still freezes animation time.
 
@@ -36,3 +36,20 @@ The verified images are activated as `syntelle-render-native:local`, `syntelle-a
 `activation.json` records image identities and the three `before-speech-gestures-90` rollback tags. To roll back, restore those tags to the stable image names, restart the owned native worker and run the normal launcher. For source rollback, use `before-source/` and the explicit introduced-file list; do not reset unrelated working-tree changes. The initial post-edit native admission backup is retained separately as rejected backup evidence; the correct preceding source was recovered byte-for-byte from phase 86.
 
 The generic PostgreSQL archive stores sources, cached inputs, comparisons, runtime records and failed checks. `.tools/speech-gestures-90-archive.json` records the final snapshot and a complete byte-verified restoration. Historical preparation finalizers are not used.
+
+## Faster nods and shakes (phase 95)
+
+The owner found both gestures much too slow. The current shared natural-motion timing is 420 ms per nod and 580 ms per complete shake, approximately twice the preceding speed. Speech binding, approximate acoustic peak alignment, native admission and manual previews use the same duration constants. Frontend preview busy timers use the new durations plus the existing 200 ms control margin.
+
+The curves, repetition variation, semantic allowances, amplitude and prepared geometry remain unchanged. First peaks occur at approximately 143 ms for nods and 139 ms for shakes before automatic repetition variation. Protocols 1/2 retain their historical speech constants and behavior. Emotion regulation, masks, oral/contact constraints, backgrounds and Ava synthesis are unchanged. This is gesture timing, not a frame-rate correction.
+
+Bounded verification uses `.tools/gesture-tempo-95/`:
+
+- Shared/API/native builds and focused animation, adapter, media and conversation tests pass. Numeric preview checks verify both opposing shake excursions before 410 ms and baseline restoration by 650 ms. Continuous trajectories remain inside prepared bounds and advance on the frame clock. The initial cadence test incorrectly treated the already completed fourth nod as a frozen gesture; its retained failure and corrected active-window sampling are included.
+- Eight Chromium/WebKit desktop/mobile control checks pass, including reduced motion and microphone-free previews. Vue type checking, scoped lint, player/production builds and six production-boundary checks pass.
+- An isolated PostgreSQL fixture completes one eight-phrase reply using cached PCM: one fake director response, eight cached speech preparations, zero recognition and zero real provider calls. Manual two-cycle nod/shake previews also pass. A separate frame-callback capture inspects both complete manual sequences without paid services.
+- The bounded player check presents 356 frames at 29.26 fps, with a 50 ms p95 gap and a 100.03 ms maximum gap while separate control fixtures also run. These measurements do not qualify the strict frame-gap goal or sustained/device performance. Visual capture is separate from this measurement.
+
+The active resource remains `.tools/disgust-readability-93/package-v6/`, package hash `e203544db20918f95c96fb545831ba187934e04fed24b132cd982d51a41e54e9`, preserved completely in parent snapshot 646. No resources, shader or rasterization changes require a new pixel-comparison matrix. Previous CPU/CUDA and mask evidence remain applicable to those unchanged paths; owner visual acceptance and physical-device qualification remain pending.
+
+Stable image/container names and the normal development launcher are retained. `.tools/gesture-tempo-95/activation.json` records the image identities and `before-gesture-tempo-95` rollback tags. Restore those tags to their stable names and run `.\dev start` to roll back. The generic archive record `.tools/gesture-tempo-95-archive.json` records source/evidence preservation and byte-verified restoration; no historical finalizer is used. No paid calls, generations, dependencies, model installations, schema changes or cloud deployment are involved.

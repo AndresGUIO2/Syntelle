@@ -2,6 +2,7 @@ package nativeadapter
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -13,13 +14,17 @@ import (
 func TestPreviewPoseAdvancesWithFrameClock(t *testing.T) {
 	var evidence []map[string]any
 	for _, kind := range []string{"nod", "shake"} {
+		cycle := rendercontract.NaturalNodCycleSeconds
+		if kind == "shake" {
+			cycle = rendercontract.NaturalShakeCycleSeconds
+		}
 		s, _ := fixtureScene(t)
 		settings := rendercontract.Defaults()
 		settings.Movement, settings.Blinking, settings.AutomaticExpressions = false, false, false
 		input := nativemedia.FrameInput{Settings: settings, PreviewKind: kind, PreviewAmount: 1, PreviewRepetitions: 4, PreviewSequence: 1}
 		previous := [3]float64{}
 		unchanged := 0
-		for frame := 0; frame < 60; frame++ {
+		for frame := 0; frame < int(math.Ceil(4*cycle*30)); frame++ {
 			input.MediaTime = time.Duration(frame) * time.Second / 30
 			state, err := s.sample(input)
 			if err != nil {

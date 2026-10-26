@@ -32,9 +32,9 @@ function preview(kind: string, amount = 1) {
     kind === 'laugh'
       ? 2600
       : kind === 'nod'
-        ? count * 820 + 200
+        ? count * 420 + 200
         : kind === 'shake'
-          ? count * 1160 + 200
+          ? count * 580 + 200
           : 1400,
   )
 }
