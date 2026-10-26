@@ -1,0 +1,424 @@
+/* Shared only by the customization surface and its focused sections. */
+.customization {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+}
+.customization .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.customization-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 24px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--divider);
+}
+.customization-tabs button {
+  transition: none;
+  min-height: 48px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.customization-tabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.customization-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--control-border) transparent;
+}
+.customization-section {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.customization-group {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  gap: 12px;
+  border: 0;
+}
+.customization-group legend {
+  margin-bottom: 12px;
+  padding: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+.customization-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 13px;
+}
+.customization-field {
+  display: grid;
+  gap: 8px;
+  font-weight: 500;
+}
+.customization :is(select, textarea) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--page);
+  font: inherit;
+}
+.customization textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.customization-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  line-height: 1.4;
+}
+.customization-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.customization-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.customization-slider output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.customization-slider input {
+  grid-column: 1/-1;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.customization :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.customization :is(input, select, textarea, button):disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.customization-moods {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(44px, 1fr));
+  gap: 4px 6px;
+}
+.customization-mood {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.customization-mood input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.customization-mood.selected {
+  border-color: var(--accent);
+  background: var(--subtle);
+  color: var(--accent);
+}
+.customization-mood:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.customization-mood svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.customization-mood-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-weight: 600;
+}
+.customization-current-mood {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 500;
+}
+.customization-preview {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.customization-help {
+  position: relative;
+  flex-shrink: 0;
+  font-weight: 400;
+}
+.customization-help summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+}
+.customization-help summary::-webkit-details-marker {
+  display: none;
+}
+.customization-help summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.customization-help-copy {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 1;
+  width: min(300px, calc(100vw - 64px));
+  padding: 12px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.customization-help-copy p {
+  margin: 0;
+}
+.customization-help-copy p + p {
+  margin-top: 8px;
+}
+.customization-help svg,
+.customization-reset-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.customization-intensity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: end;
+  gap: 12px;
+}
+.customization-reset {
+  justify-self: start;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  font: inherit;
+  cursor: pointer;
+}
+.customization-reset-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+.customization-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  min-height: 44px;
+  padding-right: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.customization-toggle input {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.customization-toggle-track {
+  display: flex;
+  align-items: center;
+  width: 36px;
+  height: 22px;
+  padding: 3px;
+  border: 1px solid var(--control-border);
+  border-radius: 11px;
+  background: var(--subtle);
+  pointer-events: none;
+}
+.customization-toggle-track::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.customization-toggle input:checked + .customization-toggle-track {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.customization-toggle input:checked + .customization-toggle-track::after {
+  transform: translateX(14px);
+  background: var(--on-accent);
+}
+.customization-toggle input:focus-visible + .customization-toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.customization-advanced {
+  border-top: 1px solid var(--divider);
+}
+.customization-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.customization-advanced-content {
+  padding-top: 12px;
+}
+.customization-backgrounds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.customization-backgrounds button {
+  min-width: 0;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--page);
+  font: inherit;
+  cursor: pointer;
+}
+.customization-backgrounds button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+.customization-backgrounds img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+  outline: 1px solid light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.1));
+  outline-offset: -1px;
+}
+.customization-backgrounds span {
+  display: block;
+  padding: 10px 2px;
+  font-size: 13px;
+}
+.customization-privacy {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.customization-privacy p {
+  margin: 0 0 6px;
+}
+.customization-privacy a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+@media (hover: hover) {
+  .customization
+    :is(.customization-reset, .customization-mood, .customization-backgrounds button):hover {
+    background: var(--subtle);
+  }
+}
+@media (max-width: 899px) {
+  .customization :is(select, textarea) {
+    font-size: 16px;
+  }
+  .customization-tabs {
+    padding: 0 16px;
+  }
+  .customization-scroll {
+    padding: 20px 16px;
+  }
+  .customization-backgrounds {
+    gap: 8px;
+  }
+}

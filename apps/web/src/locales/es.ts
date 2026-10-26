@@ -1,5 +1,60 @@
 // Interface copy only. User prompts, transcripts and provider records stay verbatim.
 export const spanish: Record<string, string> = {
+  Behavior: 'Comportamiento',
+  Appearance: 'Apariencia',
+  Advanced: 'Avanzado',
+  Mood: 'Ánimo',
+  'About moods': 'Acerca de los estados de ánimo',
+  'Enable automatic reactions to change the style.':
+    'Activa las reacciones para cambiar el estilo.',
+  'Enable emotion stability in Advanced.': 'Activa la estabilidad emocional en Avanzado.',
+  'Back to chat': 'Volver al chat',
+  'Customization sections': 'Secciones de personalización',
+  'Automatic reactions': 'Reacciones automáticas',
+  'React to the conversation': 'Reaccionar a la conversación',
+  'Reaction style': 'Estilo de reacción',
+  'Gentler, less frequent reactions.': 'Reacciones más suaves y menos frecuentes.',
+  'More noticeable reactions with a steady pace.':
+    'Reacciones más perceptibles a un ritmo estable.',
+  'Stronger, more frequent reactions.': 'Reacciones más intensas y frecuentes.',
+  'This is her usual mood. Automatic reactions can temporarily change it.':
+    'Este es su ánimo habitual. Las reacciones automáticas pueden cambiarlo temporalmente.',
+  'Turn on automatic reactions to choose a reaction style.':
+    'Activa las reacciones automáticas para elegir un estilo de reacción.',
+  'Enable emotion stability in Advanced to choose a reaction style.':
+    'Activa la estabilidad emocional en Avanzado para elegir un estilo de reacción.',
+  'Turn off the microphone and wait for any reply or connection to finish before editing instructions.':
+    'Apaga el micrófono y espera a que termine la respuesta o la conexión para editar las instrucciones.',
+  'Background blur': 'Desenfoque del fondo',
+  'Your preferences are saved in this browser. Signing in uses an essential cookie.':
+    'Tus preferencias se guardan en este navegador. El inicio de sesión utiliza una cookie esencial.',
+  'Emotion stability': 'Estabilidad emocional',
+  Temperament: 'Temperamento',
+  Calm: 'Sereno',
+  Warm: 'Cálido',
+  Expressive: 'Expresivo',
+  'Keeps emotional reactions steady and within temperament limits.':
+    'Mantiene las reacciones emocionales estables y dentro de los límites del temperamento.',
+  'The language model directs temporary emotions without stability rules.':
+    'El modelo de lenguaje dirige las emociones temporales sin reglas de estabilidad.',
+
+  'Preview: some emotions still need visual calibration.':
+    'Vista previa: algunas emociones aún necesitan calibración visual.',
+  'Baseline emotion': 'Emoción base',
+  Emotion: 'Emoción',
+  'Emotion intensity': 'Intensidad emocional',
+  'Reset emotion': 'Restablecer emoción',
+  'Contextual emotional variations': 'Variaciones emocionales según el contexto',
+  Neutral: 'Neutral',
+  Joyful: 'Alegre',
+  Playful: 'Juguetona',
+  Affectionate: 'Afectuosa',
+  Curious: 'Curiosa',
+  Sad: 'Triste',
+  Angry: 'Enojada',
+  Fearful: 'Temerosa',
+  Surprised: 'Sorprendida',
+  Disgusted: 'Desagrado',
   'The renderer could not start. Start a new session.':
     'No se pudo iniciar el renderizador. Inicia una sesión nueva.',
   Repetitions: 'Repeticiones',
@@ -144,6 +199,9 @@ export const spanish: Record<string, string> = {
   You: 'Tú',
   'Reply interrupted': 'Respuesta interrumpida',
   'Reply could not finish': 'La respuesta no pudo completarse',
+  'Voice could not finish': 'La voz no pudo terminar',
+  'Voice stopped before the reply finished; no retry was made.':
+    'La voz se detuvo antes de terminar la respuesta; no se reintentó.',
   'Voice conversation is not configured on the local server yet.':
     'La conversación por voz aún no está configurada en el servidor local.',
   'Voice conversation controls': 'Controles de conversación por voz',
@@ -231,8 +289,8 @@ export const spanish: Record<string, string> = {
   Continue: 'Continuar',
   'Resend in {seconds}s': 'Reenviar en {seconds}s',
   'Send a new code': 'Enviar otro código',
-  'Email sign-in is not configured for this local preview. You can continue as a guest.':
-    'El acceso por correo no está configurado en esta vista previa local. Puedes continuar como visitante.',
+  'Email sign-in is temporarily unavailable. You can continue as a guest.':
+    'El acceso por correo no está disponible por ahora. Puedes continuar como visitante.',
   'Continue as a guest': 'Continuar como visitante',
   'Account sections': 'Secciones de la cuenta',
   'Saved setups': 'Configuraciones guardadas',

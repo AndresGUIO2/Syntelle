@@ -205,7 +205,7 @@ const companyAssets = {
     padding: 0 var(--workspace-gutter, 16px);
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 760px) {
   .app-header {
     height: auto;
     min-height: 48px;
@@ -264,6 +264,60 @@ const companyAssets = {
   .header-create-character {
     padding-right: 8px;
     padding-left: 8px;
+  }
+}
+@media (max-width: 760px) {
+  .header-inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 6px;
+    padding: 0 12px;
+  }
+  .brand {
+    gap: 0;
+  }
+  .company-signature {
+    display: none;
+  }
+  .wordmark {
+    font-size: 18px;
+  }
+  .header-language {
+    margin-left: auto;
+  }
+  .header-actions {
+    gap: 2px;
+  }
+  .header-account,
+  .header-pricing,
+  .header-create-character {
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 12px;
+  }
+  .header-language :deep(.language-trigger) {
+    gap: 4px;
+    padding: 6px;
+    font-size: 12px;
+  }
+  .header-language :deep(.language-globe) {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .header-inner {
+    gap: 0 4px;
+    padding: 0 8px;
+  }
+  .wordmark {
+    font-size: 17px;
+  }
+  .header-account,
+  .header-pricing,
+  .header-create-character {
+    padding-right: 4px;
+    padding-left: 4px;
+    font-size: 11px;
   }
 }
 </style>

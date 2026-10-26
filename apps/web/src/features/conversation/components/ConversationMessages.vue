@@ -64,6 +64,9 @@ watch(
         <p class="message-text message-body">{{ turn.reply }}</p>
       </div>
       <p v-if="turn.status === 'interrupted'" class="message-note">{{ t('Reply interrupted') }}</p>
+      <p v-else-if="turn.status === 'speech_failed'" class="message-note">
+        {{ t('Voice could not finish') }}
+      </p>
       <p v-else-if="turn.status === 'failed'" class="message-note">
         {{ t('Reply could not finish') }}
       </p>

@@ -1,6 +1,30 @@
 export const AVA_VOICE = 'en-US-Ava:DragonHDLatestNeural'
 
+export const emotionStates = [
+  'neutral',
+  'joyful',
+  'playful',
+  'affectionate',
+  'curious',
+  'sad',
+  'angry',
+  'fearful',
+  'surprised',
+  'disgusted',
+] as const
+export type EmotionState = (typeof emotionStates)[number]
+export interface EmotionBaseline {
+  state: EmotionState
+  intensity: number
+}
+export interface EmotionRegulation {
+  enabled: boolean
+  temperament: 'calm' | 'warm' | 'expressive'
+}
+
 export interface StreamSettings {
+  emotion_regulation?: EmotionRegulation
+  emotion_baseline: EmotionBaseline
   character: 'syntelle'
   instructions: string
   language: 'en-US' | 'es-CO'
@@ -52,6 +76,8 @@ export type Envelope = {
 
 export function defaultSettings(): StreamSettings {
   return {
+    emotion_regulation: { enabled: true, temperament: 'calm' },
+    emotion_baseline: { state: 'neutral', intensity: 0 },
     character: 'syntelle',
     instructions:
       'Be a clear, friendly assistant. Match the depth and length to the question. Do not invent company knowledge.',

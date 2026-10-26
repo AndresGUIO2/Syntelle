@@ -36,7 +36,12 @@ const publicSources = new Set([
     'components/ConversationHistory.vue',
     'components/PrivacyStorageNotice.vue',
     'components/StreamSettings.vue',
+    'components/BehaviorSettings.vue',
+    'components/AppearanceSettings.vue',
+    'components/AdvancedSettings.vue',
+    'components/customization.css',
     'components/ExpressionPreview.vue',
+    'components/EmotionControls.vue',
   ].map((path) => `features/streaming/${path}`),
   ...[
     'types.ts',

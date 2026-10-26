@@ -141,7 +141,7 @@ button {
   color: var(--accent);
   clip-path: inset(100%);
 }
-.skip-link:focus {
+.skip-link:focus-visible {
   clip-path: none;
 }
 .theme-changing *,

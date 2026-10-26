@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { useLocaleStore } from './stores/locale'
-import {
-  defineAsyncComponent,
-  onMounted,
-  shallowRef,
-  useTemplateRef,
-  watchEffect,
-} from 'vue'
+import { defineAsyncComponent, onMounted, shallowRef, useTemplateRef, watchEffect } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import PricingPage from './features/pricing/PricingPage.vue'
 import CreateCharacterPage from './features/characters/CreateCharacterPage.vue'
@@ -140,6 +134,11 @@ watchEffect(() => {
   }
   .demo-content {
     padding: 20px var(--workspace-gutter);
+  }
+}
+@media (max-width: 480px) {
+  .demo-content {
+    padding: 12px;
   }
 }
 </style>

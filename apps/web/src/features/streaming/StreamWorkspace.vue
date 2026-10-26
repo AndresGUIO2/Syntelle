@@ -36,6 +36,7 @@ function openAccount() {
 defineExpose({ openAccount })
 const settingsOpen = shallowRef(false)
 const settingsDialog = useTemplateRef<HTMLDialogElement>('settingsDialog')
+const customizeHeading = useTemplateRef<HTMLElement>('customizeHeading')
 const player = useTemplateRef<InstanceType<typeof RemotePlayer>>('player')
 const mediaControls = useTemplateRef<HTMLElement>('mediaControls')
 const query = new URLSearchParams(location.search)
@@ -151,20 +152,29 @@ watch(settings, (value, previous) => {
   clearTimeout(configureTimer)
   configureTimer = setTimeout(() => remote.command('configure', '', value), 150)
 })
-watch([settingsOpen, settingsDialog], ([open, element]) => {
+watch([settingsOpen, settingsDialog], async ([open, element], [wasOpen]) => {
   if (!element) return
-  if (open && !element.open) element.show()
-  else if (!open && element.open) {
-    element.close()
+  if (open) {
+    if (!element.open) element.show()
+    await nextTick()
+    if (settingsOpen.value) customizeHeading.value?.focus()
+  } else if (wasOpen) {
+    if (element.open) element.close()
+    await nextTick()
     customizeButton.value?.focus()
   }
 })
 function closeSettingsOnEscape(event: KeyboardEvent) {
+  const nativeMenuOpen =
+    event.target instanceof HTMLSelectElement &&
+    CSS.supports('selector(select:open)') &&
+    event.target.matches(':open')
   if (
     !settingsOpen.value ||
     event.key !== 'Escape' ||
     event.defaultPrevented ||
-    event.target instanceof HTMLSelectElement
+    [...document.querySelectorAll('dialog[open]')].some((el) => el !== settingsDialog.value) ||
+    nativeMenuOpen
   )
     return
   event.preventDefault()
@@ -270,6 +280,7 @@ watch(auth.account, (account, previous) => {
   }
 })
 onMounted(async () => {
+  window.addEventListener('keydown', closeSettingsOnEscape)
   if (query.has('auth') || flow) accountOpen.value = true
   await auth.refresh()
   await remote.loadPolicy()
@@ -279,6 +290,7 @@ onMounted(async () => {
   }
 })
 onScopeDispose(() => {
+  window.removeEventListener('keydown', closeSettingsOnEscape)
   clearTimeout(configureTimer)
   reducedMotion.removeEventListener('change', preferenceChanged)
 })
@@ -428,6 +440,7 @@ onScopeDispose(() => {
             :aria-label="t('Customize')"
             :title="t('Customize')"
             aria-haspopup="dialog"
+            aria-controls="stream-customization"
             :aria-expanded="settingsOpen"
             @click="settingsOpen = true"
           >
@@ -453,27 +466,29 @@ onScopeDispose(() => {
       @continue="continueHistory"
     />
     <dialog
+      id="stream-customization"
       ref="settingsDialog"
       class="settings-dialog"
       aria-labelledby="stream-customize-title"
       @close="settingsOpen = false"
     >
-      <header>
-        <h2 id="stream-customize-title">{{ t('Customize Syntelle') }}</h2>
+      <header class="customize-header">
+        <h2 id="stream-customize-title" ref="customizeHeading" tabindex="-1">
+          {{ t('Customize Syntelle') }}
+        </h2>
         <button
           class="quiet-action icon-action"
           type="button"
           :aria-label="t('Close')"
           :title="t('Close')"
-          autofocus
           @click="settingsOpen = false"
         >
           <ConversationIcon name="close" />
         </button>
       </header>
-
       <StreamSettingsPanel
         v-model="settings"
+        :active="settingsOpen"
         :disabled="controlsLocked"
         :preview-disabled="previewDisabled"
         @preview="previewExpression"
@@ -695,36 +710,43 @@ onScopeDispose(() => {
 }
 .settings-dialog {
   position: fixed;
-  inset: 0 0 0 auto;
+  inset: 48px 0 0 auto;
+  z-index: 3;
   margin: 0;
-  width: min(440px, 100%);
-  height: 100dvh;
-  max-height: none;
+  width: min(460px, 100%);
   max-width: 100%;
-  padding: 24px;
+  height: calc(100dvh - 48px);
+  max-height: none;
+  padding: 0;
   color: var(--text);
   background: var(--surface);
   border: 0;
   border-left: 1px solid var(--divider);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
 }
-.settings-dialog header {
-  position: sticky;
-  top: -24px;
-  background: var(--surface);
-  z-index: 1;
+.settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.customize-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: -24px -24px 24px;
-  padding: 16px 24px;
+  padding: 12px 20px;
+  flex-shrink: 0;
+  background: var(--surface);
   border-bottom: 1px solid var(--divider);
 }
-.settings-dialog h2 {
-  font-size: 20px;
+.customize-header h2 {
   margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.customize-header :is(h2, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 @media (max-width: 899px) {
   .connection-state {
@@ -748,15 +770,21 @@ onScopeDispose(() => {
   .entry-action-label {
     font-size: 14px;
   }
+  .customize-header {
+    padding: 12px 16px;
+    gap: 8px;
+  }
+  .customize-header h2 {
+    font-size: 16px;
+  }
   .settings-dialog {
     inset: auto 0 0;
     width: 100%;
-    height: auto;
-    max-height: 60dvh;
+    height: min(70dvh, var(--demo-viewport-height, 70dvh));
     border-left: 0;
     border-top: 1px solid var(--divider);
     border-radius: 12px 12px 0 0;
-    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .stream-workspace {
     height: var(--demo-viewport-height, 100%);
@@ -769,7 +797,7 @@ onScopeDispose(() => {
   }
   .stream-panels {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: clamp(180px, 28svh, 240px) minmax(0, 1fr);
+    grid-template-rows: clamp(190px, 30svh, 216px) minmax(0, 1fr);
     gap: 16px;
   }
   .conversation-panel :deep(.conversation-controls) {
@@ -780,6 +808,104 @@ onScopeDispose(() => {
   }
   .conversation-panel :deep(.empty-title) {
     font-size: 20px;
+  }
+}
+@media (max-width: 600px), (max-width: 899px) and (max-height: 520px) {
+  .stream-panels {
+    gap: 12px;
+  }
+  .stage-column :deep(.remote-stage) {
+    background: var(--subtle);
+  }
+  .stage-column .connection-entry {
+    inset: 0;
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    justify-content: flex-end;
+  }
+  .stage-column .connection-entry .connection-status {
+    display: none;
+  }
+  .stage-column .connection-entry .entry-action {
+    min-height: 48px;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .stage-column .connection-entry .session-note {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    left: 8px;
+    max-width: calc(100% - 16px);
+    margin: 0 auto;
+  }
+  .conversation-panel :deep(.chat-header) {
+    padding: 7px 10px;
+    gap: 4px;
+  }
+  .conversation-panel :deep(.chat-title) {
+    font-size: 14px;
+  }
+  .conversation-panel :deep(.chat-status) {
+    font-size: 11px;
+  }
+  .conversation-panel :deep(.transcript) {
+    padding: 12px;
+  }
+  .conversation-panel :deep(.empty-title) {
+    margin-bottom: 6px;
+    font-size: 17px;
+  }
+  .conversation-panel :deep(.empty-description),
+  .conversation-panel :deep(.message-text) {
+    font-size: 13px;
+  }
+  .conversation-panel :deep(.message-speaker) {
+    font-size: 11px;
+  }
+  .conversation-panel :deep(.conversation-controls) {
+    padding: 6px 10px max(6px, env(safe-area-inset-bottom));
+  }
+  .conversation-panel :deep(.voice-actions) {
+    grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+    gap: 4px 8px;
+  }
+  .conversation-panel :deep(.microphone-control),
+  .conversation-panel :deep(.microphone-button) {
+    width: 44px;
+    height: 44px;
+  }
+  .conversation-panel :deep(.microphone-button .conversation-icon) {
+    width: 20px;
+    height: 20px;
+  }
+  .conversation-panel :deep(.microphone-halo) {
+    inset: -6px;
+    opacity: 0.22;
+  }
+  .conversation-panel :deep(.microphone-orbit),
+  .conversation-panel :deep(.microphone-progress) {
+    inset: -2px;
+    box-shadow: none;
+  }
+  .conversation-panel :deep(.capture-status) {
+    min-height: 14px;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .conversation-panel :deep(.microphone-hint) {
+    margin-top: 2px;
+    font-size: 11px;
+  }
+}
+@media (max-width: 899px) and (max-height: 520px) {
+  .stage-column {
+    display: none;
+  }
+  .stream-panels {
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
   }
 }
 </style>

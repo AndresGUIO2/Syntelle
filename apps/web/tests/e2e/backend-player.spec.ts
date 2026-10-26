@@ -5,6 +5,27 @@ async function openStream(page: Page, url = '/') {
   await page.getByRole('button', { name: /^(Start conversation|Iniciar conversación)$/ }).click()
 }
 
+async function closeCustomization(page: Page) {
+  await page
+    .getByRole('dialog', { name: /^(Customize Syntelle|Personalizar Syntelle)$/ })
+    .getByRole('button', { name: /^(Close|Cerrar)$/ })
+    .click()
+}
+
+async function showAppearance(page: Page) {
+  await page.getByRole('tab', { name: /^(Appearance|Apariencia)$/ }).click()
+}
+async function showAdvanced(page: Page) {
+  await page.getByRole('tab', { name: /^(Behavior|Comportamiento)$/ }).click()
+  const button = page.getByRole('button', { name: /^(Advanced|Avanzado)$/ })
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click()
+}
+async function chooseMood(page: Page, state: string, label: string) {
+  const select = page.getByRole('combobox', { name: 'Mood', exact: true })
+  if (await select.isVisible()) await select.selectOption(state)
+  else await page.getByRole('radio', { name: label, exact: true }).check()
+}
+
 function languageTrigger(page: Page) {
   return page.getByRole('button', { name: /^(Platform language|Idioma de la plataforma):/ })
 }
@@ -29,6 +50,7 @@ test('local static preview uses the chosen background without rendering or time-
     page.getByText('Up to 5 minutes per session. 15 minutes total.', { exact: true }),
   ).toHaveCount(0)
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAppearance(page)
   for (const [label, id] of [
     ['Dark Lounge', 'dark-lounge'],
     ['Light Studio', 'light-studio'],
@@ -39,7 +61,7 @@ test('local static preview uses the chosen background without rendering or time-
       .poll(() => portrait.evaluate((image: HTMLImageElement) => image.currentSrc))
       .toContain(`syntelle-${id}-`)
   }
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await closeCustomization(page)
   await page.screenshot({ path: test.info().outputPath('static-background-preview.png') })
   expect(remote.sessionRequests).toEqual([])
   expect(remote.commands).toEqual([])
@@ -112,6 +134,7 @@ test('microphone starts the conversation and capture in one action', async ({
   expect(remote.sessionRequests).toHaveLength(1)
   expect(remote.commands.filter((event) => event.data?.type === 'mic_start')).toHaveLength(1)
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
   await page.getByRole('button', { name: /Play gesture/ }).click()
   await expect(page.locator('.microphone-control')).toHaveAttribute('data-capture', 'false')
   await expect
@@ -217,6 +240,25 @@ test('packed live pixels become a moving composed video with picture in picture'
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   const remote = await fixture(page, false, true)
+  await page.addInitScript(() => {
+    Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
+    HTMLVideoElement.prototype.requestPictureInPicture = async function () {
+      Object.defineProperty(document, 'pictureInPictureElement', {
+        configurable: true,
+        value: this,
+      })
+      this.dispatchEvent(new Event('enterpictureinpicture'))
+      return {} as PictureInPictureWindow
+    }
+    document.exitPictureInPicture = async () => {
+      const video = document.pictureInPictureElement
+      Object.defineProperty(document, 'pictureInPictureElement', {
+        configurable: true,
+        value: null,
+      })
+      video?.dispatchEvent(new Event('leavepictureinpicture'))
+    }
+  })
   await openStream(page)
   const video = page.locator('video')
   await expect
@@ -236,12 +278,19 @@ test('packed live pixels become a moving composed video with picture in picture'
     data: { type: 'accepted', turn_id: 'pixel-audio', text: 'Fixture' },
   })
   remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'pixel-audio' } })
-  await page.getByRole('button', { name: 'Unmute sound', exact: true }).click()
+  const unmute = page.getByRole('button', { name: 'Unmute sound', exact: true })
+  if (await unmute.isVisible()) await unmute.click()
   await expect(video).toHaveJSProperty('muted', false)
+  const baselineAlerts = await page.getByRole('alert').allTextContents()
+  await test.info().attach('before-customization-alerts', {
+    body: JSON.stringify(baselineAlerts),
+    contentType: 'application/json',
+  })
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAppearance(page)
   await page.getByRole('button', { name: 'Dark Lounge', exact: true }).click()
-  await page.getByRole('slider', { name: /Blur/ }).fill('10')
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('slider', { name: /blur/i }).fill('10')
+  await closeCustomization(page)
   await expect
     .poll(() =>
       video.evaluate((v: HTMLVideoElement) => v.getVideoPlaybackQuality().totalVideoFrames),
@@ -256,7 +305,7 @@ test('packed live pixels become a moving composed video with picture in picture'
   await page.getByRole('button', { name: 'Return to tab', exact: true }).click()
   expect(remote.commands.filter((event) => event.data?.type === 'configure')).toEqual([])
   expect(errors).toEqual([])
-  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveText(baselineAlerts)
 })
 
 test('browser backgrounds preserve opaque pixels and fractional hair coverage', async ({
@@ -341,8 +390,9 @@ test('background and blur changes stay local while character controls reach the 
   await openStream(page)
   await expect(page.getByRole('button', { name: 'Customize', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAppearance(page)
   await page.getByRole('button', { name: 'Light Studio', exact: true }).click()
-  await page.getByRole('slider', { name: /Blur/ }).fill('12')
+  await page.getByRole('slider', { name: /blur/i }).fill('12')
   await page.waitForTimeout(250)
   expect(remote.commands.filter((event) => event.data?.type === 'configure')).toEqual([])
   await page.getByRole('checkbox', { name: 'Head movement and breathing' }).uncheck()
@@ -948,7 +998,8 @@ test('current appearance, transcript and controls use the backend protocol', asy
     instructions: 'Preserve these instructions.',
   })
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
+  await showAppearance(page)
+  await expect(page.getByRole('region', { name: 'Customize Syntelle', exact: true })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toHaveCount(0)
   await page.getByRole('checkbox', { name: 'Head movement and breathing' }).check()
   await expect
@@ -956,7 +1007,7 @@ test('current appearance, transcript and controls use the backend protocol', asy
       remote.commands.some((event) => event.type === 'command' && event.data?.type === 'configure'),
     )
     .toBe(true)
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await closeCustomization(page)
   await expect(page.getByRole('button', { name: 'Customize', exact: true })).toBeFocused()
   remote.publish({
     type: 'conversation',
@@ -983,6 +1034,15 @@ test('platform language translates the workspace, pricing and guest account and 
   page,
 }) => {
   const remote = await fixture(page)
+  await page.route('**/api/v1/auth/status', (route) =>
+    route.fulfill({
+      json: {
+        email: { configured: true },
+        google: { configured: false },
+        github: { configured: false },
+      },
+    }),
+  )
   await openStream(page)
   await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
   const language = languageTrigger(page)
@@ -1010,16 +1070,20 @@ test('platform language translates the workspace, pricing and guest account and 
   await expect(page.getByRole('button', { name: 'Continuar como visitante' })).toBeVisible()
   await page.getByRole('button', { name: 'Cerrar cuenta', exact: true }).click()
   await page.getByRole('button', { name: 'Personalizar', exact: true }).click()
-  await expect(page.getByRole('dialog').getByRole('combobox')).toHaveCount(1)
+  await expect(
+    page.getByRole('combobox', { name: 'Estilo de reacción', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Voz', exact: true })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'Instrucciones del personaje' })).toHaveValue(
     String(remote.settings[0]!.instructions),
   )
+  await showAppearance(page)
   await expect(page.getByRole('checkbox', { name: 'Parpadeo natural', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Estudio claro', exact: true })).toBeVisible()
+  await showAdvanced(page)
   await expect(page.getByRole('slider', { name: 'Sonrisa suave', exact: true })).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('platform-spanish-settings.png') })
-  await page.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  await page.getByRole('button', { name: 'Volver al chat', exact: true }).click()
 
   remote.publish({
     type: 'conversation',
@@ -1052,10 +1116,8 @@ test('platform language translates the workspace, pricing and guest account and 
   await expect(spanish).toHaveText('Español')
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
   await page.getByRole('link', { name: 'Precios', exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Pronto conocerás nuestros precios.' }),
-  ).toBeVisible()
-  await page.getByRole('link', { name: 'Volver a Syntelle' }).click()
+  await expect(page.getByRole('heading', { name: 'Pronto tendrás precios claros.' })).toBeVisible()
+  await page.getByRole('link', { name: 'Volver a la demostración' }).click()
   await expect(
     page.getByRole('button', { name: 'Iniciar conversación', exact: true }),
   ).toBeVisible()
@@ -1091,6 +1153,16 @@ test('platform language applies to saved account controls without adopting a set
         : { json: { items: [] } },
     ),
   )
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'syntelle.stream.settings',
+      JSON.stringify({
+        character: 'syntelle',
+        emotion_baseline: { state: 'fearful', intensity: 0.7 },
+        emotion_regulation: { enabled: false, temperament: 'warm' },
+      }),
+    ),
+  )
   await openStream(page)
   await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
   await chooseLanguage(page, 'es')
@@ -1099,19 +1171,27 @@ test('platform language applies to saved account controls without adopting a set
   await page.getByRole('button', { name: 'Tu cuenta', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Guardar', exact: true })).toBeEnabled()
   await expect(page.getByText('Original setup name', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Acceso para desarrolladores', exact: true }).click()
-  await expect(page.getByRole('textbox', { name: 'Nombre de la clave', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Crear clave', exact: true }).click()
-  await expect(page.getByRole('alert')).toHaveText(
-    'Usa un nombre de clave de entre 1 y 80 caracteres.',
-  )
-  await page.getByRole('button', { name: 'Configuraciones guardadas', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Acceso para desarrolladores/ })).toBeDisabled()
   const count = remote.settings.length
-  await page.getByRole('button', { name: 'Cargar', exact: true }).click()
+  await page.getByRole('button', { name: 'Usar esta configuración', exact: true }).click()
   expect(remote.settings).toHaveLength(count)
   await page.getByRole('button', { name: 'Iniciar conversación', exact: true }).click()
   await expect.poll(() => remote.settings.length).toBe(count + 1)
   expect(remote.settings.at(-1)).toMatchObject({ language: 'es-CO' })
+  expect(remote.settings.at(-1)).toMatchObject({
+    emotion_baseline: { state: 'fearful', intensity: 0.7 },
+    emotion_regulation: { enabled: false, temperament: 'warm' },
+  })
+  await page.getByRole('button', { name: 'Personalizar', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Intensidad emocional', exact: true })).toHaveValue(
+    '0.7',
+  )
+  await expect(page.getByRole('combobox', { name: 'Estilo de reacción', exact: true })).toHaveValue(
+    'warm',
+  )
+  await expect(
+    page.getByRole('combobox', { name: 'Estilo de reacción', exact: true }),
+  ).toBeDisabled()
   await expect(languageTrigger(page)).toHaveText('Español')
 })
 
@@ -1316,6 +1396,7 @@ test('expression previews use a direct command without sending a chat message', 
   await openStream(page)
   await expect(page.getByRole('button', { name: 'Customize', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
   await page.getByRole('button', { name: 'Play laughter', exact: true }).click()
   await expect
     .poll(() => remote.commands.some((e) => e.data?.type === 'preview' && e.data?.text === 'laugh'))
@@ -1334,6 +1415,7 @@ test('expression previews start a stream without microphone capture, including r
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
   await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
   await expect(page.getByRole('button', { name: /Play gesture/ })).toBeEnabled()
   await page.getByRole('button', { name: /Play gesture/ }).click()
@@ -1372,6 +1454,7 @@ test('expression controls keep continuous baselines and scale direct head previe
   const remote = await fixture(page)
   await openStream(page)
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
   const smile = page.getByRole('slider', { name: 'Soft smile' })
   await smile.fill('0.7')
   await page.getByRole('slider', { name: 'Raise eyebrows' }).fill('0.5')
@@ -1379,7 +1462,7 @@ test('expression controls keep continuous baselines and scale direct head previe
     .poll(() => remote.commands.filter((e) => e.data?.type === 'configure').at(-1)?.data?.settings)
     .toMatchObject({ smile: 0.7, brows: 0.5 })
   await page.getByRole('combobox', { name: 'Gesture', exact: true }).selectOption('tilt')
-  await page.getByRole('slider', { name: 'Intensity' }).fill('0.5')
+  await page.getByRole('slider', { name: 'Intensity', exact: true }).fill('0.5')
   await page.getByRole('button', { name: /Play gesture/ }).click()
   await expect
     .poll(() => remote.commands.filter((e) => e.data?.type === 'preview').at(-1)?.data)
@@ -1388,4 +1471,291 @@ test('expression controls keep continuous baselines and scale direct head previe
   await expect(page.getByRole('button', { name: 'Smile', exact: true })).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath('expression-controls.png') })
   expect(remote.commands.some((e) => ['message', 'speak'].includes(e.data?.type ?? ''))).toBe(false)
+})
+
+test('emotion regulation defaults, explicit disable and temperament persist without providers', async ({
+  page,
+}) => {
+  const remote = await fixture(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
+  const stable = page.getByRole('checkbox', { name: 'Emotion stability', exact: true })
+  const temperament = page.getByRole('combobox', { name: 'Reaction style', exact: true })
+  await expect(stable).toBeChecked()
+  await expect(temperament).toHaveValue('calm')
+  await temperament.selectOption('expressive')
+  await stable.uncheck()
+  await expect(temperament).toBeDisabled()
+  await page.reload()
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await showAdvanced(page)
+  await expect(stable).not.toBeChecked()
+  await expect(temperament).toHaveValue('expressive')
+  await stable.check()
+  await expect(temperament).toBeEnabled()
+  await chooseLanguage(page, 'es')
+  await expect(
+    page.getByRole('checkbox', { name: 'Estabilidad emocional', exact: true }),
+  ).toBeChecked()
+  expect(remote.sessionRequests).toEqual([])
+  expect(remote.commands).toEqual([])
+})
+
+test('emotion controls persist the baseline without starting providers', async ({ page }) => {
+  const remote = await fixture(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  const intensity = page.getByRole('slider', { name: 'Emotion intensity', exact: true })
+  await chooseMood(page, 'sad', 'Sad')
+  await expect(intensity).toHaveValue('0.5')
+  await intensity.fill('0.8')
+  await page.getByRole('checkbox', { name: 'React to the conversation', exact: true }).uncheck()
+  await closeCustomization(page)
+  await page.reload()
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('syntelle.stream.settings')!),
+  )
+  expect(saved.emotion_baseline).toEqual({ state: 'sad', intensity: 0.8 })
+  await expect(intensity).toHaveValue('0.8')
+  await expect(
+    page.getByRole('checkbox', { name: 'React to the conversation', exact: true }),
+  ).not.toBeChecked()
+  await page.screenshot({ path: test.info().outputPath('emotion-baseline.png') })
+  await page.getByRole('button', { name: 'Reset emotion', exact: true }).click()
+  await expect(intensity).toHaveValue('0')
+  await expect(intensity).toBeDisabled()
+  expect(remote.sessionRequests).toEqual([])
+  expect(remote.commands).toEqual([])
+})
+
+test('customization simple controls cover all moods and preserve advanced values across sections', async ({
+  page,
+}) => {
+  const remote = await fixture(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  const moodHelp = page.locator('summary[aria-label="About moods"]')
+  await moodHelp.click()
+  await expect(
+    page.getByText('Preview: some emotions still need visual calibration.', { exact: true }),
+  ).toBeVisible()
+  await moodHelp.click()
+  await expect(
+    page.getByText('Preview: some emotions still need visual calibration.', { exact: true }),
+  ).toBeHidden()
+  expect(remote.commands).toEqual([])
+  await expect(page.getByRole('radio')).toHaveCount(10)
+  const advanced = page.getByRole('button', { name: 'Advanced', exact: true })
+  await expect(advanced).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('slider', { name: 'Soft smile', exact: true })).toBeHidden()
+  for (const [state, label] of [
+    ['neutral', 'Neutral'],
+    ['joyful', 'Joyful'],
+    ['playful', 'Playful'],
+    ['affectionate', 'Affectionate'],
+    ['curious', 'Curious'],
+    ['sad', 'Sad'],
+    ['angry', 'Angry'],
+    ['fearful', 'Fearful'],
+    ['surprised', 'Surprised'],
+    ['disgusted', 'Disgusted'],
+  ]) {
+    await chooseMood(page, state!, label!)
+    await expect(page.locator('.customization-current-mood')).toHaveText(label!)
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem('syntelle.stream.settings') ?? 'null')?.emotion_baseline
+              .state ?? 'neutral',
+        ),
+      )
+      .toBe(state)
+  }
+  const style = page.getByRole('combobox', { name: 'Reaction style', exact: true })
+  for (const value of ['warm', 'expressive', 'calm']) await style.selectOption(value)
+  await style.selectOption('expressive')
+  const auto = page.getByRole('checkbox', { name: 'React to the conversation', exact: true })
+  await auto.uncheck()
+  await expect(style).toBeDisabled()
+  await auto.check()
+  await expect(style).toHaveValue('expressive')
+  await advanced.click()
+  await page.getByRole('checkbox', { name: 'Emotion stability', exact: true }).uncheck()
+  await expect(style).toBeDisabled()
+  await page.getByRole('slider', { name: 'Soft smile', exact: true }).fill('0.35')
+  await page.getByRole('slider', { name: 'Raise eyebrows', exact: true }).fill('0.25')
+  await page.getByRole('combobox', { name: 'Gesture', exact: true }).selectOption('shake')
+  await page.getByRole('slider', { name: 'Intensity', exact: true }).fill('0.65')
+  await page.getByRole('slider', { name: 'Repetitions', exact: true }).fill('3')
+  await showAppearance(page)
+  await page.getByRole('button', { name: 'Dark Lounge', exact: true }).click()
+  await page.getByRole('slider', { name: 'Background blur', exact: true }).fill('9')
+  await page.getByRole('checkbox', { name: 'Natural blinking', exact: true }).uncheck()
+  await page.getByRole('checkbox', { name: 'Head movement and breathing', exact: true }).uncheck()
+  await page.getByRole('tab', { name: 'Behavior', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Repetitions', exact: true })).toHaveValue('3')
+  await expect(page.getByRole('slider', { name: 'Intensity', exact: true })).toHaveValue('0.65')
+  await page
+    .getByRole('textbox', { name: 'Character instructions', exact: true })
+    .fill('Keep this role verbatim.')
+  await closeCustomization(page)
+  await expect(page.getByRole('button', { name: 'Customize', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await expect(advanced).toHaveAttribute('aria-expanded', 'false')
+  await showAdvanced(page)
+  await expect(page.getByRole('slider', { name: 'Repetitions', exact: true })).toHaveValue('3')
+  await page.reload()
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('syntelle.stream.settings')!),
+  )
+  expect(saved).toMatchObject({
+    instructions: 'Keep this role verbatim.',
+    emotion_regulation: { enabled: false, temperament: 'expressive' },
+    emotion_baseline: { state: 'disgusted' },
+    smile: 0.35,
+    brows: 0.25,
+    background: 'dark-lounge',
+    blur: 9,
+    blinking: false,
+    movement: false,
+  })
+  await page.screenshot({ path: test.info().outputPath('customization-behavior.png') })
+  await showAppearance(page)
+  await page.screenshot({ path: test.info().outputPath('customization-appearance.png') })
+  expect(remote.sessionRequests).toEqual([])
+  expect(remote.commands).toEqual([])
+})
+
+test('customization navigation preserves the live session, transcript scroll and ongoing reply', async ({
+  page,
+}) => {
+  const remote = await fixture(page)
+  await openStream(page)
+  await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
+  for (let i = 0; i < 16; i++) {
+    remote.publish({
+      type: 'conversation',
+      data: { type: 'accepted', turn_id: `custom-${i}`, text: `Question ${i}` },
+    })
+    remote.publish({
+      type: 'conversation',
+      data: {
+        type: 'reply_delta',
+        turn_id: `custom-${i}`,
+        text: `Response ${i}: ` + 'Cached fixture text. '.repeat(15),
+      },
+    })
+    remote.publish({ type: 'state', data: { state: 'idle' } })
+  }
+  await expect(page.getByText('Question 15', { exact: true })).toBeVisible()
+  const transcript = page.getByRole('log', { name: 'Conversation', exact: true })
+  await transcript.evaluate((el) => {
+    el.scrollTop = 60
+    el.dispatchEvent(new Event('scroll'))
+  })
+  await page.evaluate(() =>
+    Object.defineProperty(document, 'originalCustomizeVideo', {
+      value: document.querySelector('video'),
+    }),
+  )
+  const count = remote.commands.length
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await expect(transcript).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Chat with Syntelle', exact: true })).toBeVisible()
+  const drawer = page.getByRole('dialog', { name: 'Customize Syntelle', exact: true })
+  await expect(drawer).toBeVisible()
+  expect(await transcript.evaluate((el) => el.closest('dialog'))).toBe(null)
+  await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('textbox', { name: 'Character instructions', exact: true }),
+  ).toBeEnabled()
+  remote.publish({
+    type: 'conversation',
+    data: { type: 'accepted', turn_id: 'custom-live', text: 'Live question' },
+  })
+  remote.publish({
+    type: 'conversation',
+    data: { type: 'reply_delta', turn_id: 'custom-live', text: 'A continuing response.' },
+  })
+  remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'custom-live' } })
+  await expect(
+    page.getByRole('textbox', { name: 'Character instructions', exact: true }),
+  ).toBeDisabled()
+  await expect(
+    page.getByText(
+      'Turn off the microphone and wait for any reply or connection to finish before editing instructions.',
+      { exact: true },
+    ),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop reply', exact: true })).toBeVisible()
+  await showAppearance(page)
+  const appearance = page.getByRole('tab', { name: 'Appearance', exact: true })
+  await appearance.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByRole('tab', { name: 'Behavior', exact: true })).toBeFocused()
+  await showAdvanced(page)
+  await expect(page.getByRole('button', { name: /Play gesture/ })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Customize', exact: true })).toBeFocused()
+  await expect.poll(() => transcript.evaluate((el) => el.scrollTop)).toBe(60)
+  expect(
+    await page.evaluate(
+      () =>
+        Object.getOwnPropertyDescriptor(document, 'originalCustomizeVideo')?.value ===
+        document.querySelector('video'),
+    ),
+  ).toBe(true)
+  expect(remote.commands.slice(count)).toEqual([])
+  expect(remote.sessionRequests).toHaveLength(1)
+  expect(remote.deleted).toEqual([])
+  await expect(page.getByRole('button', { name: 'Stop reply', exact: true })).toBeVisible()
+  remote.publish({ type: 'playback', data: { event: 'playback_ended', turn_id: 'custom-live' } })
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await expect(
+    page.getByRole('textbox', { name: 'Character instructions', exact: true }),
+  ).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Advanced', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+})
+
+test('customization localized layout supports themes, reduced motion and keyboard navigation', async ({
+  page,
+}) => {
+  const remote = await fixture(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await chooseLanguage(page, 'es')
+  await page.getByRole('button', { name: 'Personalizar', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Personalizar Syntelle', exact: true }),
+  ).toBeFocused()
+  await expect(page.getByRole('img', { name: 'Retrato de Syntelle', exact: true })).toBeVisible()
+  const first = page.getByRole('tab', { name: 'Comportamiento', exact: true })
+  await first.focus()
+  await page.keyboard.press('End')
+  await expect(page.getByRole('tab', { name: 'Apariencia', exact: true })).toBeFocused()
+  await expect(page.getByRole('checkbox', { name: 'Parpadeo natural', exact: true })).toBeDisabled()
+  await expect(
+    page.getByRole('checkbox', { name: 'Movimiento de cabeza y respiración', exact: true }),
+  ).toBeDisabled()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+  await page.screenshot({ path: test.info().outputPath('customization-spanish-theme.png') })
+  await page.getByRole('button', { name: 'Modo oscuro', exact: true }).click()
+  await page.screenshot({ path: test.info().outputPath('customization-spanish-other-theme.png') })
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Personalizar', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: 'Personalizar', exact: true }).click()
+  const moodSelect = page.getByRole('combobox', { name: 'Ánimo', exact: true })
+  if (await moodSelect.isVisible()) await moodSelect.focus()
+  else await page.getByRole('combobox', { name: 'Estilo de reacción', exact: true }).focus()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Personalizar', exact: true })).toBeFocused()
+  expect(remote.sessionRequests).toEqual([])
+  expect(remote.commands).toEqual([])
 })

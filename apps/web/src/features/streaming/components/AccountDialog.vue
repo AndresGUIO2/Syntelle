@@ -119,30 +119,14 @@ onScopeDispose(() => {
       </header>
       <template v-if="!auth.account.value">
         <p class="intro">{{ t('Save your setup and connect Syntelle to your applications.') }}</p>
-        <div class="providers">
-          <button
-            class="button"
-            type="button"
-            disabled
-          >
-            {{ t('Continue with Google') }}
-          </button>
-          <button
-            class="button"
-            type="button"
-            disabled
-          >
-            {{ t('Continue with GitHub') }}
-          </button>
-        </div>
-        <p class="note providers-soon">{{ t('Soon') }}</p>
-        <div class="separator">
-          <span> {{ t('or continue with email') }} </span>
-        </div>
-        <p v-if="props.flow" class="note">
+        <p v-if="props.flow && auth.status.value?.email.configured" class="note">
           {{ t('Verify your email to finish connecting this sign-in method.') }}
         </p>
-        <form v-if="!sent" class="email-form" @submit.prevent="sendCode">
+        <form
+          v-if="auth.status.value?.email.configured && !sent"
+          class="email-form"
+          @submit.prevent="sendCode"
+        >
           <label class="field">
             {{ t('Email address') }}
             <input
@@ -153,15 +137,15 @@ onScopeDispose(() => {
               maxlength="254"
               :disabled="auth.loading.value"
           /></label>
-          <button
-            class="button button-primary"
-            type="submit"
-            :disabled="auth.loading.value || !auth.status.value?.email.configured"
-          >
+          <button class="button button-primary" type="submit" :disabled="auth.loading.value">
             {{ t(auth.loading.value ? 'Sending…' : 'Send sign-in code') }}
           </button>
         </form>
-        <form v-else class="email-form" @submit.prevent="verify">
+        <form
+          v-else-if="auth.status.value?.email.configured"
+          class="email-form"
+          @submit.prevent="verify"
+        >
           <p class="note">
             {{ t('Enter the six-digit code sent to') }} <strong>{{ email }}</strong>
             {{ t('. It expires in ten minutes.') }}
@@ -204,11 +188,7 @@ onScopeDispose(() => {
           </button>
         </form>
         <p v-if="auth.status.value && !auth.status.value.email.configured" class="note">
-          {{
-            t(
-              'Email sign-in is not configured for this local preview. You can continue as a guest.',
-            )
-          }}
+          {{ t('Email sign-in is temporarily unavailable. You can continue as a guest.') }}
         </p>
         <button class="text-action guest" type="button" @click="open = false">
           {{ t('Continue as a guest') }}
@@ -220,11 +200,7 @@ onScopeDispose(() => {
           <button type="button" :aria-pressed="tab === 'saved'" @click="tab = 'saved'">
             {{ t('Saved setups') }}
           </button>
-          <button
-            type="button"
-            disabled
-            :aria-label="`${t('Developer access')}: ${t('Soon')}`"
-          >
+          <button type="button" disabled :aria-label="`${t('Developer access')}: ${t('Soon')}`">
             <span>{{ t('Developer access') }}</span>
             <span class="soon-badge" aria-hidden="true">{{ t('Soon') }}</span>
           </button>
@@ -328,7 +304,9 @@ onScopeDispose(() => {
         >
           {{ t('Sign out') }}
         </button>
-        <a href="/privacy.html" target="_blank" rel="noopener noreferrer">{{ t('Privacy Policy') }}</a>
+        <a href="/privacy.html" target="_blank" rel="noopener noreferrer">{{
+          t('Privacy Policy')
+        }}</a>
       </footer>
     </div>
   </dialog>

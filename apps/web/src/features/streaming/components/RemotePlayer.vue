@@ -3,6 +3,7 @@ import { useLocaleStore } from '../../../stores/locale'
 import { computed, onMounted, onScopeDispose, shallowRef, useTemplateRef, watch } from 'vue'
 import AppIcon from '../../../components/AppIcon.vue'
 import { useBackgroundVideo } from '../composables/useBackgroundVideo'
+import { backgrounds } from '../settingsCatalog'
 import type { StreamSettings } from '../types'
 const { t, errorMessage } = useLocaleStore()
 const props = defineProps<{
@@ -14,6 +15,9 @@ const props = defineProps<{
   blur: number
   controlsTarget: HTMLElement | null
 }>()
+const backgroundImage = computed(
+  () => backgrounds.find((item) => item.id === props.background)?.image ?? backgrounds[0]!.image,
+)
 const composed = useBackgroundVideo(() => props)
 const video = useTemplateRef<HTMLVideoElement>('video')
 const frameReady = shallowRef(false)
@@ -174,6 +178,11 @@ defineExpose({ enableAudio })
     :aria-busy="Boolean(media) && !showVideo"
   >
     <div class="remote-media">
+      <div
+        class="remote-backdrop"
+        :style="{ '--stage-background': `url(${backgroundImage})` }"
+        aria-hidden="true"
+      />
       <picture
         class="remote-poster"
         :class="{ 'remote-poster-live': showVideo }"
@@ -257,6 +266,9 @@ defineExpose({ enableAudio })
   min-width: 0;
   overflow: hidden;
 }
+.remote-backdrop {
+  display: none;
+}
 .remote-video,
 .remote-poster img {
   display: block;
@@ -304,13 +316,60 @@ defineExpose({ enableAudio })
     radial-gradient(ellipse at 92% 90%, #bab4c53d, transparent 48%),
     linear-gradient(140deg, #f3f0f721, #25232b26 56%, #bab4c52d);
   box-shadow: inset 0 0 0 1px #f3f0f73d;
-  backdrop-filter: blur(2px);
 }
 @media (max-width: 899px) {
   .remote-video,
   .remote-poster img {
-    object-fit: cover;
-    object-position: center 45%;
+    object-fit: contain;
+    object-position: center;
+  }
+}
+@media (max-width: 899px) {
+  .remote-backdrop {
+    display: block;
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    background-image: var(--stage-background);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+  .remote-poster {
+    right: auto;
+    left: 50%;
+    width: auto;
+    height: 100%;
+    aspect-ratio: 3 / 4;
+    transform: translateX(-50%);
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 16%,
+      #000 84%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  }
+  .remote-video {
+    right: auto;
+    left: 50%;
+    width: auto;
+    height: 100%;
+    aspect-ratio: 3 / 4;
+    transform: translateX(-50%);
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 16%,
+      #000 84%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  }
+  .remote-poster img {
+    object-fit: contain;
+    object-position: center;
   }
 }
 .audio-action {
