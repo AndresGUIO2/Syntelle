@@ -39,7 +39,8 @@ func New(parent context.Context, config Config) (*Host, error) {
 	if config.FPS == 0 {
 		config.FPS = 30
 	}
-	if config.Capacity < 1 || config.Capacity > 64 || (config.Width != 720 && config.Width != 1440) || config.Height != 960 || config.FPS != 30 || config.SceneFactory == nil || config.Emit == nil || config.PackageHash == "" {
+	validSize := (config.Height == 960 && (config.Width == 720 || config.Width == 1440)) || (config.Height == 720 && (config.Width == 540 || config.Width == 1080))
+	if config.Capacity < 1 || config.Capacity > 64 || !validSize || config.FPS != 30 || config.SceneFactory == nil || config.Emit == nil || config.PackageHash == "" {
 		return nil, errors.New("invalid private native media configuration")
 	}
 	if config.Encoders == nil {
@@ -192,7 +193,11 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 		<-s.done
 		return err
 	}
-	h.emit(event("ready", s.id, "", map[string]any{"width": h.config.Width, "height": h.config.Height, "fps": h.config.FPS, "renderer": s.rendererBackend(), "package_hash": h.config.PackageHash, "video_layout": videoLayout(h.config.Width), "display_width": 720, "display_height": 960}))
+	displayWidth := h.config.Width
+	if h.config.Width != 720 {
+		displayWidth /= 2
+	}
+	h.emit(event("ready", s.id, "", map[string]any{"width": h.config.Width, "height": h.config.Height, "fps": h.config.FPS, "renderer": s.rendererBackend(), "package_hash": h.config.PackageHash, "video_layout": videoLayout(h.config.Width), "display_width": displayWidth, "display_height": h.config.Height}))
 	return nil
 }
 
@@ -246,7 +251,7 @@ func (h *Host) Snapshot(id string) (*image.RGBA, error) {
 }
 
 func videoLayout(width int) string {
-	if width == 1440 {
+	if width == 1440 || width == 1080 {
 		return "premultiplied-alpha-sbs/1"
 	}
 	return "opaque/1"

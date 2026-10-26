@@ -22,6 +22,11 @@ type peer struct {
 	cancel context.CancelFunc
 }
 
+type cloudWorker struct {
+	peer    *peer
+	started time.Time
+}
+
 func (p *peer) send(event Envelope) bool {
 	if p == nil || p.ctx.Err() != nil {
 		return false
@@ -38,6 +43,13 @@ func (p *peer) send(event Envelope) bool {
 func (s *Service) toWorker(event Envelope) bool {
 	s.mu.Lock()
 	worker := s.worker
+	if session := s.sessions[event.SessionID]; session != nil && session.workerID != "" {
+		if current := s.workers[session.workerID]; current != nil {
+			worker = current.peer
+		} else {
+			worker = nil
+		}
+	}
 	s.mu.Unlock()
 	return worker.send(event)
 }
@@ -92,9 +104,10 @@ func (s *Service) trackPeer(parent context.Context, c *websocket.Conn) *peer {
 	return p
 }
 func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
+	allocationID := r.Header.Get("X-Syntelle-Allocation")
 	if httpapi.Cloud() {
 		var valid bool
-		err := s.store.pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM syntelle_streaming.worker_allocation WHERE id=$1 AND expires_at>now())", r.Header.Get("X-Syntelle-Allocation")).Scan(&valid)
+		err := s.store.pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM syntelle_streaming.worker_allocations WHERE id=$1 AND expires_at>now()) OR EXISTS(SELECT 1 FROM syntelle_streaming.worker_allocation WHERE id=$1 AND expires_at>now())", allocationID).Scan(&valid)
 		if err != nil || !valid {
 			writeError(w, 403, "Worker allocation required.")
 			return
@@ -107,6 +120,9 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	busy := s.worker != nil
+	if httpapi.Cloud() {
+		busy = s.workers[allocationID] != nil
+	}
 	s.mu.Unlock()
 	if busy {
 		writeError(w, 409, "A renderer is already connected.")
@@ -125,21 +141,34 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 	defer p.cancel()
 	c.SetReadLimit(128 << 10)
 	s.mu.Lock()
-	if s.worker != nil {
+	if (!httpapi.Cloud() && s.worker != nil) || (httpapi.Cloud() && s.workers[allocationID] != nil) {
 		s.mu.Unlock()
 		return
 	}
-	s.worker = p
-	s.workerStarted = time.Now()
+	if httpapi.Cloud() {
+		if s.workers == nil {
+			s.workers = map[string]*cloudWorker{}
+		}
+		s.workers[allocationID] = &cloudWorker{peer: p, started: time.Now()}
+	} else {
+		s.worker = p
+		s.workerStarted = time.Now()
+	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
-		if s.worker == p {
+		if httpapi.Cloud() {
+			if current := s.workers[allocationID]; current != nil && current.peer == p {
+				delete(s.workers, allocationID)
+			}
+		} else if s.worker == p {
 			s.worker = nil
 		}
 		ids := []string{}
-		for id := range s.sessions {
-			ids = append(ids, id)
+		for id, session := range s.sessions {
+			if !httpapi.Cloud() || session.workerID == allocationID {
+				ids = append(ids, id)
+			}
 		}
 		s.mu.Unlock()
 		for _, id := range ids {
@@ -148,10 +177,14 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		if httpapi.Cloud() {
 			archive, stop := context.WithTimeout(context.WithoutCancel(s.ctx), time.Second)
 			defer stop()
-			_, _ = s.store.pool.Exec(archive, "UPDATE syntelle_streaming.worker_allocation SET expires_at=now() WHERE id=$1", r.Header.Get("X-Syntelle-Allocation"))
+			_, _ = s.store.pool.Exec(archive, "UPDATE syntelle_streaming.worker_allocations SET expires_at=now() WHERE id=$1", allocationID)
 		}
 	}()
-	p.send(envelope("registered", "", map[string]int{"maximum_sessions": s.config.MaximumSessions}))
+	maximum := s.config.MaximumSessions
+	if httpapi.Cloud() {
+		maximum = cloudWorkerCapacity
+	}
+	p.send(envelope("registered", "", map[string]int{"maximum_sessions": maximum}))
 	for {
 		var event Envelope
 		kind, b, err := c.Read(p.ctx)
@@ -167,6 +200,9 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Lock()
 		session := s.sessions[event.SessionID]
+		if httpapi.Cloud() && session != nil && session.workerID != allocationID {
+			session = nil
+		}
 		s.mu.Unlock()
 		if session == nil {
 			continue

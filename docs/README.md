@@ -18,6 +18,8 @@ Start with [repository structure](development/repository-structure.md) for code 
 
 [Shared immutable GPU assets](development/shared-gpu-assets.md) records per-content device sharing between independent sessions, reference-counted cleanup and bounded memory/player comparisons.
 
+[Character video cost](development/video-cost.md) records the 720-high packed candidate, mask/CPU/CUDA/NVENC measurements, sustained eight-stream local comparison and untested T4 gate.
+
 ## Current local demonstration
 
 - [Repeated nods](experiments/motion/repeated-nods.md): one nod with intensity and repetition controls, a validated wider pitch range and shared conversational movement limits.
@@ -81,6 +83,7 @@ Start with [repository structure](development/repository-structure.md) for code 
 - [Local development commands](development/local-dev.md): one-command background startup, readiness, stop/status, selective cleanup and bounded Docker cache/log retention.
 
 - [Go service organization and reliability](development/go-service.md): command/internal packages, burst handling, speech access protection and nonfatal interruption-persistence warnings.
+- [Local speech concurrency](development/speech-concurrency.md): cancellable synthesis admission, bounded parallel Azure calls and offline burst verification.
 - [Development skills](development/development-skills.md): project-local Vue/FastAPI/UI guides and six pinned Go skills, usage triggers, project overrides and integrity records.
 
 - `development/`: first build, code organization, skills and the repository map.

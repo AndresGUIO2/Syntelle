@@ -79,6 +79,7 @@ services:
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
       AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-}
+      SYNTELLE_SPEECH_CONCURRENCY: ${SYNTELLE_SPEECH_CONCURRENCY:-8}
       SYNTELLE_DATABASE_URL: postgresql://syntelle:${SYNTELLE_DB_PASSWORD:-}@postgres:5432/syntelle
     volumes:
       - type: bind

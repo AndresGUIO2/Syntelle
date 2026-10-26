@@ -83,6 +83,8 @@ type Renderer struct {
 	backgroundBlur              float64
 	left, top, right, bottom    int
 	x, y, drawWidth, drawHeight float64
+	displayWidth, displayHeight int
+	diagnosticColorOnly         bool
 	composeX                    [720]sampleAxis
 	composeY                    [960]sampleAxis
 	composeNative               composeBackend
@@ -92,10 +94,22 @@ type Renderer struct {
 }
 
 func New(a *Assets) (*Renderer, error) {
-	return newRenderer(a, os.Getenv("SYNTELLE_RENDERER"))
+	return NewSized(a, 720, 960)
+}
+
+// NewSized keeps source textures immutable while changing the private output raster.
+func NewSized(a *Assets, width, height int) (*Renderer, error) {
+	if (width != 720 || height != 960) && (width != 540 || height != 720) {
+		return nil, errors.New("invalid native portrait size")
+	}
+	return newRendererSized(a, os.Getenv("SYNTELLE_RENDERER"), width, height)
 }
 
 func newRenderer(a *Assets, mode string) (*Renderer, error) {
+	return newRendererSized(a, mode, 720, 960)
+}
+
+func newRendererSized(a *Assets, mode string, displayWidth, displayHeight int) (*Renderer, error) {
 	if a == nil || a.Foreground == nil {
 		return nil, errors.New("native assets unavailable")
 	}
@@ -103,9 +117,9 @@ func newRenderer(a *Assets, mode string) (*Renderer, error) {
 	if err != nil {
 		return nil, err
 	}
-	scale := math.Min(1, 1024/float64(max(a.Motion.Canvas.Width, a.Motion.Canvas.Height)))
+	scale := math.Min(1, 1024/float64(max(a.Motion.Canvas.Width, a.Motion.Canvas.Height))) * float64(displayHeight) / 960
 	w, h := int(math.Round(float64(a.Motion.Canvas.Width)*scale)), int(math.Round(float64(a.Motion.Canvas.Height)*scale))
-	r := &Renderer{assets: a, oral: NewOralRenderer(a.Oral), eyes: eyes, body: NewTexture(w, h, true), depth: make([]float64, w*h), vertices: make([]rasterVertex, len(a.vertices)), fringe: slices.Clone(a.fringe)}
+	r := &Renderer{assets: a, oral: NewOralRenderer(a.Oral), eyes: eyes, displayWidth: displayWidth, displayHeight: displayHeight, diagnosticColorOnly: os.Getenv("SYNTELLE_OFFLINE_PROBE") == "1" && os.Getenv("SYNTELLE_OFFLINE_MASK_MODE") == "color-only", body: NewTexture(w, h, true), depth: make([]float64, w*h), vertices: make([]rasterVertex, len(a.vertices)), fringe: slices.Clone(a.fringe)}
 	r.subjectTexture = NewTexture(a.Foreground.Width, a.Foreground.Height, true)
 	copy(r.subjectTexture.Pixels, a.Foreground.Pixels)
 	var oral struct{ Crop Rect }
@@ -126,16 +140,16 @@ func newRenderer(a *Assets, mode string) (*Renderer, error) {
 	}
 	portraitHeight := a.Motion.Anatomy.FaceHeight * 2.6
 	bottom := math.Min(float64(a.Motion.Canvas.Height), a.Motion.Anatomy.ChinY+a.Motion.Anatomy.FaceHeight*.9)
-	r.drawWidth = 960 * float64(a.Motion.Canvas.Width) / portraitHeight
-	r.drawHeight = 960 * float64(a.Motion.Canvas.Height) / portraitHeight
-	r.x = (720 - r.drawWidth) / 2
-	r.y = 960 * (portraitHeight - bottom) / portraitHeight
+	r.drawWidth = float64(displayHeight) * float64(a.Motion.Canvas.Width) / portraitHeight
+	r.drawHeight = float64(displayHeight) * float64(a.Motion.Canvas.Height) / portraitHeight
+	r.x = (float64(displayWidth) - r.drawWidth) / 2
+	r.y = float64(displayHeight) * (portraitHeight - bottom) / portraitHeight
 	// Same two-raster-pixel guard used by the preceding private renderer.
 	sx, sy := float64(w)/r.drawWidth, float64(h)/r.drawHeight
 	r.left = max(0, int(math.Floor(-r.x*sx))-2)
 	r.top = max(0, int(math.Floor(-r.y*sy))-2)
-	r.right = min(w, int(math.Ceil((720-r.x)*sx))+2)
-	r.bottom = min(h, int(math.Ceil((960-r.y)*sy))+2)
+	r.right = min(w, int(math.Ceil((float64(displayWidth)-r.x)*sx))+2)
+	r.bottom = min(h, int(math.Ceil((float64(displayHeight)-r.y)*sy))+2)
 	axis := func(position float64, size, stride int) sampleAxis {
 		if position < -.5 || position >= float64(size)-.5 {
 			return sampleAxis{}
@@ -144,16 +158,30 @@ func newRenderer(a *Assets, mode string) (*Renderer, error) {
 		low := int(position)
 		return sampleAxis{A: low * stride, B: min(low+1, size-1) * stride, F: position - float64(low), Valid: true}
 	}
-	for x := range 720 {
+	for x := range displayWidth {
 		r.composeX[x] = axis((float64(x)+.5-r.x)*float64(w)/r.drawWidth-.5, w, 4)
 	}
-	for y := range 960 {
+	for y := range displayHeight {
 		r.composeY[y] = axis((float64(y)+.5-r.y)*float64(h)/r.drawHeight-.5, h, w*4)
 	}
 	if err := r.selectGPU(mode); err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+func (r *Renderer) displaySize() (int, int) {
+	if r.displayWidth == 0 || r.displayHeight == 0 {
+		return 720, 960 // Small raster fixtures predate the configurable output.
+	}
+	return r.displayWidth, r.displayHeight
+}
+
+func (r *Renderer) RenderMetrics() map[string]any {
+	if measured, ok := r.gpu.(interface{ RenderMetrics() map[string]any }); ok {
+		return measured.RenderMetrics()
+	}
+	return nil
 }
 
 func (r *Renderer) newPatch(rect Rect) patch {
@@ -197,8 +225,8 @@ func (r *Renderer) Render(ctx context.Context, state FrameState, dst *image.RGBA
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if dst == nil || dst.Rect.Min != (image.Point{}) || (dst.Rect.Dx() != 720 && dst.Rect.Dx() != 1440) || dst.Rect.Dy() != 960 {
-		return errors.New("native output must be 720x960 or packed 1440x960")
+	if dst == nil || dst.Rect.Min != (image.Point{}) || dst.Rect.Dy() != r.displayHeight || (dst.Rect.Dx() != 2*r.displayWidth && !(r.displayWidth == 720 && dst.Rect.Dx() == 720) && !(r.diagnosticColorOnly && dst.Rect.Dx() == r.displayWidth)) {
+		return errors.New("native output must match the portrait size")
 	}
 	if state.From == "" {
 		state.From = "Rest"
@@ -274,8 +302,11 @@ func (r *Renderer) Render(ctx context.Context, state FrameState, dst *image.RGBA
 	if err := r.drawBody(ctx, state); err != nil {
 		return err
 	}
-	if dst.Rect.Dx() == 1440 {
+	if dst.Rect.Dx() == 2*r.displayWidth {
 		return r.packForeground(ctx, dst)
+	}
+	if r.diagnosticColorOnly {
+		return r.packColorOnly(ctx, dst)
 	}
 	return r.compose(ctx, dst)
 }

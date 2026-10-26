@@ -13,8 +13,8 @@ const option = (name, fallback) => {
 }
 const base = option('--host', 'http://worker:3000')
 const count = Number(option('--sessions', '1'))
-if (![1, 2, 4].includes(count))
-  throw Error('Bounded probe supports 1, 2 or 4 sessions')
+if (![1, 2, 4, 8].includes(count))
+  throw Error('Bounded probe supports 1, 2, 4 or 8 sessions')
 const output = resolve(option('--output', '/results/cpu-review.json'))
 const speechMilliseconds = Number(option('--speech-ms', '3500'))
 const speechParts = Number(option('--speech-parts', '1'))
@@ -73,7 +73,9 @@ const browser = await chromium.launch({
 const pages = [],
   ids = [],
   errors = []
-const runID = crypto.randomUUID().slice(0, 8)
+const runID = option('--run-id', crypto.randomUUID().slice(0, 8))
+if (!/^[a-zA-Z0-9_-]{8,32}$/.test(runID))
+  throw Error('Probe run ID must be a stable 8–32 character identifier')
 let cursor = 0,
   stopping = false,
   poll
@@ -206,6 +208,9 @@ try {
         const videoStats = values.find(
           (value) => value.type === 'inbound-rtp' && value.kind === 'video',
         )
+        const audioStats = values.find(
+          (value) => value.type === 'inbound-rtp' && value.kind === 'audio',
+        )
         return {
           ...state,
           connection: peer.connectionState,
@@ -213,6 +218,7 @@ try {
           signaling: peer.signalingState,
           gathering: peer.iceGatheringState,
           video: videoStats,
+          audio: audioStats,
           codec: values.find((value) => value.id === videoStats?.codecId)
             ?.mimeType,
           size: [video.videoWidth, video.videoHeight],
@@ -310,6 +316,14 @@ try {
           value.audio_encode_total_ms,
           previous.audio_encode_total_ms,
         )
+        const renderStages = Object.fromEntries(
+          Object.entries(value.render_stages ?? {}).map(([key, total]) => [
+            key,
+            typeof total === 'number'
+              ? delta(total, previous.render_stages?.[key])
+              : total,
+          ]),
+        )
         return {
           captured_fps: captured === null ? null : captured / seconds,
           device_surface_frames: value.device_surface_frames ?? null,
@@ -328,6 +342,7 @@ try {
             audio_encoded_frames: audioFrames,
             audio_encode_total_ms: audioMS,
             audio_encode_ms_per_frame: average(audioMS, audioFrames),
+            cuda: renderStages,
           },
         }
       }),
@@ -356,6 +371,9 @@ try {
           codec: value.codec,
           size: value.size,
           audio_peak: value.peak,
+          audio_packets_received: delta(value.audio?.packetsReceived, previous.audio?.packetsReceived),
+          audio_packets_lost: delta(value.audio?.packetsLost, previous.audio?.packetsLost),
+          audio_concealed_samples: delta(value.audio?.concealedSamples, previous.audio?.concealedSamples),
         }
       }),
     }
@@ -581,7 +599,7 @@ try {
         value.audio_peak > 0.002,
     ),
     size: speaking.sessions.every(
-      (value) => ['720x960', '1440x960'].includes(value.size.join('x')),
+      (value) => ['720x960', '1440x960', '540x720', '1080x720'].includes(value.size.join('x')),
     ),
     quality: quality.every((value) => value.face_psnr_db >= 40),
     released,

@@ -38,6 +38,7 @@ type Service struct {
 	closing       bool
 	sessions      map[string]*streamSession
 	worker        *peer
+	workers       map[string]*cloudWorker
 	store         *recordStore
 	conversation  *conversation.Service
 	resolve       ResolveFunc
@@ -66,7 +67,7 @@ func Open(parent context.Context, pool *pgxpool.Pool, conversations *conversatio
 		return nil, errors.New("a source-bound Syntelle package hash is required")
 	}
 	ctx, cancel := context.WithCancel(parent)
-	s := &Service{ctx: ctx, cancel: cancel, sessions: map[string]*streamSession{}, store: store, conversation: conversations, resolve: resolve, config: config, admission: admission}
+	s := &Service{ctx: ctx, cancel: cancel, sessions: map[string]*streamSession{}, workers: map[string]*cloudWorker{}, store: store, conversation: conversations, resolve: resolve, config: config, admission: admission}
 	s.purgeOldHistory(ctx)
 	s.wg.Add(1)
 	go s.expire()
@@ -570,11 +571,18 @@ func (s *Service) endSession(id, reason string, inactiveAt time.Time) {
 	session.cancel()
 	channel := session.channel
 	player := session.player
+	worker := s.worker
+	if session.workerID != "" {
+		worker = nil
+		if current := s.workers[session.workerID]; current != nil {
+			worker = current.peer
+		}
+	}
 	s.mu.Unlock()
 	if channel != nil {
 		channel.Close()
 	}
-	s.toWorker(envelope("stop", id, map[string]string{"reason": reason}))
+	worker.send(envelope("stop", id, map[string]string{"reason": reason}))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), time.Second)
 	defer cancel()
 	if err := s.store.state(ctx, id, finalState, reason, true); err != nil {
@@ -642,6 +650,10 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 	worker := s.worker
+	cloudWorkers := make([]*peer, 0, len(s.workers))
+	for _, current := range s.workers {
+		cloudWorkers = append(cloudWorkers, current.peer)
+	}
 	s.mu.Unlock()
 	s.cancel()
 	for _, id := range ids {
@@ -650,6 +662,10 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	if worker != nil {
 		worker.cancel()
 		_ = worker.conn.CloseNow()
+	}
+	for _, current := range cloudWorkers {
+		current.cancel()
+		_ = current.conn.CloseNow()
 	}
 	done := make(chan struct{})
 	go func() { s.wg.Wait(); close(done) }()

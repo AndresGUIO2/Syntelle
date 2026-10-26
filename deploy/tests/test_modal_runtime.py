@@ -133,7 +133,7 @@ class ModalRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 OfflineModal.lookups, [("syntelle-renderer", "render")]
             )
-            self.assertEqual(module.render.configuration["max_containers"], 1)
+            self.assertEqual(module.render.configuration["max_containers"], 16)
             with patch.object(module.render.__globals__["subprocess"], "run") as native:
                 module.render("allocation_fixture")
                 arguments = native.call_args
@@ -145,10 +145,15 @@ class ModalRuntimeTests(unittest.TestCase):
                         "/assets",
                         "--capacity",
                         "2",
+                        "--video-height",
+                        "720",
                     ],
                 )
                 self.assertEqual(
                     arguments.kwargs["env"]["SYNTELLE_VIDEO_ENCODER"], "nvenc"
+                )
+                self.assertEqual(
+                    arguments.kwargs["env"]["SYNTELLE_GPU_PRECISION"], "fp32"
                 )
                 self.assertEqual(
                     arguments.kwargs["env"]["SYNTELLE_RENDER_ALLOCATION_ID"],

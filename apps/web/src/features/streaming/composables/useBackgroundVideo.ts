@@ -68,10 +68,13 @@ export function useBackgroundVideo(
       function draw() {
         if (disposed || failed || !source || source.readyState < 2) return
         try {
-          if (source.videoWidth !== 1440 || source.videoHeight !== 960)
+          if (!(
+            (source.videoWidth === 1440 && source.videoHeight === 960) ||
+            (source.videoWidth === 1080 && source.videoHeight === 720)
+          ))
             throw Error('The renderer must be updated for browser backgrounds.')
           if (!compositor) {
-            compositor = createBackgroundCompositor(canvas)
+            compositor = createBackgroundCompositor(canvas, source.videoWidth, source.videoHeight)
             background()
             if (!canvas.captureStream)
               throw Error('This browser cannot present composed live video.')

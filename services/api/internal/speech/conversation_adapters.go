@@ -50,6 +50,9 @@ func (l *localOwnerSpeechLedger) Reserve(ctx context.Context, input Input, bindi
 		cid, tid = ref.conversation, ref.turn
 	}
 	op, e := l.store.Reserve(ctx, "dragon", input.RequestKey, binding, cid, tid, map[string]any{"input": input, "region": input.region, "sdk_version": speechSDKVersion, "native_sha256": speechNativeSHA256, "format": "riff-24khz-16bit-mono-pcm", "characters": characters, "policy": "local-owner-uncapped"}, true)
+	if errors.Is(e, conversation.ErrOperationInProgress) {
+		return l.waitForSharedSpeech(ctx, op.ID, binding)
+	}
 	if e != nil {
 		return 0, nil, e
 	}
@@ -65,6 +68,47 @@ func (l *localOwnerSpeechLedger) Reserve(ctx context.Context, input Input, bindi
 		return op.ID, &r, nil
 	}
 	return op.ID, nil, nil
+}
+
+// A matching phrase already sent to Azure is never sent a second time. Wait
+// for that exact durable operation, so an unrelated later request cannot turn
+// its failure or cancellation into an automatic paid retry.
+func (l *localOwnerSpeechLedger) waitForSharedSpeech(ctx context.Context, id int64, binding string) (int64, *Result, error) {
+	wait, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var status, recordedBinding string
+		var response, audio []byte
+		err := l.store.Pool.QueryRow(wait, `SELECT status,result,audio,binding FROM syntelle_conversation.operations WHERE id=$1 AND kind='dragon'`, id).Scan(&status, &response, &audio, &recordedBinding)
+		if err != nil {
+			return 0, nil, err
+		}
+		if recordedBinding != binding {
+			return 0, nil, errors.New("Shared speech binding changed; no retry was made.")
+		}
+		switch status {
+		case "received":
+			var result Result
+			if json.Unmarshal(response, &result) != nil {
+				return 0, nil, errors.New("Shared speech cache is invalid.")
+			}
+			result.Audio = audio
+			if err := validateSpeechResult(result); err != nil {
+				return 0, nil, err
+			}
+			return id, &result, nil
+		case "started":
+			select {
+			case <-wait.Done():
+				return 0, nil, wait.Err()
+			case <-ticker.C:
+			}
+		default:
+			return 0, nil, errors.New("Shared speech attempt did not succeed; no retry was made.")
+		}
+	}
 }
 func (l *localOwnerSpeechLedger) Finish(ctx context.Context, id int64, r *Result, message string, _ bool) error {
 	record := *r
@@ -82,6 +126,10 @@ func (l *localOwnerSpeechLedger) Finish(ctx context.Context, id int64, r *Result
 type speechTurnKey struct{}
 type speechTurnRef struct{ conversation, turn string }
 type conversationSpeech struct{ service *Service }
+
+func (s conversationSpeech) AcquireVoice(ctx context.Context, conversationID string) (func(), error) {
+	return s.service.voice.acquire(ctx, conversationID)
+}
 
 func NewConversationSpeech(service *Service) conversation.Speech {
 	return conversationSpeech{service: service}

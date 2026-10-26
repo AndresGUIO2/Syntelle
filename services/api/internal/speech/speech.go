@@ -12,6 +12,7 @@ import (
 
 	"regexp"
 	"strings"
+	"syntelle/api/internal/conversation"
 	"syntelle/api/internal/httpapi"
 	"syntelle/render-contract"
 	"time"
@@ -55,6 +56,12 @@ const maxVisemeTailMS = rendercontract.MaxNativeVisemeTailMS
 type Provider interface {
 	Synthesize(context.Context, Input) (Result, error)
 }
+
+// queuedProvider starts the provider deadline after a cancellable admission wait.
+// Providers without an admission queue retain the ordinary bounded call.
+type queuedProvider interface {
+	SynthesizeQueued(context.Context, Input, time.Duration) (Result, error)
+}
 type Ledger interface {
 	Reserve(context.Context, Input, string, int) (int64, *Result, error)
 	Finish(context.Context, int64, *Result, string, bool) error
@@ -63,6 +70,7 @@ type Service struct {
 	provider Provider
 	ledger   Ledger
 	region   string
+	voice    voiceGate
 }
 
 func NewService(provider Provider, ledger Ledger, region string) *Service {
@@ -104,7 +112,11 @@ func validateSpeechResult(result Result) error {
 func Handler(next http.Handler, service *Service) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/speech/status" && r.Method == http.MethodGet {
-			httpapi.WriteJSON(w, 200, map[string]any{"configured": service != nil, "voices": []string{"en-US-Ava:DragonHDLatestNeural", "en-US-Andrew:DragonHDLatestNeural"}, "max_characters": 500})
+			active, capacity := 0, 0
+			if service != nil {
+				active, capacity = service.voice.count(), maxActiveVoiceUsers
+			}
+			httpapi.WriteJSON(w, 200, map[string]any{"configured": service != nil, "voices": []string{"en-US-Ava:DragonHDLatestNeural", "en-US-Andrew:DragonHDLatestNeural"}, "max_characters": 500, "active_voice_users": active, "max_active_voice_users": capacity})
 			return
 		}
 		if r.URL.Path != "/api/v1/speech/synthesize" {
@@ -163,6 +175,15 @@ func (service *Service) synthesizeBounded(ctx context.Context, input Input, limi
 	if err := validateSpeechWithLimit(input, limit); err != nil {
 		return Result{}, err
 	}
+	conversationID, _ := conversation.IDs(ctx)
+	release, err := service.voice.acquire(ctx, conversationID)
+	if err != nil {
+		if errors.Is(err, errVoiceAtCapacity) {
+			return Result{}, &speechFailure{429, "voice_capacity", "Voice is busy; try again when a session finishes."}
+		}
+		return Result{}, err
+	}
+	defer release()
 	bindingBytes, _ := json.Marshal(struct{ Text, Language, Voice, Region, SDK, Format string }{input.Text, input.Language, input.Voice, service.region, speechSDKVersion, "riff-24khz-16bit-mono-pcm"})
 	hash := sha256.Sum256(bindingBytes)
 	input.region = service.region
@@ -175,9 +196,14 @@ func (service *Service) synthesizeBounded(ctx context.Context, input Input, limi
 		cached.Region = service.region
 		return *cached, nil
 	}
-	providerContext, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	result, err := service.provider.Synthesize(providerContext, input)
+	var result Result
+	if queued, ok := service.provider.(queuedProvider); ok {
+		result, err = queued.SynthesizeQueued(ctx, input, timeout)
+	} else {
+		providerContext, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		result, err = service.provider.Synthesize(providerContext, input)
+	}
 	if err == nil {
 		err = validateSpeechResult(result)
 	}

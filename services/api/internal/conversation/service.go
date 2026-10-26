@@ -20,6 +20,9 @@ import (
 type Speech interface {
 	Prepare(context.Context, string, string, string, string) (any, error)
 }
+type VoiceAdmission interface {
+	AcquireVoice(context.Context, string) (func(), error)
+}
 type RecognitionEvent struct {
 	Type, ID, Text       string
 	OffsetMS, DurationMS float64
@@ -186,6 +189,8 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 	var turnID string
 	var turnCancel context.CancelFunc
 	var turnDone chan struct{}
+	var turnComplete <-chan struct{}
+	var voiceRelease func()
 	var micID string
 	var micCancel context.CancelFunc
 	var micDone chan struct{}
@@ -237,6 +242,41 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 	emit := func(kind, id, text string, data any) {
 		send(ctx, Event{Type: kind, ConversationID: cid, TurnID: id, Text: text, Data: data})
 	}
+	turnActive := func() bool {
+		if turnDone == nil {
+			return false
+		}
+		select {
+		case <-turnDone:
+			return false
+		default:
+			return true
+		}
+	}
+	releaseVoiceIfIdle := func() {
+		if voiceRelease != nil && micID == "" && !turnActive() && !playing {
+			voiceRelease()
+			voiceRelease = nil
+		}
+	}
+	admitVoice := func(id string, microphone bool) bool {
+		if voiceRelease != nil {
+			return true
+		}
+		if admission, ok := s.Speech.(VoiceAdmission); ok {
+			release, err := admission.AcquireVoice(ctx, cid)
+			if err != nil {
+				kind := "error"
+				if microphone {
+					kind = "microphone_error"
+				}
+				emit(kind, id, "Voice is busy; try again when a session finishes.", nil)
+				return false
+			}
+			voiceRelease = release
+		}
+		return true
+	}
 	stopTurn := func(reason string) {
 		if playing && len(windows) > 0 && windows[len(windows)-1].end < 0 {
 			windows[len(windows)-1].end = microphoneMS
@@ -262,6 +302,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 		}
 		playing = false
+		if reason != "superseded" {
+			releaseVoiceIfIdle()
+		}
 	}
 	stopMic := func() {
 		clearUtterance()
@@ -272,6 +315,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		}
 		pcm = nil
 		micID = ""
+		releaseVoiceIfIdle()
 	}
 	defer func() {
 		stopTurn("disconnect")
@@ -281,6 +325,10 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		}
 		if micDone != nil {
 			<-micDone
+		}
+		if voiceRelease != nil {
+			voiceRelease()
+			voiceRelease = nil
 		}
 		if cid != "" {
 			s.mu.Lock()
@@ -298,14 +346,19 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			emit("error", id, "Configure the selected conversation model and Azure Speech on the local server.", nil)
 			return
 		}
+		if !admitVoice(id, false) {
+			return
+		}
 		// Deduplicate BEFORE cancelling an active turn. Repeated submissions must
 		// neither interrupt nor make another provider request.
 		fresh, err := s.Store.BeginTurn(ctx, cid, id, text)
 		if err != nil {
+			releaseVoiceIfIdle()
 			emit("error", id, "The turn could not be saved.", nil)
 			return
 		}
 		if !fresh {
+			releaseVoiceIfIdle()
 			emit("duplicate", id, "This turn was already submitted.", nil)
 			return
 		}
@@ -321,6 +374,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		turnCancel = stop
 		turnDone = make(chan struct{})
 		done := turnDone
+		turnComplete = done
 		emit("accepted", id, text, nil)
 		performanceInstructions := instructions + s.directionContext(baseline, voice, language)
 		go func() {
@@ -345,6 +399,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		select {
 		case <-ctx.Done():
 			return
+		case <-turnComplete:
+			turnComplete = nil
+			releaseVoiceIfIdle()
 		case <-settled:
 			// A continuation already queued by the SDK wins over the deadline.
 			if len(recognized) > 0 {
@@ -493,6 +550,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					}
 					playing = false
 					completedPlayback = event.Type == "playback_ended"
+					releaseVoiceIfIdle()
 				}
 			case "activity":
 				if event.TurnID == turnID && playing {
@@ -506,6 +564,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			case "mic_start":
 				if pcm != nil || s.Recognition == nil {
 					emit("error", event.TurnID, "Recognition is unavailable or already active.", nil)
+					continue
+				}
+				if !admitVoice(event.TurnID, true) {
 					continue
 				}
 				if micDone != nil {

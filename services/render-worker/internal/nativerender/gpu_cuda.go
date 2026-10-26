@@ -21,7 +21,9 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"syntelle/render-worker/internal/nativeframe"
+	"time"
 	"unsafe"
 )
 
@@ -45,30 +47,37 @@ type gpuParams struct {
 	EmotionDims         [8]int32
 	EmotionUnits        float64
 	EmotionWeights      [10]float64
+	MaskMode            int32
+	Precision           int32
 }
 
 type cudaRenderer struct {
-	native               *C.GPUContext
-	ready                bool
-	triangles            []gpuTriangle
-	bins                 [][]int32
-	indices, offsets     []int32
-	tilesX               int
-	poseTextures         map[string][3]int32
-	laughLipIndex        int32
-	referenceCavityIndex int32
-	oralTriangles        []gpuOralTriangle
-	lastState            FrameState
-	hasState             bool
-	hostPipeline         bool
-	shareImmutable       bool
+	native                                                              *C.GPUContext
+	ready                                                               bool
+	triangles                                                           []gpuTriangle
+	bins                                                                [][]int32
+	indices, offsets                                                    []int32
+	tilesX                                                              int
+	poseTextures                                                        map[string][3]int32
+	laughLipIndex                                                       int32
+	referenceCavityIndex                                                int32
+	oralTriangles                                                       []gpuOralTriangle
+	lastState                                                           FrameState
+	hasState                                                            bool
+	hostPipeline                                                        bool
+	shareImmutable                                                      bool
+	maskMode                                                            int32
+	precision                                                           int32
+	measure                                                             bool
+	geometryNS, patchNS, uploadNS, bodyNS, composeNS, convertNS, syncNS atomic.Uint64
 }
 
 // Explicit measurement reference: preserves phase-66 CPU patches/readback.
 // Its wrapper deliberately omits the device-surface interface.
 type hostCUDA struct{ gpu *cudaRenderer }
 
-func (h *hostCUDA) Close() error { return h.gpu.Close() }
+func (h *hostCUDA) Close() error                  { return h.gpu.Close() }
+func (h *hostCUDA) RenderMetrics() map[string]any { return h.gpu.RenderMetrics() }
 func (h *hostCUDA) Render(ctx context.Context, r *Renderer, s FrameState, dst *image.RGBA, mouth, eyes, background bool) error {
 	return h.gpu.renderAll(ctx, r, s, dst, nil, mouth, eyes)
 }
@@ -115,7 +124,21 @@ func openGPU() (gpuRenderer, error) {
 	if native == nil {
 		return nil, fmt.Errorf("cuda renderer initialization (native code %d)", int(status))
 	}
-	g := &cudaRenderer{native: native, hostPipeline: os.Getenv("SYNTELLE_GPU_PIPELINE") == "host", shareImmutable: os.Getenv("SYNTELLE_GPU_SHARING") != "off"}
+	g := &cudaRenderer{native: native, hostPipeline: os.Getenv("SYNTELLE_GPU_PIPELINE") == "host", shareImmutable: os.Getenv("SYNTELLE_GPU_SHARING") != "off", measure: os.Getenv("SYNTELLE_OFFLINE_PROBE") == "1"}
+	if os.Getenv("SYNTELLE_GPU_PRECISION") == "fp32" {
+		g.precision = 1
+	}
+	if os.Getenv("SYNTELLE_OFFLINE_PROBE") == "1" {
+		switch os.Getenv("SYNTELLE_OFFLINE_MASK_MODE") {
+		case "frozen":
+			g.maskMode = 1
+		case "color-only":
+			g.maskMode = 2
+		}
+		if os.Getenv("SYNTELLE_OFFLINE_PRECISION") == "fp32" {
+			g.precision = 1
+		}
+	}
 	if g.hostPipeline {
 		return &hostCUDA{gpu: g}, nil
 	}
@@ -176,7 +199,7 @@ func (g *cudaRenderer) initialize(r *Renderer) error {
 	for _, item := range []struct {
 		slot int
 		axes []sampleAxis
-	}{{4, r.composeX[:]}, {5, r.composeY[:]}} {
+	}{{4, r.composeX[:r.displayWidth]}, {5, r.composeY[:r.displayHeight]}} {
 		axes := make([]gpuAxis, len(item.axes))
 		for i, a := range item.axes {
 			axes[i] = gpuAxis{A: int32(a.A), B: int32(a.B), F: a.F}
@@ -250,10 +273,12 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 		return errors.New("cuda renderer is closed")
 	}
 	w, h := dst.Rect.Dx(), dst.Rect.Dy()
-	if (w != 720 && w != 1440) || h != 960 || dst.Stride < w*4 || len(dst.Pix) < (h-1)*dst.Stride+w*4 {
+	validWidth := w == 2*r.displayWidth || (g.maskMode == 2 && w == r.displayWidth)
+	if !validWidth || h != r.displayHeight || dst.Stride < w*4 || len(dst.Pix) < (h-1)*dst.Stride+w*4 {
 		return errors.New("invalid cuda output buffer")
 	}
 	first := !g.ready
+	stage := time.Now()
 	if first {
 		if err := g.initialize(r); err != nil {
 			return err
@@ -277,6 +302,9 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 			}
 		}
 	}
+	if g.measure {
+		g.patchNS.Add(uint64(time.Since(stage)))
+	}
 	background := w == 720 && (!g.hasState || g.lastState.Background != s.Background || g.lastState.Blur != s.Blur)
 	if background {
 		if r.background == nil || r.backgroundID != s.Background || r.backgroundBlur != s.Blur {
@@ -292,6 +320,7 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 			return err
 		}
 	}
+	stage = time.Now()
 	reference := r.prepareBody(s)
 	g.triangles = g.triangles[:0]
 	g.indices = g.indices[:0]
@@ -317,6 +346,10 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 	if len(g.triangles) == 0 || len(g.indices) == 0 {
 		return errors.New("empty cuda geometry")
 	}
+	if g.measure {
+		g.geometryNS.Add(uint64(time.Since(stage)))
+	}
+	stage = time.Now()
 	for _, buffer := range []struct {
 		slot    int
 		pointer unsafe.Pointer
@@ -329,12 +362,25 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 			return err
 		}
 	}
-	p := gpuParams{Dims: [16]int32{int32(r.body.Width), int32(r.body.Height), int32(r.subjectTexture.Width), int32(r.subjectTexture.Height), int32(w), 960, int32(g.tilesX), int32(len(g.triangles)),
+	if g.measure {
+		g.uploadNS.Add(uint64(time.Since(stage)))
+	}
+	p := gpuParams{Dims: [16]int32{int32(r.body.Width), int32(r.body.Height), int32(r.subjectTexture.Width), int32(r.subjectTexture.Height), int32(w), int32(h), int32(g.tilesX), int32(len(g.triangles)),
 		int32(r.assets.Expression.Crop.X), int32(r.assets.Expression.Crop.Y), int32(r.assets.Expression.Crop.Width), int32(r.assets.Expression.Crop.Height)}, Smile: s.Smile, Brows: s.Brows, Units: r.assets.Expression.Units}
+	p.MaskMode = g.maskMode
+	p.Precision = g.precision
 	if rig := r.assets.Expression.EmotionRig; rig != nil {
+		// The eighth dimension is a per-frame activity flag used by the body
+		// kernel, avoiding a scan of all nine weights for every body pixel.
 		p.EmotionDims = [8]int32{int32(rig.Crop.X), int32(rig.Crop.Y), int32(rig.Crop.Width), int32(rig.Crop.Height), int32(rig.FieldSize[0]), int32(rig.FieldSize[1]), int32(rig.InverseIterations), 0}
 		p.EmotionUnits = rig.Units
 		p.EmotionWeights = s.Emotion
+		for i := 1; i < len(s.Emotion); i++ {
+			if s.Emotion[i] != 0 {
+				p.EmotionDims[7] = 1
+				break
+			}
+		}
 	}
 	if r.assets.Expression.Joint != nil && !s.RestingSmile {
 		p.Smile = 0
@@ -369,12 +415,31 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 		}
 		device = &descriptor
 	}
-	if status := C.syntelle_gpu_run(g.native, (*C.GPUParams)(unsafe.Pointer(&p)), output, C.int(dst.Stride), device); status != 0 {
+	var timing C.GPUFrameTiming
+	var timingTarget *C.GPUFrameTiming
+	if g.measure {
+		timingTarget = &timing
+	}
+	if status := C.syntelle_gpu_run(g.native, (*C.GPUParams)(unsafe.Pointer(&p)), output, C.int(dst.Stride), device, timingTarget); status != 0 {
 		return fmt.Errorf("render cuda frame (native code %d)", int(status))
+	}
+	if g.measure {
+		g.bodyNS.Add(uint64(float64(timing.body_ms) * 1e6))
+		g.composeNS.Add(uint64(float64(timing.compose_ms) * 1e6))
+		g.convertNS.Add(uint64(float64(timing.convert_ms) * 1e6))
+		g.syncNS.Add(uint64(float64(timing.sync_ms) * 1e6))
 	}
 	g.lastState = s
 	g.hasState = true
 	return ctx.Err()
+}
+
+func (g *cudaRenderer) RenderMetrics() map[string]any {
+	if !g.measure {
+		return nil
+	}
+	ms := func(v *atomic.Uint64) float64 { return float64(v.Load()) / 1e6 }
+	return map[string]any{"cpu_patch_ms": ms(&g.patchNS), "cpu_geometry_ms": ms(&g.geometryNS), "geometry_upload_ms": ms(&g.uploadNS), "cuda_body_ms": ms(&g.bodyNS), "cuda_compose_ms": ms(&g.composeNS), "cuda_convert_ms": ms(&g.convertNS), "cuda_sync_wall_ms": ms(&g.syncNS), "mask_mode": g.maskMode, "precision": g.precision}
 }
 
 func (g *cudaRenderer) Readback(dst *image.RGBA) error {

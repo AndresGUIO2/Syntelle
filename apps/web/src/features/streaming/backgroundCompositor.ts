@@ -5,10 +5,10 @@ void main(){ uv=position*.5+.5; gl_Position=vec4(position,0.,1.); }`
 const fragment = `precision highp float;
 varying vec2 uv;
 uniform sampler2D pixels; uniform sampler2D background;
-uniform int mode; uniform vec2 stepSize; uniform float sigma;
+uniform int mode; uniform vec2 stepSize; uniform vec2 sourceTexel; uniform float sigma;
 void main(){
  if(mode==0){
-  vec2 c=vec2(clamp(uv.x*.5,.5/1440.,719.5/1440.),clamp(uv.y,.5/960.,959.5/960.));
+  vec2 c=vec2(clamp(uv.x*.5,sourceTexel.x*.5,.5-sourceTexel.x*.5),clamp(uv.y,sourceTexel.y*.5,1.-sourceTexel.y*.5));
   vec3 rgb=texture2D(pixels,c).rgb;
   float alpha=texture2D(pixels,c+vec2(.5,0.)).r;
   gl_FragColor=vec4(min(rgb,vec3(alpha))+texture2D(background,uv).rgb*(1.-alpha),1.);
@@ -24,7 +24,16 @@ void main(){
  }
 }`
 
-export function createBackgroundCompositor(canvas: HTMLCanvasElement) {
+export function createBackgroundCompositor(
+  canvas: HTMLCanvasElement,
+  sourceWidth = 1440,
+  sourceHeight = 960,
+) {
+  if (!(
+    (sourceWidth === 1440 && sourceHeight === 960) ||
+    (sourceWidth === 1080 && sourceHeight === 720)
+  ))
+    throw Error('Unsupported live video size.')
   canvas.width = 720
   canvas.height = 960
   const gl = canvas.getContext('webgl', {
@@ -81,6 +90,7 @@ export function createBackgroundCompositor(canvas: HTMLCanvasElement) {
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
     gl.uniform1i(gl.getUniformLocation(program, 'pixels'), 0)
     gl.uniform1i(gl.getUniformLocation(program, 'background'), 1)
+    gl.uniform2f(gl.getUniformLocation(program, 'sourceTexel'), 1 / sourceWidth, 1 / sourceHeight)
     const input = texture(),
       original = texture(),
       horizontal = texture(),

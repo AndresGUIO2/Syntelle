@@ -65,6 +65,20 @@ export function gpuPipeline(value = 'device') {
   return value
 }
 
+export function videoHeight(value = '960') {
+  if (!['960', '720'].includes(String(value))) throw Error('Video height must be 960 or 720.')
+  return Number(value)
+}
+
+export function gpuPrecision(value = 'fp64') {
+  if (!['fp64', 'fp32'].includes(value)) throw Error('GPU precision must be fp64 or fp32.')
+  return value
+}
+
+export function gpuPrecisionForHeight(height, requested) {
+  return gpuPrecision(requested ?? (videoHeight(height) === 720 ? 'fp32' : 'fp64'))
+}
+
 // Docker runtime access and encoder initialization are separate checks. A host
 // NVIDIA card alone does not establish container access (for example Hyper-V).
 export async function gpuAvailable(image, { run, remove }) {
@@ -78,18 +92,20 @@ export async function gpuAvailable(image, { run, remove }) {
   finally { await remove(name).catch(() => {}) }
 }
 
-export function nativeArguments({ image, container, assets, assetsVolume, api, capacity, name, mediaPort, gpu = false, encoder = 'auto', renderer = 'auto', pipeline = 'device' }) {
+export function nativeArguments({ image, container, assets, assetsVolume, api, capacity, name, mediaPort, gpu = false, encoder = 'auto', renderer = 'auto', pipeline = 'device', height = 960, precision = 'fp64' }) {
   return ['run', '--detach', '--rm', '--name', name,
     '--label', 'io.syntelle.project=syntelle', '--label', 'io.syntelle.role=render-worker',
     '--log-driver', 'json-file', '--log-opt', 'max-size=5m', '--log-opt', 'max-file=2',
-    '--network', `container:${container}`, '--cpus', '4', '--memory', '1g', '--pids-limit', '256',
+    '--network', `container:${container}`, '--cpus', '4', '--memory', '2g', '--pids-limit', '256',
     '--read-only', '--tmpfs', '/tmp:rw,noexec,nosuid,size=16m',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
     '--env', tokenName, '--env', `SYNTELLE_VIDEO_ENCODER=${videoEncoder(encoder)}`,
     '--env', `SYNTELLE_RENDERER=${rendererMode(renderer)}`,
     '--env', `SYNTELLE_GPU_PIPELINE=${gpuPipeline(pipeline)}`,
+    ...(gpuPrecision(precision) === 'fp32' ? ['--env', 'SYNTELLE_GPU_PRECISION=fp32'] : []),
     ...gpuArguments(gpu), '--mount', nativeAssetMount({ assets, assetsVolume }),
     image, '--assets', '/opt/syntelle-assets', '--api', api, '--capacity', String(capacity),
+    ...(videoHeight(height) === 720 ? ['--video-height', '720'] : []),
     ...(mediaPort === undefined ? [] : ['--local-media-port', String(localMediaPort(mediaPort))])]
 }
 
@@ -125,14 +141,14 @@ async function followNative(id) {
   }
 }
 
-export async function waitForDetachedWorker(id, { inspect, status, stop, pause, attempts = 40 }) {
+export async function waitForDetachedWorker(id, { inspect, status, stop, pause, attempts = 600 }) {
   try {
     for (let attempt = 0; attempt < attempts; attempt++) {
       if (await inspect(id) !== 'true') throw Error('Native renderer exited during startup.')
       if ((await status())?.available) return
       await pause(500)
     }
-    throw Error('Native renderer did not connect within 20 seconds.')
+    throw Error('Native renderer did not connect within five minutes.')
   } catch (error) {
     await stop(id).catch(() => {})
     throw error
@@ -147,6 +163,8 @@ async function run() {
     'video-encoder': { type: 'string' },
     renderer: { type: 'string' },
     'gpu-pipeline': { type: 'string' },
+    'video-height': { type: 'string' },
+    'gpu-precision': { type: 'string' },
     'dry-run': { type: 'boolean', default: false }, detach: { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
   } })
@@ -157,6 +175,8 @@ async function run() {
     console.log('Video: --video-encoder auto|nvenc|openh264 (default auto: NVENC with automatic OpenH264 fallback)')
     console.log('Rendering: --renderer auto|gpu|cpu (default auto: native CUDA with CPU fallback)')
     console.log('Comparison: --gpu-pipeline device|host (default device; host preserves the preceding CPU patches and transfers)')
+    console.log('Candidate: --video-height 720 (default 960; the browser presents both at 720 x 960)')
+    console.log('Candidate: --gpu-precision fp32|fp64 (720 defaults to fp32; 960 defaults to fp64)')
     return
   }
   if (values.engine !== 'native')
@@ -177,6 +197,8 @@ async function run() {
   const encoder = videoEncoder(values['video-encoder'] ?? configured('SYNTELLE_VIDEO_ENCODER') ?? 'auto')
   const renderer = rendererMode(values.renderer ?? configured('SYNTELLE_RENDERER') ?? 'auto')
   const pipeline = gpuPipeline(values['gpu-pipeline'] ?? configured('SYNTELLE_GPU_PIPELINE') ?? 'device')
+  const height = videoHeight(values['video-height'] ?? configured('SYNTELLE_VIDEO_HEIGHT') ?? '960')
+  const precision = gpuPrecisionForHeight(height, values['gpu-precision'] ?? configured('SYNTELLE_GPU_PRECISION'))
   const token = configured(tokenName)
   if (!token || token.length < 32) throw Error(`Configure ${tokenName} privately before starting a worker.`)
   const api = localAPI(values.api ?? configured('SYNTELLE_RENDER_API_URL') ?? 'http://127.0.0.1:8080')
@@ -227,10 +249,10 @@ async function run() {
   if (!values['dry-run'] && encoder === 'auto' && !gpu)
     console.log('Docker GPU access is unavailable; the worker will use OpenH264.')
   const args = nativeArguments({ image, container, assets, assetsVolume, api, capacity, name,
-    mediaPort: localMediaPort(values['local-media-port']), gpu, encoder, renderer, pipeline })
+    mediaPort: localMediaPort(values['local-media-port']), gpu, encoder, renderer, pipeline, height, precision })
   if (values['dry-run']) {
     console.log(JSON.stringify({ engine: 'native', api, capacity, already_connected: !!status.available,
-      container_environment_names: [tokenName, 'SYNTELLE_VIDEO_ENCODER', 'SYNTELLE_RENDERER', 'SYNTELLE_GPU_PIPELINE'], video_encoder: encoder, renderer, gpu_pipeline: pipeline,
+      container_environment_names: [tokenName, 'SYNTELLE_VIDEO_ENCODER', 'SYNTELLE_RENDERER', 'SYNTELLE_GPU_PIPELINE', ...(precision === 'fp32' ? ['SYNTELLE_GPU_PRECISION'] : [])], video_encoder: encoder, renderer, gpu_pipeline: pipeline, video_height: height, gpu_precision: precision,
       gpu_detection: 'checked at launch', docker_arguments: args }, null, 2))
     return
   }

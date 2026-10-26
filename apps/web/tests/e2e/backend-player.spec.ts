@@ -315,25 +315,9 @@ test('browser backgrounds preserve opaque pixels and fractional hair coverage', 
     route.fulfill({ status: 503, json: { error: { message: 'Offline pixel check' } } }),
   )
   await openStream(page)
-  const result = await page.evaluate(async () => {
+  const results = await page.evaluate(async () => {
     const modulePath = '/src/features/streaming/backgroundCompositor.ts'
     const { createBackgroundCompositor } = await import(modulePath)
-    const canvas = document.createElement('canvas')
-    const renderer = createBackgroundCompositor(canvas)
-    const packed = document.createElement('canvas')
-    packed.width = 1440
-    packed.height = 960
-    const p = packed.getContext('2d')!
-    p.fillStyle = 'black'
-    p.fillRect(0, 0, 1440, 960)
-    p.fillStyle = 'rgb(100,40,20)'
-    p.fillRect(100, 100, 100, 100)
-    p.fillStyle = 'white'
-    p.fillRect(820, 100, 100, 100)
-    p.fillStyle = 'rgb(60,20,10)'
-    p.fillRect(300, 100, 40, 100)
-    p.fillStyle = 'rgb(128,128,128)'
-    p.fillRect(1020, 100, 40, 100)
     const bg = document.createElement('canvas')
     bg.width = 720
     bg.height = 960
@@ -345,7 +329,7 @@ test('browser backgrounds preserve opaque pixels and fractional hair coverage', 
     const image = new Image()
     image.src = bg.toDataURL()
     await image.decode()
-    const read = () => {
+    const read = (canvas: HTMLCanvasElement) => {
       const copy = document.createElement('canvas')
       copy.width = 720
       copy.height = 960
@@ -355,32 +339,54 @@ test('browser backgrounds preserve opaque pixels and fractional hair coverage', 
     }
     const pixel = (data: Uint8ClampedArray, x: number, y: number) =>
       Array.from(data.slice((y * 720 + x) * 4, (y * 720 + x) * 4 + 3))
-    renderer.setBackground(image, 0)
-    renderer.draw(packed)
-    const before = read()
-    renderer.setBackground(image, 20)
-    renderer.draw(packed)
-    const after = read()
-    const result = {
-      opaque: pixel(before, 150, 150),
-      edge: pixel(before, 320, 150),
-      background: pixel(before, 10, 800),
-      sharp: pixel(before, 355, 800),
-      blurred: pixel(after, 355, 800),
-      opaqueBlurred: pixel(after, 150, 150),
+    const results = []
+    for (const height of [960, 720]) {
+      const canvas = document.createElement('canvas')
+      const renderer = createBackgroundCompositor(canvas, height * 1.5, height)
+      const packed = document.createElement('canvas')
+      packed.width = height * 1.5
+      packed.height = height
+      const p = packed.getContext('2d')!
+      p.scale(height / 960, height / 960)
+      p.fillStyle = 'black'
+      p.fillRect(0, 0, 1440, 960)
+      p.fillStyle = 'rgb(100,40,20)'
+      p.fillRect(100, 100, 100, 100)
+      p.fillStyle = 'white'
+      p.fillRect(820, 100, 100, 100)
+      p.fillStyle = 'rgb(60,20,10)'
+      p.fillRect(300, 100, 40, 100)
+      p.fillStyle = 'rgb(128,128,128)'
+      p.fillRect(1020, 100, 40, 100)
+      renderer.setBackground(image, 0)
+      renderer.draw(packed)
+      const before = read(canvas)
+      renderer.setBackground(image, 20)
+      renderer.draw(packed)
+      const after = read(canvas)
+      results.push({
+        opaque: pixel(before, 150, 150),
+        edge: pixel(before, 320, 150),
+        background: pixel(before, 10, 800),
+        sharp: pixel(before, 355, 800),
+        blurred: pixel(after, 355, 800),
+        opaqueBlurred: pixel(after, 150, 150),
+      })
+      renderer.dispose()
     }
-    renderer.dispose()
-    return result
+    return results
   })
-  expect(result.opaque).toEqual([100, 40, 20])
-  expect(result.opaqueBlurred).toEqual(result.opaque)
-  expect(result.background).toEqual([20, 40, 80])
-  result.edge.forEach((value, index) =>
-    expect(Math.abs(value - [70, 40, 50][index]!)).toBeLessThanOrEqual(1),
-  )
-  expect(result.sharp).toEqual([20, 40, 80])
-  expect(result.blurred[0]).toBeGreaterThan(60)
-  expect(result.blurred[0]).toBeLessThan(180)
+  for (const result of results) {
+    expect(result.opaque).toEqual([100, 40, 20])
+    expect(result.opaqueBlurred).toEqual(result.opaque)
+    expect(result.background).toEqual([20, 40, 80])
+    result.edge.forEach((value, index) =>
+      expect(Math.abs(value - [70, 40, 50][index]!)).toBeLessThanOrEqual(1),
+    )
+    expect(result.sharp).toEqual([20, 40, 80])
+    expect(result.blurred[0]).toBeGreaterThan(60)
+    expect(result.blurred[0]).toBeLessThan(180)
+  }
 })
 
 test('background and blur changes stay local while character controls reach the backend', async ({

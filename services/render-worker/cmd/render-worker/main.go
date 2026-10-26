@@ -36,8 +36,21 @@ func run(ctx context.Context) (runErr error) {
 	assets := flag.String("assets", os.Getenv("SYNTELLE_NATIVE_ASSETS"), "private prepared native asset directory")
 	endpoint := flag.String("api", env("SYNTELLE_RENDER_API_URL", "http://127.0.0.1:8080"), "local owner API URL")
 	limit := flag.Int("capacity", capacity, "bounded native media capacity")
+	videoHeight := flag.Int("video-height", 960, "packed video height: 960 or 720")
 	mediaPort := flag.Int("local-media-port", 0, "Docker loopback-published UDP media port; zero keeps direct ICE")
 	flag.Parse()
+	if *videoHeight != 960 && *videoHeight != 720 {
+		return errors.New("video height must be 960 or 720")
+	}
+	precision := os.Getenv("SYNTELLE_GPU_PRECISION")
+	if precision != "" && precision != "fp32" && precision != "fp64" {
+		return errors.New("GPU precision must be fp32 or fp64")
+	}
+	if precision == "" && *videoHeight == 720 {
+		if err := os.Setenv("SYNTELLE_GPU_PRECISION", "fp32"); err != nil {
+			return err
+		}
+	}
 	if *assets == "" {
 		return errors.New("configure private native character assets")
 	}
@@ -68,13 +81,13 @@ func run(ctx context.Context) (runErr error) {
 	if media != nil {
 		defer func() { runErr = errors.Join(runErr, media.Close()) }()
 	}
-	factory, hash, err := loadSceneFactory(*assets)
+	factory, hash, err := loadSceneFactorySized(*assets, *videoHeight*3/4, *videoHeight)
 	if err != nil {
 		return fmt.Errorf("load private native character: %w", err)
 	}
 	backoff := time.Second
 	for ctx.Err() == nil {
-		err = connection(ctx, address.String(), token, nativemedia.Config{Capacity: *limit, Width: 1440, Height: 960, FPS: 30, PackageHash: hash, SceneFactory: factory, NetworkSettings: network})
+		err = connection(ctx, address.String(), token, nativemedia.Config{Capacity: *limit, Width: *videoHeight * 3 / 2, Height: *videoHeight, FPS: 30, PackageHash: hash, SceneFactory: factory, NetworkSettings: network})
 		if cloud {
 			return err
 		}

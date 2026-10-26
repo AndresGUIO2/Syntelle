@@ -554,7 +554,11 @@ func (s *session) stats() map[string]any {
 		}
 	}
 	renderer := s.rendererBackend()
-	return map[string]any{"width": s.host.config.Width, "height": s.host.config.Height, "captured_frames": s.captured.Load(), "encoded_frames": s.encoded.Load(), "audio_frames": s.audioFrames.Load(), "elapsed_ms": float64(nativeclock.Now()-s.createdRaw) / float64(time.Millisecond), "audio_context_seconds": input.MediaTime.Seconds(), "speech_position_seconds": input.Speech.Position.Seconds(), "speech_generation": input.Generation, "connection": connection, "renderer": renderer, "device_surface_frames": s.deviceFrames.Load(), "repeated_video_timestamps": s.repeatedVideoPTS.Load(), "codec": "H264/Opus", "render_total_ms": float64(s.renderNS.Load()) / float64(time.Millisecond), "video_encode_total_ms": float64(s.videoEncodeNS.Load()) / float64(time.Millisecond), "audio_encode_total_ms": float64(s.audioEncodeNS.Load()) / float64(time.Millisecond), "late_render_frames": s.lateFrames.Load(), "reports": reports}
+	var stages map[string]any
+	if measured, ok := s.scene.(interface{ RenderMetrics() map[string]any }); ok {
+		stages = measured.RenderMetrics()
+	}
+	return map[string]any{"width": s.host.config.Width, "height": s.host.config.Height, "captured_frames": s.captured.Load(), "encoded_frames": s.encoded.Load(), "audio_frames": s.audioFrames.Load(), "elapsed_ms": float64(nativeclock.Now()-s.createdRaw) / float64(time.Millisecond), "audio_context_seconds": input.MediaTime.Seconds(), "speech_position_seconds": input.Speech.Position.Seconds(), "speech_generation": input.Generation, "connection": connection, "renderer": renderer, "device_surface_frames": s.deviceFrames.Load(), "repeated_video_timestamps": s.repeatedVideoPTS.Load(), "codec": "H264/Opus", "render_total_ms": float64(s.renderNS.Load()) / float64(time.Millisecond), "video_encode_total_ms": float64(s.videoEncodeNS.Load()) / float64(time.Millisecond), "audio_encode_total_ms": float64(s.audioEncodeNS.Load()) / float64(time.Millisecond), "late_render_frames": s.lateFrames.Load(), "render_stages": stages, "reports": reports}
 }
 
 func (s *session) rendererBackend() string {

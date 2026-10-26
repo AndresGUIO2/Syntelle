@@ -147,10 +147,37 @@ func run(ctx context.Context) error {
 	foreground := flag.Bool("foreground", false, "replay the current packed character transport")
 	loopbackDocker := flag.Bool("loopback-docker", false, "explicit local fixture; publish HTTP and media on host 127.0.0.1 only")
 	mediaPort := flag.Int("local-media-port", 0, "loopback-only Docker fixture UDP port")
-	sessions := flag.Int("sessions", 1, "bounded offline fixture capacity: 1, 2 or 4")
+	sessions := flag.Int("sessions", 1, "bounded offline fixture capacity: 1, 2, 4 or 8")
+	videoHeight := flag.Int("video-height", 960, "packed foreground height: 960 or 720")
+	maskMode := flag.String("mask-mode", "animated", "offline alpha diagnostic: animated, frozen or color-only")
+	precision := flag.String("precision", "fp64", "offline geometry precision: fp64 or fp32")
 	flag.Parse()
-	if *sessions != 1 && *sessions != 2 && *sessions != 4 {
-		return errors.New("offline probe supports 1, 2 or 4 sessions")
+	if *precision != "fp64" && *precision != "fp32" {
+		return errors.New("invalid offline geometry precision")
+	}
+	if *maskMode != "animated" && *maskMode != "frozen" && *maskMode != "color-only" {
+		return errors.New("invalid offline mask mode")
+	}
+	if *maskMode != "animated" && !*foreground {
+		return errors.New("mask diagnostics require foreground mode")
+	}
+	if err := os.Setenv("SYNTELLE_OFFLINE_PROBE", "1"); err != nil {
+		return err
+	}
+	if err := os.Setenv("SYNTELLE_OFFLINE_MASK_MODE", *maskMode); err != nil {
+		return err
+	}
+	if err := os.Setenv("SYNTELLE_OFFLINE_PRECISION", *precision); err != nil {
+		return err
+	}
+	if *sessions != 1 && *sessions != 2 && *sessions != 4 && *sessions != 8 {
+		return errors.New("offline probe supports 1, 2, 4 or 8 sessions")
+	}
+	if *videoHeight != 960 && *videoHeight != 720 {
+		return errors.New("offline probe video height must be 960 or 720")
+	}
+	if !*foreground && *videoHeight != 960 {
+		return errors.New("720-high probe requires packed foreground")
 	}
 	if *listen != "127.0.0.1:3000" && ((!*unpublished && !*loopbackDocker) || *listen != "0.0.0.0:3000") {
 		return errors.New("probe must be loopback or an explicitly unpublished fixture network")
@@ -173,18 +200,27 @@ func run(ctx context.Context) error {
 	} else if *mediaPort != 0 {
 		return errors.New("media mapping requires explicit loopback Docker mode")
 	}
-	load := nativeadapter.Load
 	width := 720
+	height := 960
+	var factory nativemedia.SceneFactory
+	var hash string
+	var err error
 	if *foreground {
-		load = nativeadapter.LoadForeground
-		width = 1440
+		height = *videoHeight
+		width = height * 3 / 2
+		displayWidth := width / 2
+		if *maskMode == "color-only" {
+			width /= 2
+		}
+		factory, hash, err = nativeadapter.LoadForegroundSized(*assets, displayWidth, height)
+	} else {
+		factory, hash, err = nativeadapter.Load(*assets)
 	}
-	factory, hash, err := load(*assets)
 	if err != nil {
 		return err
 	}
 	p := &probe{}
-	p.host, err = nativemedia.New(ctx, nativemedia.Config{Capacity: *sessions, Width: width, PackageHash: hash, SceneFactory: factory, Emit: p.emit, OfflineCalibration: true, NetworkSettings: network})
+	p.host, err = nativemedia.New(ctx, nativemedia.Config{Capacity: *sessions, Width: width, Height: height, PackageHash: hash, SceneFactory: factory, Emit: p.emit, OfflineCalibration: true, NetworkSettings: network})
 	if err != nil {
 		return err
 	}

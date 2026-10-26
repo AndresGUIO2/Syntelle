@@ -34,7 +34,7 @@ runtime = modal.Secret.from_name("syntelle-render-runtime")
     region="us-east",
     min_containers=0,
     buffer_containers=0,
-    max_containers=1,
+    max_containers=16,
     scaledown_window=2,
     timeout=1800,
     retries=0,
@@ -46,6 +46,7 @@ def render(allocation_id: str):
         SYNTELLE_DEPLOYMENT_MODE="cloud",
         SYNTELLE_RENDER_ALLOCATION_ID=allocation_id,
         SYNTELLE_RENDERER="gpu",
+        SYNTELLE_GPU_PRECISION="fp32",
         SYNTELLE_VIDEO_ENCODER="nvenc",
     )
     subprocess.run(
@@ -55,6 +56,8 @@ def render(allocation_id: str):
             "/assets",
             "--capacity",
             "2",
+            "--video-height",
+            "720",
         ],
         env=environment,
         check=True,

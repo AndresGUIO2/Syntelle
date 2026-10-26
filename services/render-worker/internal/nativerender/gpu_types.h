@@ -8,6 +8,8 @@ typedef struct {
     int ex,ey,ew,eh,fw,fh,mw,mh;
     double smile,brows,units;
     int emotion_dims[8]; double emotion_units,emotion_weights[10];
+    int mask_mode;
+    int precision;
 } GPUParams;
 typedef struct { double p[6],from[6],to[6],area; int flags[4]; } GPUOralTriangle;
 typedef struct { int dims[16]; double values[60]; } GPUOralParams;

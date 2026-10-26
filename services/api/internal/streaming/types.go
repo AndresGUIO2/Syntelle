@@ -72,6 +72,7 @@ type streamSession struct {
 	lastEmotionPhrase        int
 	lastEmotionGeneration    uint64
 	id, cid                  string
+	workerID                 string
 	principal                accounts.Principal
 	settings                 accounts.Settings
 	state                    string

@@ -8,3 +8,7 @@ import (
 func loadSceneFactory(directory string) (nativemedia.SceneFactory, string, error) {
 	return nativeadapter.LoadForeground(directory)
 }
+
+func loadSceneFactorySized(directory string, width, height int) (nativemedia.SceneFactory, string, error) {
+	return nativeadapter.LoadForegroundSized(directory, width, height)
+}

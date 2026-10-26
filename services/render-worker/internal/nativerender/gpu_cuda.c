@@ -6,6 +6,9 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <time.h>
+
+typedef CUresult CUDAAPI tcuEventElapsedTime(float*,CUevent,CUevent);
 
 static struct {
     void *library;
@@ -29,6 +32,10 @@ static struct {
     tcuStreamCreate *stream_create;
     tcuStreamDestroy_v2 *stream_destroy;
     tcuStreamSynchronize *stream_sync;
+    tcuEventCreate *event_create;
+    tcuEventDestroy_v2 *event_destroy;
+    tcuEventRecord *event_record;
+    tcuEventElapsedTime *event_elapsed;
 } driver;
 static pthread_once_t driver_once=PTHREAD_ONCE_INIT;
 static pthread_mutex_t primary_context_lock=PTHREAD_MUTEX_INITIALIZER;
@@ -45,6 +52,8 @@ static void load_driver(void) {
     LOAD(alloc,"cuMemAlloc_v2"); LOAD(free,"cuMemFree_v2"); LOAD(upload,"cuMemcpyHtoD_v2");
     LOAD(copy2d,"cuMemcpy2D_v2"); LOAD(launch,"cuLaunchKernel");
     LOAD(stream_create,"cuStreamCreate"); LOAD(stream_destroy,"cuStreamDestroy_v2"); LOAD(stream_sync,"cuStreamSynchronize");
+    LOAD(event_create,"cuEventCreate"); LOAD(event_destroy,"cuEventDestroy_v2");
+    LOAD(event_record,"cuEventRecord"); LOAD(event_elapsed,"cuEventElapsedTime");
 #undef LOAD
     driver.status=driver.init(0);
 }
@@ -61,17 +70,19 @@ struct GPUContext {
     CUcontext context;
     CUdevice device;
     CUmodule module;
-    CUfunction body,compose,oral,eyes,skin,reference,convert;
+    CUfunction body,body_fp32,compose,oral,eyes,skin,reference,convert;
     CUstream stream;
     GPUSkinParams skin_params;
     CUdeviceptr buffers[24];
     size_t capacity[24];
     SharedBuffer *shared[24];
+    int frozen_mask_ready;
+    CUevent timing_events[4];
 };
 _Static_assert(sizeof(GPUVertex)==48,"vertex ABI");
 _Static_assert(sizeof(GPUTriangle)==176,"triangle ABI");
 _Static_assert(sizeof(GPUAxis)==24,"axis ABI");
-_Static_assert(sizeof(GPUParams)==208,"parameter ABI");
+_Static_assert(sizeof(GPUParams)==216,"parameter ABI");
 
 static int reserve(GPUContext *g,int slot,size_t n) {
     if(slot<0 || slot>=24 || n>128*1024*1024) return -1001;
@@ -110,6 +121,7 @@ GPUContext *syntelle_gpu_open(const char *ptx,int *status) {
     if(*status) { driver.release(g->device); free(g); return NULL; }
     *status=driver.module_load(&g->module,ptx);
     if(!*status) *status=driver.function(&g->body,g->module,"syntelle_body");
+    if(!*status) *status=driver.function(&g->body_fp32,g->module,"syntelle_body_fp32");
     if(!*status) *status=driver.function(&g->compose,g->module,"syntelle_compose");
     if(!*status) *status=driver.function(&g->oral,g->module,"syntelle_oral");
     if(!*status) *status=driver.function(&g->eyes,g->module,"syntelle_eyes");
@@ -199,28 +211,69 @@ int syntelle_gpu_patch(GPUContext *g,int x,int y,int w,int h,int sw,const unsign
     return status?status:pop;
 }
 
-int syntelle_gpu_run(GPUContext *g,const GPUParams *p,unsigned char *out,int stride,const GPUOutput *target) {
+static double elapsed_ms(struct timespec start,struct timespec end) {
+    return (double)(end.tv_sec-start.tv_sec)*1000.0+(double)(end.tv_nsec-start.tv_nsec)/1000000.0;
+}
+
+int syntelle_gpu_run(GPUContext *g,const GPUParams *p,unsigned char *out,int stride,const GPUOutput *target,GPUFrameTiming *timing) {
     if(!g || (!out&&!target) || p->bw<1 || p->bw>1024 || p->bh<1 || p->bh>1024 ||
-       (p->outw!=720 && p->outw!=1440) || p->outh!=960 || (out&&stride<p->outw*4)) return -1001;
+       !(((p->outw==720||p->outw==1440)&&p->outh==960)||((p->outw==540||p->outw==1080)&&p->outh==720))) return -1001;
+    if(out&&stride<p->outw*4) return -1001;
     if(target && (target->context!=(uintptr_t)g->context || target->width!=p->outw || target->height!=p->outh ||
        !target->planes[0] || !target->planes[1] || !target->planes[2] || target->strides[0]<p->outw ||
        target->strides[1]<p->outw/2 || target->strides[2]<p->outw/2)) return -1001;
     int status=driver.push(g->context); if(status) return status;
-    status=reserve(g,9,(size_t)p->bw*p->bh*4);
-    if(!status) status=reserve(g,10,(size_t)p->outw*p->outh*4);
-    if(!status) {
-        void *args[]={ (void*)p,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[23],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
-        status=driver.launch(g->body,(p->bw*p->bh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
+    if(timing) {
+        memset(timing,0,sizeof(*timing));
+        for(int i=0;i<4 && !status;i++) if(!g->timing_events[i]) status=driver.event_create(&g->timing_events[i],0);
     }
+    if(!status) status=reserve(g,9,(size_t)p->bw*p->bh*4);
+    if(!status) status=reserve(g,10,(size_t)p->outw*p->outh*4);
+    if(!status && p->mask_mode==1 && !g->frozen_mask_ready) status=reserve(g,3,(size_t)(p->outw/2)*p->outh*4);
+    GPUParams parameters=*p;
+    if(parameters.mask_mode==1 && !g->frozen_mask_ready) parameters.mask_mode=0;
+    if(!status && timing) status=driver.event_record(g->timing_events[0],g->stream);
     if(!status) {
-        void *args[]={ (void*)p,&g->buffers[9],&g->buffers[3],&g->buffers[4],&g->buffers[5],&g->buffers[10] };
-        status=driver.launch(g->compose,(720*960+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
+        void *args[]={ (void*)&parameters,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[23],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
+        status=driver.launch(p->precision==1?g->body_fp32:g->body,(p->bw*p->bh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
+    }
+    if(!status && timing) status=driver.event_record(g->timing_events[1],g->stream);
+    if(!status) {
+        void *args[]={ (void*)&parameters,&g->buffers[9],&g->buffers[3],&g->buffers[4],&g->buffers[5],&g->buffers[10] };
+        status=driver.launch(g->compose,((p->outw==720||p->outw==540?p->outw:p->outw/2)*p->outh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
+    }
+    if(!status && timing) status=driver.event_record(g->timing_events[2],g->stream);
+    if(!status && p->mask_mode==1 && !g->frozen_mask_ready) {
+        status=driver.stream_sync(g->stream);
+    }
+    if(!status && p->mask_mode==1 && !g->frozen_mask_ready) {
+        CUDA_MEMCPY2D mask={0};
+        mask.srcMemoryType=CU_MEMORYTYPE_DEVICE; mask.srcDevice=g->buffers[10]; mask.srcPitch=p->outw*4;
+        mask.srcXInBytes=(p->outw/2)*4;
+        mask.dstMemoryType=CU_MEMORYTYPE_DEVICE; mask.dstDevice=g->buffers[3]; mask.dstPitch=(p->outw/2)*4;
+        mask.WidthInBytes=(p->outw/2)*4; mask.Height=p->outh;
+        status=driver.copy2d(&mask);
+        if(!status) g->frozen_mask_ready=1;
     }
     if(!status && target) {
         void *args[]={(void*)target,&g->buffers[10]};
         status=driver.launch(g->convert,(p->outw*p->outh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
     }
-    if(!status) status=driver.stream_sync(g->stream);
+    if(!status && timing) status=driver.event_record(g->timing_events[3],g->stream);
+    struct timespec sync_start={0},sync_end={0};
+    if(!status) {
+        if(timing) clock_gettime(CLOCK_MONOTONIC,&sync_start);
+        status=driver.stream_sync(g->stream);
+        if(timing) {
+            clock_gettime(CLOCK_MONOTONIC,&sync_end);
+            timing->sync_ms=elapsed_ms(sync_start,sync_end);
+        }
+    }
+    if(!status && timing) {
+        status=driver.event_elapsed(&timing->body_ms,g->timing_events[0],g->timing_events[1]);
+        if(!status) status=driver.event_elapsed(&timing->compose_ms,g->timing_events[1],g->timing_events[2]);
+        if(!status) status=driver.event_elapsed(&timing->convert_ms,g->timing_events[2],g->timing_events[3]);
+    }
     if(!status && out) {
         CUDA_MEMCPY2D copy={0};
         copy.srcMemoryType=CU_MEMORYTYPE_DEVICE; copy.srcDevice=g->buffers[10]; copy.srcPitch=p->outw*4;
@@ -233,7 +286,7 @@ int syntelle_gpu_run(GPUContext *g,const GPUParams *p,unsigned char *out,int str
 }
 
 int syntelle_gpu_readback(GPUContext *g,unsigned char *out,int width,int height,int stride) {
-    if(!g || !out || (width!=720&&width!=1440) || height!=960 || stride<width*4 || g->capacity[10]<(size_t)width*height*4) return -1001;
+    if(!g || !out || !(((width==720||width==1440)&&height==960)||((width==540||width==1080)&&height==720)) || stride<width*4 || g->capacity[10]<(size_t)width*height*4) return -1001;
     int status=driver.push(g->context);if(status)return status;
     status=driver.stream_sync(g->stream);
     if(!status){CUDA_MEMCPY2D copy={0};copy.srcMemoryType=CU_MEMORYTYPE_DEVICE;copy.srcDevice=g->buffers[10];copy.srcPitch=width*4;
@@ -271,6 +324,7 @@ int syntelle_gpu_close(GPUContext *g) {
     if(!status) {
         int synced=driver.stream_sync(g->stream);if(!status)status=synced;
         for(int i=0;i<24;i++) if(g->buffers[i]) { int e=g->shared[i]?release_shared(g->shared[i],1):driver.free(g->buffers[i]); if(!status) status=e; }
+        for(int i=0;i<4;i++) if(g->timing_events[i]) { int e=driver.event_destroy(g->timing_events[i]); if(!status) status=e; }
         if(g->stream){int e=driver.stream_destroy(g->stream);if(!status)status=e;}
         if(g->module) { int e=driver.module_free(g->module); if(!status) status=e; }
         CUcontext previous; int e=driver.pop(&previous); if(!status) status=e;

@@ -62,6 +62,46 @@ func TestPreparedForegroundIgnoresBackgroundAndPreservesCharacter(t *testing.T) 
 	}
 }
 
+func Test720ForegroundReducesInternalAndTransportRaster(t *testing.T) {
+	directory := os.Getenv("SYNTELLE_NATIVE_ASSETS")
+	if directory == "" {
+		t.Skip("set SYNTELLE_NATIVE_ASSETS for the prepared-character check")
+	}
+	t.Setenv("SYNTELLE_RENDERER", "cpu")
+	assets, err := LoadCharacter(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := NewSized(assets, 720, 960)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer full.Close()
+	small, err := NewSized(assets, 540, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer small.Close()
+	if small.body.Width >= full.body.Width || small.body.Height >= full.body.Height {
+		t.Fatal("internal body raster was not reduced")
+	}
+	frame := image.NewRGBA(image.Rect(0, 0, 1080, 720))
+	if err := small.Render(context.Background(), FrameState{From: "Rest", To: "A"}, frame); err != nil {
+		t.Fatal(err)
+	}
+	if len(frame.Pix) != 1080*720*4 {
+		t.Fatal("incorrect packed frame size")
+	}
+	for y := 0; y < 720; y += 37 {
+		for x := 0; x < 540; x += 29 {
+			i := (y*1080 + x + 540) * 4
+			if frame.Pix[i] != frame.Pix[i+1] || frame.Pix[i] != frame.Pix[i+2] || frame.Pix[i+3] != 255 {
+				t.Fatal("720-high alpha half is not opaque grayscale")
+			}
+		}
+	}
+}
+
 func TestForegroundTransportReconstructsPremultipliedEdges(t *testing.T) {
 	t.Parallel()
 	r := rasterFixture()

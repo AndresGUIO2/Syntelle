@@ -35,6 +35,13 @@ func (s *scene) RendererBackend() string {
 	return "native-cpu/1"
 }
 
+func (s *scene) RenderMetrics() map[string]any {
+	if measured, ok := s.renderer.(interface{ RenderMetrics() map[string]any }); ok {
+		return measured.RenderMetrics()
+	}
+	return nil
+}
+
 func (s *scene) EmotionsAvailable() bool { return s.config.Emotions }
 
 // Animation/renderer state has one owner: nativemedia's video loop. The
@@ -63,15 +70,23 @@ func Load(assetDir string) (nativemedia.SceneFactory, string, error) {
 
 // LoadForeground is the live worker path. Offline opaque comparisons retain Load.
 func LoadForeground(assetDir string) (nativemedia.SceneFactory, string, error) {
+	return LoadForegroundSized(assetDir, 720, 960)
+}
+
+func LoadForegroundSized(assetDir string, width, height int) (nativemedia.SceneFactory, string, error) {
 	assets, err := nativerender.LoadCharacter(assetDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("load native foreground assets: %w", err)
 	}
-	return LoadAssets(assets)
+	return LoadAssetsSized(assets, width, height)
 }
 
 // LoadAssets reuses already loaded immutable resources for review/probe hosts.
 func LoadAssets(assets *nativerender.Assets) (nativemedia.SceneFactory, string, error) {
+	return LoadAssetsSized(assets, 720, 960)
+}
+
+func LoadAssetsSized(assets *nativerender.Assets, width, height int) (nativemedia.SceneFactory, string, error) {
 	if assets == nil {
 		return nil, "", errors.New("native scene assets unavailable")
 	}
@@ -88,7 +103,7 @@ func LoadAssets(assets *nativerender.Assets) (nativemedia.SceneFactory, string, 
 		if err := settings.Validate(); err != nil {
 			return nil, fmt.Errorf("prepare native scene settings: %w", err)
 		}
-		r, err := nativerender.New(assets)
+		r, err := nativerender.NewSized(assets, width, height)
 		if err != nil {
 			return nil, fmt.Errorf("prepare native scene renderer: %w", err)
 		}

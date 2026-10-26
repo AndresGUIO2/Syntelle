@@ -62,7 +62,7 @@ func TestLocalOwnerSpeechDoesNotMutateHistoricalAllowances(t *testing.T) {
 	defer store.Pool.Close()
 	owner := &localOwnerSpeechLedger{store}
 	provider := &fakeSpeechProvider{}
-	service := &Service{provider, owner, "canadacentral"}
+	service := NewService(provider, owner, "canadacentral")
 	for i := 0; i < 22; i++ {
 		input := validSpeechInput()
 		input.Text = strings.Repeat("x", 499) + fmt.Sprint(i%10)
@@ -118,5 +118,59 @@ func TestLocalOwnerSpeechDoesNotMutateHistoricalAllowances(t *testing.T) {
 	}
 	if e = store.Pool.QueryRow(ctx, `SELECT count(*) FROM syntelle_speech.requests`).Scan(&count); e != nil || count != 1 {
 		t.Fatal("long speech altered historical ledger", e, count)
+	}
+	for _, trial := range []struct {
+		name    string
+		failure string
+	}{
+		{name: "received"},
+		{name: "failed", failure: "Provider failed; no retry was made."},
+	} {
+		t.Run("shared_phrase_"+trial.name, func(t *testing.T) {
+			waitCtx, stop := context.WithTimeout(ctx, 3*time.Second)
+			defer stop()
+			binding := "shared-phrase-" + trial.name
+			leader := validSpeechInput()
+			leader.RequestKey = "shared-leader-" + trial.name
+			id, cached, err := owner.Reserve(waitCtx, leader, binding, 12)
+			if err != nil || cached != nil {
+				t.Fatal("leader was not durably reserved", err)
+			}
+			follower := leader
+			follower.RequestKey = "shared-follower-" + trial.name
+			type outcome struct {
+				result *Result
+				err    error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				_, result, err := owner.Reserve(waitCtx, follower, binding, 12)
+				done <- outcome{result, err}
+			}()
+			select {
+			case got := <-done:
+				t.Fatalf("follower did not wait for the active phrase: %v", got.err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			result := Result{Audio: make([]byte, 44), DurationMS: 1000, Visemes: []Viseme{{0, 0}, {2, 100}}}
+			if err := owner.Finish(waitCtx, id, &result, trial.failure, false); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case got := <-done:
+				if trial.failure == "" && (got.err != nil || got.result == nil || len(got.result.Audio) != 44) {
+					t.Fatal("successful shared phrase was not reused", got.err)
+				}
+				if trial.failure != "" && (got.err == nil || got.result != nil) {
+					t.Fatal("failed shared phrase caused an automatic retry")
+				}
+			case <-waitCtx.Done():
+				t.Fatal("follower remained blocked after the first attempt finished")
+			}
+			var attempts int
+			if err := store.Pool.QueryRow(waitCtx, `SELECT count(*) FROM syntelle_conversation.operations WHERE kind='dragon' AND binding=$1`, binding).Scan(&attempts); err != nil || attempts != 1 {
+				t.Fatal("identical phrase produced duplicate provider operations", attempts, err)
+			}
+		})
 	}
 }

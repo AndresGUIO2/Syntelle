@@ -5,21 +5,22 @@ import (
 	"image"
 )
 
-// packForeground transports a 720x960 premultiplied character and its full-size
+// packForeground transports a premultiplied character and its full-size
 // grayscale coverage side by side in one encoded frame. Both halves therefore
 // share decoding, RTP timing, loss and reconnection; no background is sampled.
 // The original opaque compositor remains available for offline comparisons.
 func (r *Renderer) packForeground(ctx context.Context, dst *image.RGBA) error {
-	for y := range 960 {
+	width, height := r.displaySize()
+	for y := range height {
 		if y%32 == 0 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 		}
 		ya := r.composeY[y]
-		for x := range 720 {
+		for x := range width {
 			i := y*dst.Stride + x*4
-			mask := i + 720*4
+			mask := i + width*4
 			var sample [4]byte
 			xa := r.composeX[x]
 			if xa.Valid && ya.Valid {
@@ -45,6 +46,19 @@ func (r *Renderer) packForeground(ctx context.Context, dst *image.RGBA) error {
 			dst.Pix[i+3] = 255
 			dst.Pix[mask], dst.Pix[mask+1], dst.Pix[mask+2], dst.Pix[mask+3] = sample[3], sample[3], sample[3], 255
 		}
+	}
+	return nil
+}
+
+// packColorOnly is restricted to the offline diagnostic receiver.
+func (r *Renderer) packColorOnly(ctx context.Context, dst *image.RGBA) error {
+	width, height := r.displaySize()
+	packed := image.NewRGBA(image.Rect(0, 0, width*2, height))
+	if err := r.packForeground(ctx, packed); err != nil {
+		return err
+	}
+	for y := range height {
+		copy(dst.Pix[y*dst.Stride:y*dst.Stride+width*4], packed.Pix[y*packed.Stride:y*packed.Stride+width*4])
 	}
 	return nil
 }

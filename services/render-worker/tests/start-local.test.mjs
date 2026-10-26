@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { nativeArguments, nativeAssetMount, localMediaPort, gpuArguments, gpuAvailable, videoEncoder, rendererMode, gpuPipeline } from '../scripts/start-local.mjs'
+import { nativeArguments, nativeAssetMount, localMediaPort, gpuArguments, gpuAvailable, videoEncoder, rendererMode, gpuPipeline, gpuPrecision, gpuPrecisionForHeight } from '../scripts/start-local.mjs'
 
 test('retired browser engine fails before private configuration or Docker access', () => {
   const script = fileURLToPath(new URL('../scripts/start-local.mjs', import.meta.url))
@@ -42,6 +42,14 @@ test('GPU access includes video capability without privileges or host mounts', (
   assert.throws(() => rendererMode('gpu;command'), /Renderer/)
   assert.equal(gpuPipeline('host'),'host')
   assert.throws(() => gpuPipeline('host;command'), /GPU pipeline/)
+  assert.equal(gpuPrecision('fp32'), 'fp32')
+  assert.throws(() => gpuPrecision('fp32;command'), /GPU precision/)
+  assert.equal(gpuPrecisionForHeight(720), 'fp32')
+  assert.equal(gpuPrecisionForHeight(960), 'fp64')
+  assert.equal(gpuPrecisionForHeight(720, 'fp64'), 'fp64')
+  const candidate = nativeArguments({image:'candidate',container:'api',assets:'assets',api:'http://127.0.0.1:8080',capacity:2,name:'worker',height:720,precision:'fp32'})
+  assert.equal(candidate.includes('SYNTELLE_GPU_PRECISION=fp32'), true)
+  assert.deepEqual(candidate.slice(candidate.indexOf('candidate') + 1, candidate.indexOf('candidate') + 5), ['--assets','/opt/syntelle-assets','--api','http://127.0.0.1:8080'])
 })
 
 test('unavailable Docker GPU cleans its probe and selects software availability', async () => {

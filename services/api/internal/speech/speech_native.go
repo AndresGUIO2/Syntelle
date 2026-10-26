@@ -5,6 +5,7 @@ package speech
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -15,20 +16,33 @@ import (
 
 type azureSpeechProvider struct {
 	key, region string
-	synthesis   sync.Mutex
+	synthesis   synthesisGate
 }
 
 func NewAzureProvider(key, region string) (Provider, error) {
-	return &azureSpeechProvider{key: key, region: region}, nil
+	concurrency, err := configuredSpeechConcurrency(os.Getenv("SYNTELLE_SPEECH_CONCURRENCY"))
+	if err != nil {
+		return nil, err
+	}
+	return &azureSpeechProvider{key: key, region: region, synthesis: newSynthesisGate(concurrency)}, nil
 }
 func (p *azureSpeechProvider) Synthesize(ctx context.Context, input Input) (Result, error) {
+	return p.SynthesizeQueued(ctx, input, 0)
+}
+func (p *azureSpeechProvider) SynthesizeQueued(ctx context.Context, input Input, timeout time.Duration) (Result, error) {
 	result := Result{Mime: "audio/wav", Voice: input.Voice, Language: input.Language, SDKVersion: speechSDKVersion}
 	// HD synthesis can reject bursts even when the resource's published TPS
-	// allowance is higher. One API replica admits one paid call at a time.
-	p.synthesis.Lock()
-	defer p.synthesis.Unlock()
-	if err := ctx.Err(); err != nil {
+	// allowance is higher. Bound native calls per API replica and let queued
+	// conversations cancel without consuming the provider deadline.
+	release, err := p.synthesis.acquire(ctx)
+	if err != nil {
 		return result, err
+	}
+	defer release()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 	config, err := speech.NewSpeechConfigFromSubscription(p.key, p.region)
 	if err != nil {

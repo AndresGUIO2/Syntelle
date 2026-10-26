@@ -31,6 +31,8 @@ type Operation struct {
 	Result, Audio []byte
 }
 
+var ErrOperationInProgress = errors.New("This provider operation is already running.")
+
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	p, e := pgxpool.New(ctx, dsn)
 	if e != nil {
@@ -210,6 +212,9 @@ func (s *Store) Reserve(ctx context.Context, kind, key, binding, cid, tid string
 	if e == nil {
 		if old != binding {
 			return op, errors.New("Idempotency key belongs to different input.")
+		}
+		if op.Status == "started" {
+			return op, ErrOperationInProgress
 		}
 		if op.Status != "received" {
 			return op, errors.New("This provider operation already started or failed; it will not be retried.")

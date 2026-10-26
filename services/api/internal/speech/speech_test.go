@@ -34,10 +34,12 @@ type fakeSpeechLedger struct {
 	failure      string
 	halted       bool
 	reserveError bool
+	reserveCalls int
 	finished     bool
 }
 
 func (l *fakeSpeechLedger) Reserve(_ context.Context, _ Input, _ string, _ int) (int64, *Result, error) {
+	l.reserveCalls++
 	if l.reserveError {
 		return 0, nil, errors.New("Database unavailable.")
 	}
@@ -65,7 +67,7 @@ func postSpeech(handler http.Handler, input Input) *httptest.ResponseRecorder {
 func TestSpeechValidatedBeforePaidCallAndCached(t *testing.T) {
 	provider := &fakeSpeechProvider{}
 	ledger := &fakeSpeechLedger{}
-	handler := Handler(http.NotFoundHandler(), &Service{provider, ledger, "eastus"})
+	handler := Handler(http.NotFoundHandler(), NewService(provider, ledger, "eastus"))
 	invalid := validSpeechInput()
 	invalid.Voice = "other"
 	if postSpeech(handler, invalid).Code != 400 || provider.calls != 0 {
@@ -81,7 +83,7 @@ func TestSpeechValidatedBeforePaidCallAndCached(t *testing.T) {
 func TestSpeechMissingEventsHaltsWithoutFallback(t *testing.T) {
 	provider := &fakeSpeechProvider{missing: true}
 	ledger := &fakeSpeechLedger{}
-	response := postSpeech(Handler(http.NotFoundHandler(), &Service{provider, ledger, "eastus"}), validSpeechInput())
+	response := postSpeech(Handler(http.NotFoundHandler(), NewService(provider, ledger, "eastus")), validSpeechInput())
 	if response.Code != 502 || !ledger.halted || ledger.failure == "" || provider.calls != 1 {
 		t.Fatal("Missing native events were accepted")
 	}
@@ -89,7 +91,7 @@ func TestSpeechMissingEventsHaltsWithoutFallback(t *testing.T) {
 func TestSpeechDatabaseFailurePreventsProvider(t *testing.T) {
 	provider := &fakeSpeechProvider{}
 	ledger := &fakeSpeechLedger{reserveError: true}
-	response := postSpeech(Handler(http.NotFoundHandler(), &Service{provider, ledger, "eastus"}), validSpeechInput())
+	response := postSpeech(Handler(http.NotFoundHandler(), NewService(provider, ledger, "eastus")), validSpeechInput())
 	if response.Code != 409 || provider.calls != 0 {
 		t.Fatal("Provider ran without committed input")
 	}
@@ -103,7 +105,7 @@ func TestSpeechCancelledRequestIsRecordedWithoutProviderFallback(t *testing.T) {
 	cancel()
 	request := httptest.NewRequest("POST", "/api/v1/speech/synthesize", bytes.NewReader(body)).WithContext(ctx)
 	response := httptest.NewRecorder()
-	Handler(http.NotFoundHandler(), &Service{provider, ledger, "canadacentral"}).ServeHTTP(response, request)
+	Handler(http.NotFoundHandler(), NewService(provider, ledger, "canadacentral")).ServeHTTP(response, request)
 	if response.Code != 502 || !ledger.finished || ledger.halted || provider.calls != 1 || ledger.failure != "Speech request cancelled." {
 		t.Fatal("Cancellation did not preserve the terminal attempt")
 	}
@@ -115,7 +117,7 @@ func TestSpeechRejectsTrailingJSONBeforeReservation(t *testing.T) {
 	body, _ := json.Marshal(validSpeechInput())
 	request := httptest.NewRequest("POST", "/api/v1/speech/synthesize", bytes.NewReader(append(body, []byte(" {}")...)))
 	response := httptest.NewRecorder()
-	Handler(http.NotFoundHandler(), &Service{provider, ledger, "canadacentral"}).ServeHTTP(response, request)
+	Handler(http.NotFoundHandler(), NewService(provider, ledger, "canadacentral")).ServeHTTP(response, request)
 	if response.Code != 400 || provider.calls != 0 {
 		t.Fatal("Multiple request objects reached the provider")
 	}

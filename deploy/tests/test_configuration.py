@@ -83,7 +83,7 @@ class DeploymentTests(unittest.TestCase):
         tree = ast.parse(source)
         self.assertIn('gpu="T4"', source)
         self.assertIn("min_containers=0", source)
-        self.assertIn("max_containers=1", source)
+        self.assertIn("max_containers=16", source)
         self.assertIn("retries=0", source)
         self.assertFalse(
             any(

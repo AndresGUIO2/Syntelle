@@ -17,6 +17,74 @@ import (
 	"time"
 )
 
+func TestFP32BodyAgainstRecordedFP64Frames(t *testing.T) {
+	if os.Getenv("SYNTELLE_GPU_CHECK") != "1" {
+		t.Skip("explicit offline GPU qualification required")
+	}
+	directory, statesPath := os.Getenv("SYNTELLE_NATIVE_ASSETS"), os.Getenv("SYNTELLE_FRAME_STATES")
+	if directory == "" || statesPath == "" {
+		t.Fatal("private assets and recorded states required")
+	}
+	data, err := os.ReadFile(statesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var states []struct {
+		Name  string
+		State FrameState
+	}
+	if err := json.Unmarshal(data, &states); err != nil {
+		t.Fatal(err)
+	}
+	if len(states) != 19 {
+		t.Fatalf("expected 19 recorded states, got %d", len(states))
+	}
+	assets, err := LoadCharacter(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SYNTELLE_RENDERER", "gpu")
+	t.Setenv("SYNTELLE_OFFLINE_PROBE", "1")
+	t.Setenv("SYNTELLE_OFFLINE_MASK_MODE", "animated")
+	t.Setenv("SYNTELLE_OFFLINE_PRECISION", "fp64")
+	reference, err := NewSized(assets, 540, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reference.Close()
+	t.Setenv("SYNTELLE_OFFLINE_PRECISION", "fp32")
+	candidate, err := NewSized(assets, 540, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer candidate.Close()
+	minimumPSNR, maximumDelta := math.Inf(1), 0
+	for _, entry := range states {
+		a, b := image.NewRGBA(image.Rect(0, 0, 1080, 720)), image.NewRGBA(image.Rect(0, 0, 1080, 720))
+		if err := reference.Render(t.Context(), entry.State, a); err != nil {
+			t.Fatal(err)
+		}
+		if err := candidate.Render(t.Context(), entry.State, b); err != nil {
+			t.Fatal(err)
+		}
+		var squared float64
+		for i := range a.Pix {
+			delta := int(a.Pix[i]) - int(b.Pix[i])
+			if delta < 0 {
+				delta = -delta
+			}
+			maximumDelta = max(maximumDelta, delta)
+			squared += float64(delta * delta)
+		}
+		psnr := 10 * math.Log10(255*255/math.Max(squared/float64(len(a.Pix)), 1e-12))
+		minimumPSNR = min(minimumPSNR, psnr)
+		if psnr < 40 || maximumDelta > 16 {
+			t.Fatalf("FP32 frame %s diverged: PSNR %.2f dB, max delta %d", entry.Name, psnr, maximumDelta)
+		}
+	}
+	t.Logf("19 source-bound states: minimum PSNR %.2f dB, maximum channel delta %d", minimumPSNR, maximumDelta)
+}
+
 func TestCUDARecordedFramesAndFallback(t *testing.T) {
 	if os.Getenv("SYNTELLE_GPU_CHECK") != "1" {
 		t.Skip("explicit offline GPU qualification required")

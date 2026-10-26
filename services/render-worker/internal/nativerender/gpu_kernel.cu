@@ -26,7 +26,7 @@ DEVICE Color sample(const unsigned char *p,int w,int h,double x,double y) {
     return out;
 }
 DEVICE Color fragment(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,double u,double v) {
-    bool emotional=false; for(int k=1;k<10;k++) if(p.emotion_weights[k]!=0) emotional=true;
+    bool emotional=p.emotion_dims[7]!=0;
     if(p.smile>0 || p.brows>0 || emotional) {
         double tx=u*p.sw-.5,ty=v*p.sh-.5;
         if((tx>=p.ex-.5 && tx<=p.ex+p.ew-.5 && ty>=p.ey-.5 && ty<=p.ey+p.eh-.5) || (emotional && tx>=p.emotion_dims[0]-.5 && tx<=p.emotion_dims[0]+p.emotion_dims[2]-.5 && ty>=p.emotion_dims[1]-.5 && ty<=p.emotion_dims[1]+p.emotion_dims[3]-.5)) {
@@ -71,6 +71,69 @@ DEVICE Color fragment(GPUParams p,const unsigned char *subject,const unsigned ch
     }
     return c;
 }
+// FP32 body path: keep texture interpolation and expression inversion in the
+// same precision as its geometry. The FP64 path remains the pixel reference.
+struct ColorF { float v[4]; };
+DEVICE ColorF sample_f(const unsigned char *p,int w,int h,float x,float y) {
+    x=x<0?0:(x>w-1?w-1:x); y=y<0?0:(y>h-1?h-1:y);
+    int x0=(int)x,y0=(int)y,x1=x0+1<w?x0+1:w-1,y1=y0+1<h?y0+1:h-1;
+    float fx=x-x0,fy=y-y0;
+    int a=(y0*w+x0)*4,b=(y0*w+x1)*4,c=(y1*w+x0)*4,d=(y1*w+x1)*4;
+    ColorF out;
+    for(int k=0;k<4;k++) out.v[k]=((p[a+k]+(p[b+k]-p[a+k])*fx)+
+        ((p[c+k]+(p[d+k]-p[c+k])*fx)-(p[a+k]+(p[b+k]-p[a+k])*fx))*fy)/255.f;
+    return out;
+}
+DEVICE ColorF fragment_f(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,float u,float v) {
+    const float smile=(float)p.smile,brows=(float)p.brows,units=(float)p.units,emotion_units=(float)p.emotion_units;
+    bool emotional=p.emotion_dims[7]!=0;
+    if(smile>0 || brows>0 || emotional) {
+        float tx=u*p.sw-.5f,ty=v*p.sh-.5f;
+        if((tx>=p.ex-.5f && tx<=p.ex+p.ew-.5f && ty>=p.ey-.5f && ty<=p.ey+p.eh-.5f) ||
+           (emotional && tx>=p.emotion_dims[0]-.5f && tx<=p.emotion_dims[0]+p.emotion_dims[2]-.5f &&
+            ty>=p.emotion_dims[1]-.5f && ty<=p.emotion_dims[1]+p.emotion_dims[3]-.5f)) {
+            float x=tx,y=ty;
+            for(int i=0;i<(emotional?p.emotion_dims[6]:5);i++) {
+                float dx=0,dy=0;
+                if(field && p.fw>0 && p.fh>0) {
+                    float fu=(x-p.ex+.5f)/p.ew,fv=(y-p.ey+.5f)/p.eh;
+                    if(fu>=0 && fu<=1 && fv>=0 && fv<=1) {
+                        ColorF c=sample_f(field,p.fw,p.fh,fu*p.fw-.5f,fv*p.fh-.5f);
+                        dx=(c.v[0]*255.f-128.f)*smile*units;
+                        dy=((c.v[1]*255.f-128.f)*smile+(c.v[2]*255.f-128.f)*brows)*units;
+                    }
+                }
+                if(emotional && emotion && p.emotion_dims[4]>0 && p.emotion_dims[5]>0) {
+                    float eu=(x-p.emotion_dims[0]+.5f)/p.emotion_dims[2],ev=(y-p.emotion_dims[1]+.5f)/p.emotion_dims[3];
+                    if(eu>=0 && eu<=1 && ev>=0 && ev<=1) {
+                        float ex=eu*p.emotion_dims[4]-.5f,ey=ev*p.emotion_dims[5]-.5f;
+                        ex=ex<0?0:(ex>p.emotion_dims[4]-1?p.emotion_dims[4]-1:ex);
+                        ey=ey<0?0:(ey>p.emotion_dims[5]-1?p.emotion_dims[5]-1:ey);
+                        for(int k=1;k<10;k++) if(p.emotion_weights[k]!=0) {
+                            ColorF ec=sample_f(emotion,p.emotion_dims[4],p.emotion_dims[5]*10,ex,ey+k*p.emotion_dims[5]);
+                            float weight=(float)p.emotion_weights[k];
+                            dx+=(ec.v[0]*255.f-128.f)*emotion_units*weight;
+                            dy+=(ec.v[1]*255.f-128.f)*emotion_units*weight;
+                        }
+                    }
+                }
+                float nx=tx-dx,ny=ty-dy;
+                if(nx==x && ny==y) break;
+                x=nx; y=ny;
+            }
+            u=(x+.5f)/p.sw; v=(y+.5f)/p.sh;
+        }
+    }
+    ColorF c=sample_f(subject,p.sw,p.sh,u*p.sw-.5f,v*p.sh-.5f);
+    if(smile>0 && material && p.mw>0 && p.mh>0) {
+        float x=(u*p.sw-p.ex)/p.ew,y=(v*p.sh-p.ey)/p.eh;
+        if(x>=0 && x<=1 && y>=0 && y<=1) {
+            ColorF ref=sample_f(material,p.mw,p.mh,x*p.ew-.5f,y*p.eh-.5f);
+            for(int k=0;k<3;k++) c.v[k]=c.v[k]*(1.f-ref.v[3]*smile)+ref.v[k]*c.v[3]*smile;
+        }
+    }
+    return c;
+}
 DEVICE double edge_gpu(GPUVertex a,GPUVertex b,double x,double y) { return (x-a.x)*(b.y-a.y)-(y-a.y)*(b.x-a.x); }
 
 KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,
@@ -105,22 +168,63 @@ KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigne
     for(int k=0;k<4;k++) body[at*4+k]=previous[k];
 }
 
+// FP32 geometry and texture sampling; the separate FP64 kernel remains available.
+DEVICE float edge_gpu_f(GPUVertex a,GPUVertex b,float x,float y) {
+    return (x-(float)a.x)*((float)b.y-(float)a.y)-(y-(float)a.y)*((float)b.x-(float)a.x);
+}
+KERNEL void syntelle_body_fp32(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,
+                    const GPUTriangle *triangles,const int *offsets,const int *ids,unsigned char *body) {
+    unsigned int at=index_1d(); if(at>=(unsigned int)(p.bw*p.bh)) return;
+    int x=at%p.bw,y=at/p.bw,tile=(y/16)*p.tiles_x+x/16;
+    float px=x+.5f,py=y+.5f,depth=1e30f;
+    unsigned char previous[4]={0,0,0,0};
+    for(int j=offsets[tile];j<offsets[tile+1];j++) {
+        GPUTriangle t=triangles[ids[j]];
+        float e0=edge_gpu_f(t.b,t.c,px,py),e1=edge_gpu_f(t.c,t.a,px,py),e2=edge_gpu_f(t.a,t.b,px,py);
+        if(e0<0 || e1<0 || e2<0 || (e0==0 && !t.flags[0]) || (e1==0 && !t.flags[1]) || (e2==0 && !t.flags[2])) continue;
+        float wa=e0*(float)t.inv,wb=e1*(float)t.inv,wc=e2*(float)t.inv;
+        float z=wa*(float)t.a.z+wb*(float)t.b.z+wc*(float)t.c.z;
+        if(z>depth+1e-7f) continue;
+        float u,v;
+        if(t.flags[3]) { u=px/(float)p.bw; v=py/(float)p.bh; }
+        else {
+            float inverse=1.f/(wa*(float)t.a.q+wb*(float)t.b.q+wc*(float)t.c.q);
+            u=(wa*(float)t.a.u+wb*(float)t.b.u+wc*(float)t.c.u)*inverse;
+            v=(wa*(float)t.a.v+wb*(float)t.b.v+wc*(float)t.c.v)*inverse;
+        }
+        ColorF c=fragment_f(p,subject,field,material,emotion,u,v);
+        if(t.flags[4]) {
+            if(c.v[3]>=.995f || c.v[3]<=.001f) continue;
+            for(int k=0;k<4;k++) c.v[k]+=previous[k]/255.f*(1.f-c.v[3]);
+        } else {
+            if(c.v[3]<.995f) continue;
+            depth=z;
+        }
+        for(int k=0;k<4;k++) previous[k]=byte_color(c.v[k]);
+    }
+    for(int k=0;k<4;k++) body[at*4+k]=previous[k];
+}
+
 KERNEL void syntelle_compose(GPUParams p,const unsigned char *body,const unsigned char *background,
                        const GPUAxis *xs,const GPUAxis *ys,unsigned char *out) {
-    unsigned int at=index_1d(); if(at>=720*960) return;
-    int x=at%720,y=at/720,i=(y*p.outw+x)*4;
+    int packed=p.outw==1440||p.outw==1080;
+    int half=packed?p.outw/2:p.outw;
+    unsigned int at=index_1d(); if(at>=(unsigned int)(half*p.outh)) return;
+    int x=at%half,y=at/half,i=(y*p.outw+x)*4;
     GPUAxis xa=xs[x],ya=ys[y]; double values[4]={0,0,0,0};
     if(xa.valid && ya.valid) {
         int a=ya.a+xa.a,b=ya.a+xa.b,c=ya.b+xa.a,d=ya.b+xa.b;
         if(body[a+3]|body[b+3]|body[c+3]|body[d+3]) {
-            for(int k=0;k<4;k++) values[k]=mixd(mixd(body[a+k],body[b+k],xa.f),mixd(body[c+k],body[d+k],xa.f),ya.f);
+            for(int k=0;k<(p.mask_mode==1?3:4);k++) values[k]=mixd(mixd(body[a+k],body[b+k],xa.f),mixd(body[c+k],body[d+k],xa.f),ya.f);
         }
     }
-    if(p.outw==1440) {
+    if(packed) {
         for(int k=0;k<3;k++) out[i+k]=(unsigned char)(values[k]+.5);
-        unsigned char alpha=(unsigned char)(values[3]+.5);
-        for(int k=0;k<3;k++) out[i+720*4+k]=alpha;
-        out[i+720*4+3]=255;
+        unsigned char alpha=p.mask_mode==1?background[at*4]:(unsigned char)(values[3]+.5);
+        for(int k=0;k<3;k++) out[i+half*4+k]=alpha;
+        out[i+half*4+3]=255;
+    } else if(p.mask_mode==2) {
+        for(int k=0;k<3;k++) out[i+k]=(unsigned char)(values[k]+.5);
     } else {
         double remaining=1-values[3]/255;
         for(int k=0;k<3;k++) {
