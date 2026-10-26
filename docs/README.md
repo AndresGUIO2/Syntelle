@@ -34,6 +34,8 @@ Start with [repository structure](development/repository-structure.md) for code 
 
 - [Accounts and rendered streaming candidate](development/accounts-and-streaming.md): implemented Syntelle-only local candidate at `/?view=stream`, with a private RGB-D render worker, optional Google/GitHub/email-code login, saved setups and integration keys. The previous default remains at `/`; live identity/email delivery needs provider configuration and a verified sender. Verification uses fixtures and cached speech; owner review and public deployment remain pending.
 
+- [Simplified customization](development/customization.md): Behavior/Appearance tabs beside Syntelle, optional Advanced controls, preserved conversation/media and bounded browser verification.
+
 - [Workspace redesign](development/workspace-redesign.md): layered graphite/violet surfaces, responsive portrait framing and a local microphone RMS indicator.
 
 - [Streamed text and early voice](development/streaming-voice-replies.md): partial text, durable opening audio before full model completion, complete phrase queues and confirmed microphone interruption.
@@ -41,6 +43,7 @@ Start with [repository structure](development/repository-structure.md) for code 
 - [Conversational speaking attention](experiments/motion/speaking-attention.md): brief gaze breaks and soft posture during speech, preserving cached assets and the preceding fixed-gaze comparison.
 
 - [Contextual performance direction](experiments/motion/contextual-performance.md): structured Gemini direction, steady speaking posture, explicit smiles, bounded head gestures and the visually rejected facial laughter companion.
+- [LLM-directed emotion previews](experiments/motion/llm-emotions.md): persistent baselines, private phrase activation, reusable viseme-safe controls and explicit visual/cadence qualification limits.
 - [Expressive speech and phrase direction](experiments/motion/expressive-performance.md): streamed numeric LLM cues, smiling speech, reviewed cached laughter and optional wider head comparisons in the native server renderer.
 
 - [Microphone-only conversation](development/voice-conversation.md): current voice controls, transcript, interruption and bounded browser verification.
@@ -100,3 +103,5 @@ Historical records describe the implementation at their recorded stage; the late
 - [Native worker efficiency](development/native-efficiency.md): bounded speech preparation, fewer encoded-payload allocations, exact pixel preservation and measured native-before/after CPU and memory.
 - [ISPC and libyuv trial](development/cpu-simd-trial.md): optional native kernels, exact frame checks, failed conversion compatibility, bounded Linux CPU/memory comparisons and the decision to retain the current default.
 - [libyuv color validation](development/libyuv-color-validation.md): explicit BT.601 tolerance with exact scalar reference preserved, sustained CPU savings, two-decoder fixed-frame checks and remaining quality/memory gates.
+- [Natural speech gestures](experiments/motion/natural-speech-gestures.md): bounded nod/shake timing, brow accents, head tilt and emphasis, cached native playback and rollback evidence.
+- [Disgust lip correction](experiments/motion/disgust-lip-correction.md): source-bound nasal/lid calibration, canonical lips, rejected variants and preserved masks/materials.
