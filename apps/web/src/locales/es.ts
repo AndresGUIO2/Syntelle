@@ -1,5 +1,6 @@
 // Interface copy only. User prompts, transcripts and provider records stay verbatim.
 export const spanish: Record<string, string> = {
+  Menu: 'Menú',
   Behavior: 'Comportamiento',
   Appearance: 'Apariencia',
   Advanced: 'Avanzado',

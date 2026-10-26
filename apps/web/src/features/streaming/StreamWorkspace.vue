@@ -908,4 +908,19 @@ onScopeDispose(() => {
     gap: 0;
   }
 }
+@media (max-width: 480px) and (orientation: portrait) {
+  .stream-panels {
+    grid-template-rows: min(calc(133.333vw - 24px), 53svh, 480px) minmax(0, 1fr);
+  }
+}
+@media (max-width: 480px) and (orientation: portrait) and (max-height: 700px) {
+  .stream-panels {
+    grid-template-rows: min(calc(133.333vw - 24px), 38svh) minmax(0, 1fr);
+  }
+}
+@media (max-width: 480px) and (orientation: portrait) and (max-height: 520px) {
+  .stream-panels {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
 </style>

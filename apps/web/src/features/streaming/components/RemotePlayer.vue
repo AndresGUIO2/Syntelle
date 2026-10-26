@@ -3,7 +3,6 @@ import { useLocaleStore } from '../../../stores/locale'
 import { computed, onMounted, onScopeDispose, shallowRef, useTemplateRef, watch } from 'vue'
 import AppIcon from '../../../components/AppIcon.vue'
 import { useBackgroundVideo } from '../composables/useBackgroundVideo'
-import { backgrounds } from '../settingsCatalog'
 import type { StreamSettings } from '../types'
 const { t, errorMessage } = useLocaleStore()
 const props = defineProps<{
@@ -15,9 +14,7 @@ const props = defineProps<{
   blur: number
   controlsTarget: HTMLElement | null
 }>()
-const backgroundImage = computed(
-  () => backgrounds.find((item) => item.id === props.background)?.image ?? backgrounds[0]!.image,
-)
+const posterImage = computed(() => `/characters/posters/syntelle-${props.background}-portrait.webp`)
 const composed = useBackgroundVideo(() => props)
 const video = useTemplateRef<HTMLVideoElement>('video')
 const frameReady = shallowRef(false)
@@ -180,7 +177,7 @@ defineExpose({ enableAudio })
     <div class="remote-media">
       <div
         class="remote-backdrop"
-        :style="{ '--stage-background': `url(${backgroundImage})` }"
+        :style="{ '--stage-background': `url(${posterImage})` }"
         aria-hidden="true"
       />
       <picture
@@ -189,7 +186,7 @@ defineExpose({ enableAudio })
         :aria-hidden="showVideo"
       >
         <img
-          :src="`/characters/posters/syntelle-${background}-portrait.webp`"
+          :src="posterImage"
           :alt="t('Syntelle portrait')"
           width="720"
           height="960"
@@ -302,6 +299,15 @@ defineExpose({ enableAudio })
 .remote-poster img {
   object-position: center;
 }
+.remote-stage:not(.remote-stage-still) .remote-media::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 8% 8%, #f3f0f74d, transparent 42%),
+    radial-gradient(ellipse at 92% 90%, #bab4c53d, transparent 48%),
+    linear-gradient(140deg, #f3f0f721, #25232b26 56%, #bab4c52d);
+}
 .remote-stage-still .remote-poster img {
   filter: saturate(0.4) contrast(1.04) brightness(0.88);
 }
@@ -318,58 +324,65 @@ defineExpose({ enableAudio })
   box-shadow: inset 0 0 0 1px #f3f0f73d;
 }
 @media (max-width: 899px) {
-  .remote-video,
-  .remote-poster img {
-    object-fit: contain;
-    object-position: center;
-  }
-}
-@media (max-width: 899px) {
   .remote-backdrop {
     display: block;
     position: absolute;
-    z-index: 0;
     inset: 0;
-    background-image: var(--stage-background);
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: cover;
+    background: var(--stage-background) center / cover no-repeat;
+    filter: blur(12px);
+    transform: scale(1.06);
+  }
+  .remote-stage-still .remote-backdrop {
+    filter: blur(12px) saturate(0.4) contrast(1.04) brightness(0.88);
   }
   .remote-poster {
-    right: auto;
-    left: 50%;
+    inset: 0 auto auto 50%;
     width: auto;
     height: 100%;
     aspect-ratio: 3 / 4;
     transform: translateX(-50%);
-    -webkit-mask-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      #000 16%,
-      #000 84%,
-      transparent 100%
-    );
-    mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
   }
   .remote-video {
-    right: auto;
-    left: 50%;
+    inset: 0 auto auto 50%;
     width: auto;
     height: 100%;
     aspect-ratio: 3 / 4;
     transform: translateX(-50%);
-    -webkit-mask-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      #000 16%,
-      #000 84%,
-      transparent 100%
-    );
-    mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
   }
   .remote-poster img {
     object-fit: contain;
     object-position: center;
+  }
+  .remote-video,
+  .remote-poster {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  }
+}
+@media (max-width: 480px) and (orientation: portrait) {
+  .remote-backdrop {
+    display: none;
+  }
+  .remote-poster,
+  .remote-video {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    transform: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .remote-video,
+  .remote-poster img {
+    object-fit: cover;
+    object-position: center;
+  }
+}
+@media (max-width: 480px) and (orientation: portrait) and (max-height: 700px) {
+  .remote-video,
+  .remote-poster img {
+    object-fit: contain;
   }
 }
 .audio-action {

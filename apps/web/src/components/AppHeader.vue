@@ -4,9 +4,26 @@ import ThemeToggle from './ThemeToggle.vue'
 import LanguageSelector from './LanguageSelector.vue'
 import AppIcon from './AppIcon.vue'
 import { useThemeStore } from '../stores/theme'
+import { useTemplateRef } from 'vue'
 
 const { t } = useLocaleStore()
-defineEmits<{ uploadImage: []; account: []; navigate: [event: MouseEvent] }>()
+const emit = defineEmits<{ uploadImage: []; account: []; navigate: [event: MouseEvent] }>()
+const mobileMenu = useTemplateRef<HTMLDetailsElement>('mobileMenu')
+function closeMobileMenu() {
+  mobileMenu.value?.removeAttribute('open')
+}
+function navigateFromMobile(event: MouseEvent) {
+  closeMobileMenu()
+  emit('navigate', event)
+}
+function accountFromMobile() {
+  closeMobileMenu()
+  emit('account')
+}
+function uploadFromMobile() {
+  closeMobileMenu()
+  emit('uploadImage')
+}
 withDefaults(
   defineProps<{
     showUpload?: boolean
@@ -57,6 +74,34 @@ const companyAssets = {
         </div>
       </div>
       <LanguageSelector class="header-language" />
+      <ThemeToggle v-if="showTheme" class="mobile-theme" />
+      <details ref="mobileMenu" class="mobile-menu">
+        <summary :aria-label="t('Menu')">
+          <span class="menu-lines" aria-hidden="true"><span /><span /><span /></span>
+        </summary>
+        <nav class="mobile-menu-panel" :aria-label="t('Menu')">
+          <a
+            v-if="showPricing"
+            href="/pricing"
+            :aria-current="pricingActive ? 'page' : undefined"
+            @click="navigateFromMobile"
+            >{{ t('Pricing') }}</a
+          >
+          <a
+            v-if="showCreateCharacter && signedIn"
+            href="/characters/new"
+            :aria-current="characterCreationActive ? 'page' : undefined"
+            @click="navigateFromMobile"
+            >{{ t('Create') }}</a
+          >
+          <button v-if="showAccount" type="button" @click="accountFromMobile">
+            {{ t(signedIn ? 'Your account' : 'Sign in') }}
+          </button>
+          <button v-if="showUpload" type="button" @click="uploadFromMobile">
+            {{ t('Upload photo') }}
+          </button>
+        </nav>
+      </details>
       <div class="header-actions">
         <a
           v-if="showPricing"
@@ -162,6 +207,10 @@ const companyAssets = {
 }
 .header-language {
   margin-left: auto;
+}
+.mobile-theme,
+.mobile-menu {
+  display: none;
 }
 .header-account,
 .header-pricing,
@@ -269,9 +318,15 @@ const companyAssets = {
 @media (max-width: 760px) {
   .header-inner {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0 6px;
+    flex-wrap: nowrap;
+    gap: 4px;
     padding: 0 12px;
+  }
+  .app-header {
+    position: relative;
+    z-index: 10;
+    height: 48px;
+    min-height: 48px;
   }
   .brand {
     gap: 0;
@@ -286,7 +341,76 @@ const companyAssets = {
     margin-left: auto;
   }
   .header-actions {
-    gap: 2px;
+    display: none;
+  }
+  .mobile-theme,
+  .mobile-menu {
+    display: block;
+  }
+  .mobile-menu {
+    flex: 0 0 auto;
+  }
+  .mobile-menu summary {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+  }
+  .mobile-menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .mobile-menu summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .mobile-menu[open] summary {
+    background: var(--subtle);
+  }
+  .menu-lines {
+    display: grid;
+    gap: 4px;
+  }
+  .menu-lines span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+  }
+  .mobile-menu-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 12px;
+    display: grid;
+    width: min(220px, calc(100vw - 24px));
+    padding: 6px;
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    background: var(--surface-raised);
+    box-shadow: 0 12px 28px #0004;
+  }
+  .mobile-menu-panel :is(a, button) {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text);
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .mobile-menu-panel :is(a, button):hover,
+  .mobile-menu-panel :is(a, button):focus-visible {
+    background: var(--subtle);
   }
   .header-account,
   .header-pricing,
