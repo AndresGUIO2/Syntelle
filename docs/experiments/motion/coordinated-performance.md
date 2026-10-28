@@ -58,3 +58,18 @@ Complete sources, reused input bindings, decisions, audio/events, videos, binari
 ## Phase 109: complete laughter and direct expression recovery
 
 The current local candidate supersedes phase-108 laughter presentation. [Complete laughter recovery](complete-laughter-recovery.md) documents private PCM spans, complete bank actions, the jaw-neutral source companion, one presentation lifecycle, direct live-baseline return and playback-owned preview state. Both original Emma recordings and listening approvals remain unchanged. Sources, failures, real production-path replays, comparison recordings and rollback are retained in PostgreSQL; owner naturalness and future-character readiness remain separate.
+# Owner-reported fear delivery mismatch (2026-10-28)
+
+The owner reports that the chase role-play response neither sounded nor looked frightened, despite spoken text claiming fear. This is an unresolved performance defect; the phase113 jaw correction does not close it.
+
+Read-only inspection of the existing conversation records confirms:
+
+- The active Emma capability profile has empty style lists in English and Spanish. Speech preparation selects contextual plain text; approved emotion metadata alone does not serialize a fearful vocal delivery. The current directed style mapping covers reassuring, curious and amused only. This describes the application's configuration, not a claim that the provider can never express fear.
+- The director assigned a playful tone, then proposed `fearful` at intensity 0.35 / energy 0.60 for the first phrase and `playful` at 0.30 / 0.55 for the following phrase. These choices are insufficiently coherent with the intended frightened performance.
+- Automatic expressions were enabled. Worker decisions accepted the first fearful proposal and retained it for the next phrase under `minimum_duration`; both reservations activated. The stored decisions therefore do not support blaming disabled expressions or policy suppression for this case.
+- The owner found the resulting face too weak. The screenshot and decision records do not establish which facial regions failed perceptually; inspect the existing cached performance before changing deformation or amplitudes.
+
+Follow-up should address sustained communicative delivery, Emma-compatible vocal direction and the visible prepared fear expression together. Preserve the selected voice, jaw/lip synchronization, geometry bounds and restored laughter. Do not claim that stronger text, a keyword rule or emotion metadata alone provides emotional TTS. Qualifying a provider delivery requires its own explicit scope and actual-output review.
+
+This investigation used existing records and source/configuration only, with zero synthesis, model, image or analysis requests and no runtime changes.
+
