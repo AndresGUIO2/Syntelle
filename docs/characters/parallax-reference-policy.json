@@ -1,0 +1,20 @@
+{
+  "version": "parallax-reference-policy/2",
+  "minimum_yaw_degrees": 8,
+  "maximum_yaw_degrees": 17,
+  "maximum_cross_axis_degrees": 4,
+  "maximum_roll_degrees": 3,
+  "maximum_eye_center_shift_fraction": 0.08,
+  "eye_distance_ratio": [0.85, 1.15],
+  "yaw_safety_margin_degrees": 2,
+  "required_yaw_slots": ["yaw-left", "yaw-right"],
+  "prompt_prefix": "Create ONE head-pose reference of the exact person in the attached original. The original is the identity and framing authority. Preserve facial proportions, age, hairline, hairstyle, clothing, shoulder position, camera, face scale, lighting and the existing background. Rotate the head in three dimensions around its neck attachment. Do not merely move the eyes or translate the face sideways. Keep the torso facing the camera. Keep a relaxed closed mouth, neutral brows and eyes looking in the same direction as the head. Produce a clearly visible small three-quarter turn, not another frontal portrait. Preserve the original portrait aspect ratio and composition at the requested output resolution. Do not mirror the source, invent an ear on the hidden side, add text, create a collage, change the background or restyle the character. ",
+  "views": {
+    "yaw-left": {"axis": 0, "sign": -1, "target_degrees": 12, "minimum_degrees": 8, "maximum_degrees": 17, "prompt": "The nose must point toward the LEFT EDGE OF THE IMAGE, from the viewer's perspective. Turn the head about 12 to 15 degrees from the original. The cheek on the RIGHT SIDE OF THE IMAGE becomes more exposed; the opposite cheek becomes narrower. Both eyes remain visible with natural foreshortening. A frontal face with sideways-looking eyes is an incorrect result."},
+    "yaw-right": {"axis": 0, "sign": 1, "target_degrees": 12, "minimum_degrees": 8, "maximum_degrees": 17, "prompt": "The nose must point toward the RIGHT EDGE OF THE IMAGE, from the viewer's perspective. Turn the head about 12 to 15 degrees from the original. The cheek on the LEFT SIDE OF THE IMAGE becomes more exposed; the opposite cheek becomes narrower. Both eyes remain visible with natural foreshortening. A frontal face with sideways-looking eyes is an incorrect result."},
+    "pitch-up": {"axis": 1, "sign": 1, "target_degrees": 6, "minimum_degrees": 4, "maximum_degrees": 9, "prompt": "Raise the chin slightly and tilt the head UPWARD about 6 degrees around the neck, keeping yaw and roll unchanged. The underside of the chin becomes slightly more visible. Do not lift or translate the whole head in the frame."},
+    "pitch-down": {"axis": 1, "sign": -1, "target_degrees": 6, "minimum_degrees": 4, "maximum_degrees": 9, "prompt": "Lower the chin slightly and tilt the head DOWNWARD about 6 degrees around the neck, keeping yaw and roll unchanged. The top of the head becomes slightly more visible. Do not lower or translate the whole head in the frame."}
+  },
+  "identity_acceptance": "Automatic geometry/framing checks do not establish likeness. Preserve every rejected result; identity and material continuity still require visual review.",
+  "request_policy": "No automatic retries or new allowance. Any revised acquisition configuration must have its own explicit authorization and immutable budget binding."
+}

@@ -43,15 +43,73 @@ func (m *capturedFixtureMail) SendCode(_ context.Context, email, code, challenge
 }
 
 type cachedVoiceFixture struct {
-	store   *conversation.Store
-	payload map[string]any
-	audio   []byte
-	hash    string
-	calls   atomic.Int32
+	expectedText string
+	store        *conversation.Store
+	payload      map[string]any
+	audio        []byte
+	hash         string
+	calls        atomic.Int32
 }
 
 func (v *cachedVoiceFixture) Prepare(ctx context.Context, text, language, voice, id string) (any, error) {
-	v.calls.Add(1)
+	if v.expectedText != "" && text != v.expectedText {
+		return nil, errors.New("performance review requires the exact source text of its cached audio")
+	}
+	n := v.calls.Add(1)
+	payload, audio, hash := v.payload, v.audio, v.hash
+	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_RECORDED_PERFORMANCE") != "" {
+		rows, err := recordedPerformances()
+		if err != nil {
+			return nil, err
+		}
+		found := false
+		for _, row := range rows {
+			var phrase struct{ Text string }
+			if json.Unmarshal(row.Phrase, &phrase) != nil {
+				return nil, errors.New("invalid exact replay text")
+			}
+			if phrase.Text != text || row.Speech["voice"] != voice || row.Speech["language"] != language {
+				continue
+			}
+			payload = row.Speech
+			encoded, err := json.Marshal(payload)
+			if err != nil {
+				return nil, err
+			}
+			var raw struct {
+				Audio []byte `json:"audio_base64"`
+			}
+			if json.Unmarshal(encoded, &raw) != nil || len(raw.Audio) < 44 {
+				return nil, errors.New("missing exact replay PCM")
+			}
+			audio = raw.Audio
+			sum := sha256.Sum256(audio)
+			hash = hex.EncodeToString(sum[:])
+			found = true
+			break
+		}
+		if !found {
+			return nil, errors.New("unmatched voice/language/text cannot use recorded PCM")
+		}
+	}
+
+	if alternate := os.Getenv("SYNTELLE_STREAMING_FIXTURE_ALTERNATE_SPEECH"); alternate != "" && n%2 == 0 {
+		payload = make(map[string]any)
+		data, err := os.ReadFile(alternate)
+		if err != nil {
+			return nil, err
+		}
+		var raw struct {
+			Audio           []byte `json:"audio_base64"`
+			Voice, Language string
+		}
+		if json.Unmarshal(data, &payload) != nil || json.Unmarshal(data, &raw) != nil || raw.Voice != voice || raw.Language != language {
+			return nil, errors.New("alternate cached voice identity mismatch")
+		}
+		audio = raw.Audio
+		sum := sha256.Sum256(audio)
+		hash = hex.EncodeToString(sum[:])
+	}
 	cid, ok := conversation.IDs(ctx)
 	if !ok {
 		return nil, errors.New("fixture speech requires conversation binding")
@@ -60,14 +118,14 @@ func (v *cachedVoiceFixture) Prepare(ctx context.Context, text, language, voice,
 	if phraseKey, ok := conversation.PhraseSpeechKey(ctx); ok {
 		key = phraseKey
 	}
-	op, err := v.store.Reserve(ctx, "fixture-native-speech", key+"-cached", v.hash, cid, id, map[string]any{"text": text, "language": language, "voice": voice, "fixture": true, "source_audio_sha256": v.hash}, false)
+	op, err := v.store.Reserve(ctx, "fixture-native-speech", key+"-cached", hash, cid, id, map[string]any{"text": text, "language": language, "voice": voice, "fixture": true, "source_audio_sha256": hash}, false)
 	if err != nil {
 		return nil, err
 	}
-	if err = v.store.Finish(ctx, op.ID, "received", v.payload, map[string]int{"provider_calls": 0}, map[string]any{"fixture_cached_speech": true, "provider_calls": 0}, v.audio); err != nil {
+	if err = v.store.Finish(ctx, op.ID, "received", payload, map[string]int{"provider_calls": 0}, map[string]any{"fixture_cached_speech": true, "provider_calls": 0}, audio); err != nil {
 		return nil, err
 	}
-	return v.payload, nil
+	return payload, nil
 }
 func (v *cachedVoiceFixture) PrepareParts(ctx context.Context, text, language, voice, id string, emit func(conversation.SpeechPart) error) (any, error) {
 	payload, err := v.Prepare(ctx, text, language, voice, id)
@@ -149,7 +207,7 @@ func TestStreamingFixtureHost(t *testing.T) {
 	model := &streamModelFixture{}
 	recognition := &hostRecognitionFixture{}
 	mailer := &capturedFixtureMail{}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
 	accountsService, err := accounts.Open(ctx, store.Pool, accounts.Config{Secret: "syntelle-fixture-auth-secret-only-20261021", Origin: "http://127.0.0.1:5173", Mailer: mailer, PackageHash: manifest.Hash})
 	if err != nil {
@@ -174,6 +232,22 @@ func TestStreamingFixtureHost(t *testing.T) {
 	}
 	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_GESTURES") == "1" {
 		conversations.Model = &gestureDirectorFixture{streamModelFixture: model}
+	}
+	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_PERFORMANCE_REVIEW") == "1" {
+		request, readErr := os.ReadFile(os.Getenv("SYNTELLE_STREAMING_FIXTURE_SPEECH_REQUEST"))
+		if readErr != nil {
+			t.Fatal("performance review requires cached speech request provenance")
+		}
+		var input struct{ Text, Voice, Language string }
+		if json.Unmarshal(request, &input) != nil || strings.TrimSpace(input.Text) == "" || input.Voice != payload["voice"] || input.Language != payload["language"] {
+			t.Fatal("cached review text/voice/language provenance differs")
+		}
+		voice.expectedText = input.Text
+		conversations.Model = &performanceReviewDirectorFixture{streamModelFixture: model, text: input.Text}
+	}
+	if os.Getenv("SYNTELLE_STREAMING_FIXTURE_RECORDED_PERFORMANCE") != "" {
+		voice.expectedText = ""
+		conversations.Model = &recordedPerformanceDirectorFixture{streamModelFixture: model}
 	}
 	service, err := Open(ctx, store.Pool, conversations, accountsService.Resolve, Config{WorkerToken: fixtureWorkerToken, MaximumSessions: 2, PackageHash: manifest.Hash, ValidatePrincipal: accountsService.ValidatePrincipal})
 	if err != nil {
@@ -201,7 +275,7 @@ func TestStreamingFixtureHost(t *testing.T) {
 				writeJSON(w, 200, []string{})
 			}
 		case "/__fixture__/emotion-evidence":
-			rows, err := store.Pool.Query(r.Context(), "SELECT jsonb_build_object('id',id,'kind',kind,'status',status,'request',request,'result',result,'diagnostics',diagnostics) FROM syntelle_conversation.operations WHERE kind IN ('emotion-activation','emotion-decision','speech-delivery') ORDER BY id")
+			rows, err := store.Pool.Query(r.Context(), "SELECT jsonb_build_object('id',id,'kind',kind,'status',status,'request',request,'result',result,'diagnostics',diagnostics) FROM syntelle_conversation.operations WHERE kind IN ('emotion-activation','emotion-decision','speech-delivery','performance-reservation','delivery-activation','delivery-superseded') ORDER BY id")
 			if err != nil {
 				http.Error(w, "fixture evidence query failed", 500)
 				return

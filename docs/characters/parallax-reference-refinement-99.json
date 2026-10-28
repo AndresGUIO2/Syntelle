@@ -1,0 +1,15 @@
+{
+  "version": "reference-refinement-authorization/1",
+  "status": "owner-authorized",
+  "budget_id": "authorized-directional-reference-refinement-2026-10-26",
+  "limits": {
+    "image": 6,
+    "analysis": 0
+  },
+  "source_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "model": "gemini-nano-banana-2.1",
+  "allow_prompt_refinement": true,
+  "transport_retries": 0,
+  "stop_on_provider_error": true,
+  "authorization": "Owner requested generating the references necessary to make the prompt work. Six-request bounded development slice; historical budgets remain unchanged."
+}

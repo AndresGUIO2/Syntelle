@@ -57,10 +57,21 @@ func (r *Renderer) prepareSkin(amount, laugh float64) bool {
 // The manual resting smile keeps the original registered material and field.
 // Joint geometry is used only by articulation and prepared laughter.
 func (r *Renderer) jointSmile(s FrameState) float64 {
-	if s.RestingSmile || r.referenceActive(s) {
+	if s.RestingSmile || (r.referenceActive(s) && r.assets.Expression.ReferenceLaughter.Presentation == nil) {
 		return 0
 	}
 	return s.Smile
+}
+
+// Laughter owns a complete smile even when its acoustic jaw has closed. Reuse
+// the calibrated joint oral smile only; cheeks and lids keep their separate
+// full reference expression and never receive another smile deformation.
+func (r *Renderer) oralSmile(s FrameState) float64 {
+	amount := r.jointSmile(s)
+	if r.referenceActive(s) && r.assets.Expression.ReferenceLaughter.Presentation != nil && !s.LaughSpeech {
+		amount = math.Max(amount, s.Laugh)
+	}
+	return amount
 }
 
 func (r *Renderer) laughSquint(s FrameState) float64 {

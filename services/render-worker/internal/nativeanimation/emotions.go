@@ -49,7 +49,7 @@ func (d *emotionDirector) sample(ms float64, s SpeechState, settings Settings) r
 		energy = .5
 		duration = 900
 	} else if s.Active && s.Session != d.session && (d.suppressed == "" || d.suppressed != s.ReplyID) {
-		if p := s.plan(); p != nil && p.Performance != nil && p.Performance.Intent != nil && p.Performance.Intent.Version == "performance-intent/3" {
+		if p := s.plan(); p != nil && p.Performance != nil && p.Performance.Intent != nil && rendercontract.NaturalPerformance(p.Performance.Intent.Version) {
 			if v := p.Performance.Intent.Emotion; v != nil && v.Valid() {
 				target = emotionWeights(*v)
 				energy = v.Energy

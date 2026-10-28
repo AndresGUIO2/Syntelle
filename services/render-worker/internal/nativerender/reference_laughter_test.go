@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"image"
 	"math"
 	"os"
@@ -135,5 +136,73 @@ func TestReferenceLaughterLowAmountRemainsContinuous(t *testing.T) {
 	// Render quantization makes an amount below one prepared step exactly zero.
 	if !bytes.Equal(before.Pix, after.Pix) {
 		t.Fatal("substep laughter abruptly erased the manual baseline")
+	}
+}
+
+// A full amused face during an acoustic gap must retain a source-supported
+// closed smile, rather than compressing the open laugh's lips into a strip.
+func TestFullLaughterGapKeepsClosedSmileContour(t *testing.T) {
+	root := os.Getenv("SYNTELLE_LAUGHTER_ASSETS")
+	if root == "" {
+		t.Skip("cached laughter companion")
+	}
+	a, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := newRenderer(a, "cpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	for _, smile := range []float64{0, .5, 1} {
+		t.Run(fmt.Sprint(smile), func(t *testing.T) {
+			state := FrameState{From: "Rest", To: "A", Smile: smile, Laugh: 1, JawOpen: 0}
+			frame := image.NewRGBA(image.Rect(0, 0, 720, 960))
+			if err := r.Render(t.Context(), state, frame); err != nil {
+				t.Fatal(err)
+			}
+			got := r.referenceState(state)
+			for i := range got.inner {
+				if got.inner[i] != r.oral.shadeState.inner[i] || got.outer[i] != r.oral.outer[i] {
+					t.Fatalf("quiet laughter crushed the open reference instead of retaining the calibrated closed smile: point %d", i)
+				}
+			}
+			previous := -1.
+			var gaps []float64
+			for _, jaw := range []float64{0, .25, .5, .75, 1} {
+				state.JawOpen = jaw
+				if err := r.Render(t.Context(), state, frame); err != nil {
+					t.Fatal(err)
+				}
+				got = r.referenceState(state)
+				gap := referenceColumnGap((got.inner[0][0]+got.inner[10][0])*.5, got.inner[:])
+				gaps = append(gaps, gap)
+				if gap <= previous {
+					t.Fatalf("laughter opening is not responsive and monotonic: %v", gaps)
+				}
+				previous = gap
+				if got.upper != r.oral.shadeState.upper {
+					t.Fatal("upper material drifted with laughter opening")
+				}
+				for triangleIndex, triangle := range got.triangles {
+					fromArea := patchEdge(triangle.From[0], triangle.From[1], triangle.From[2])
+					toArea := patchEdge(triangle.To[0], triangle.To[1], triangle.To[2])
+					if fromArea <= 0 || toArea <= 0 || triangle.Area <= 0 {
+						t.Fatalf("oral material mapping folds at jaw %g triangle %d areas %g/%g/%g", jaw, triangleIndex, fromArea, toArea, triangle.Area)
+					}
+					for pointIndex, point := range triangle.P {
+						from, to := referenceCoordinates(point[0]-.5, point[1]-.5, got.triangles)
+						if math.Hypot(from[0]-triangle.From[pointIndex][0], from[1]-triangle.From[pointIndex][1]) > .001 || math.Hypot(to[0]-triangle.To[pointIndex][0], to[1]-triangle.To[pointIndex][1]) > .001 {
+							t.Fatal("lip material does not share final contour correspondence", jaw, triangleIndex, pointIndex)
+						}
+					}
+				}
+			}
+			t.Log("center aperture px at jaw 0/.25/.5/.75/1:", gaps)
+			if math.Abs(gaps[4]-a.Motion.Mandible.ReferenceGap) > 1 {
+				t.Fatal("full laughter lost its source-calibrated aperture", gaps[4], a.Motion.Mandible.ReferenceGap)
+			}
+		})
 	}
 }

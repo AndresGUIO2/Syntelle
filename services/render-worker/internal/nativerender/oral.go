@@ -183,18 +183,24 @@ func NewOralAssets(packageJSON []byte, load func(string) (*Texture, error)) (*Or
 }
 
 type OralRenderer struct {
-	emotionRig           *EmotionRig
-	emotion, lastEmotion rendercontract.EmotionWeights
-	laughLips            *Texture
-	assets               *OralAssets
-	output               *Texture
-	lastFrom             string
-	lastTo               string
-	lastAmount           float64
-	lastSmile            float64
-	joint                *JointExpression
-	laugh, lastLaugh     float64
-	hasLast              bool
+	withoutTeeth, lastWithoutTeeth                                                 bool
+	shadeState                                                                     oralShadeState
+	outer                                                                          [20][2]float64
+	contact                                                                        bool
+	mandible                                                                       *rendercontract.MandibleRig
+	jawDelta, lipOpening, lipTension, lastJawDelta, lastLipOpening, lastLipTension float64
+	emotionRig                                                                     *EmotionRig
+	emotion, lastEmotion                                                           rendercontract.EmotionWeights
+	laughLips                                                                      *Texture
+	assets                                                                         *OralAssets
+	output                                                                         *Texture
+	lastFrom                                                                       string
+	lastTo                                                                         string
+	lastAmount                                                                     float64
+	lastSmile                                                                      float64
+	joint                                                                          *JointExpression
+	laugh, lastLaugh                                                               float64
+	hasLast                                                                        bool
 }
 
 func NewOralRenderer(assets *OralAssets) *OralRenderer {
@@ -225,7 +231,7 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 		amount = 0
 	}
 	amount = float64(float32(amount))
-	if emit == nil && renderer.hasLast && renderer.lastFrom == fromID && renderer.lastTo == toID && renderer.lastAmount == amount && renderer.lastSmile == smile && renderer.lastLaugh == renderer.laugh && renderer.lastEmotion == renderer.emotion {
+	if emit == nil && renderer.lastWithoutTeeth == renderer.withoutTeeth && renderer.hasLast && renderer.lastFrom == fromID && renderer.lastTo == toID && renderer.lastAmount == amount && renderer.lastSmile == smile && renderer.lastLaugh == renderer.laugh && renderer.lastEmotion == renderer.emotion && renderer.lastJawDelta == renderer.jawDelta && renderer.lastLipOpening == renderer.lipOpening && renderer.lastLipTension == renderer.lipTension {
 		return renderer.output, nil
 	}
 	assets := renderer.assets
@@ -295,6 +301,17 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 				}
 			}
 		}
+		if renderer.mandible != nil && id < 40 {
+			if axis == 1 {
+				if !renderer.contact {
+					value += (renderer.jawDelta + renderer.lipOpening) * lowerLipWeight(id)
+				}
+			}
+			if axis == 0 {
+				center := float64(mesh.Width) * .5
+				value += math.Max(-1, math.Min(1, (value-center)/math.Max(1, float64(assets.Width)*.5))) * renderer.lipTension * renderer.mandible.CornerTravel
+			}
+		}
 		return value
 	}
 	var inner [20][2]float64
@@ -331,6 +348,9 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 			lower[axis] += patchMix(fromOpening, toOpening, amount) * smile
 		}
 	}
+	if renderer.mandible != nil {
+		lower[1] = math.Max(upper[1]+renderer.mandible.LowerStop, lower[1]+renderer.jawDelta)
+	}
 	cavityAmount := amount
 	if fromID == "Rest" || fromID == "MBP" {
 		cavityAmount = 1
@@ -340,11 +360,15 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 	state := oralShadeState{from: from, to: to, amount: amount, cavityAmount: cavityAmount,
 		inner: inner, minimum: minimum, maximum: maximum, upper: upper, lower: lower,
 		semantic: from.definition.ApertureSDF != "" && to.definition.ApertureSDF != ""}
+	renderer.shadeState = state
+	for i := range renderer.outer {
+		renderer.outer[i] = [2]float64{position(i, 0), position(i, 1)}
+	}
 	// Emotional lip geometry also moves source ownership, even when this
 	// emotion supplies no smile. Endpoint UV shortcuts require a neutral mesh.
-	state.joint = expression != nil || hasOralEmotion
+	state.joint = expression != nil || hasOralEmotion || (renderer.mandible != nil && !renderer.contact && (renderer.jawDelta != 0 || renderer.lipOpening != 0 || renderer.lipTension != 0))
 	state.deformedCoverage = state.joint && renderer.emotionRig != nil && renderer.emotionRig.EditCoverage == "deformed-oral-coverage/1"
-	if hasOralEmotion {
+	if hasOralEmotion || (renderer.mandible != nil && state.joint) {
 		state.semantic = false
 	}
 	if expression != nil && (fromID == "Rest" || toID == "Rest") {
@@ -378,7 +402,9 @@ func (renderer *OralRenderer) drawExpression(fromID, toID string, amount, smile 
 	if emit != nil {
 		return nil, nil
 	}
+	renderer.lastJawDelta, renderer.lastLipOpening, renderer.lastLipTension = renderer.jawDelta, renderer.lipOpening, renderer.lipTension
 	renderer.lastFrom, renderer.lastTo, renderer.lastAmount, renderer.hasLast, renderer.lastSmile = fromID, toID, amount, true, smile
+	renderer.lastWithoutTeeth = renderer.withoutTeeth
 	renderer.lastLaugh = renderer.laugh
 	renderer.lastEmotion = renderer.emotion
 	return renderer.output, nil
@@ -547,6 +573,10 @@ func (renderer *OralRenderer) shade(x, y int, fromUV, toUV [2]float64, alpha flo
 					upper[channel] *= exposure
 					lower[channel] *= exposure
 				}
+			}
+			if renderer.withoutTeeth {
+				upper = Color{}
+				lower = Color{}
 			}
 			for channel := range 3 {
 				oral := patchMix(interior[channel], lower[channel], lower[3])

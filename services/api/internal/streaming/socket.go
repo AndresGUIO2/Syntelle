@@ -16,10 +16,11 @@ import (
 )
 
 type peer struct {
-	conn   *websocket.Conn
-	out    chan Envelope
-	ctx    context.Context
-	cancel context.CancelFunc
+	coordinated bool
+	conn        *websocket.Conn
+	out         chan Envelope
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 type cloudWorker struct {
@@ -51,6 +52,12 @@ func (s *Service) toWorker(event Envelope) bool {
 		}
 	}
 	s.mu.Unlock()
+	if event.Type == "activity" && worker != nil && !worker.coordinated {
+		return true
+	}
+	if event.Type == "performance_preflight" && (worker == nil || !worker.coordinated) {
+		return false
+	}
 	return worker.send(event)
 }
 func (s *Service) toPlayer(session *streamSession, event Envelope) {
@@ -137,6 +144,7 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		return
 	}
+	p.coordinated = r.Header.Get("X-Syntelle-Performance") == rendercontract.DeliveryVersion
 	defer s.wg.Done()
 	defer p.cancel()
 	c.SetReadLimit(128 << 10)
@@ -208,6 +216,20 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		switch event.Type {
+		case "performance_notice":
+			var notice rendercontract.DeliveryNotice
+			if json.Unmarshal(event.Data, &notice) != nil {
+				continue
+			}
+			if !s.deliveryNotice(session, notice) {
+				continue
+			}
+			if notice.Applied != nil && notice.Applied.Validate() == nil && session.channel != nil {
+				v := notice.Applied
+				if err = session.channel.Send(p.ctx, conversation.Event{Type: "expression_baseline", ConversationID: session.cid, TurnID: "settings_applied", Baseline: &conversation.ExpressionBaseline{Smile: v.Smile, Brows: v.Brows, Emotion: v.EmotionBaseline, Regulation: v.EmotionRegulation}}); err != nil {
+					s.closeSession(session.id, "performance state delivery failed")
+				}
+			}
 		case "signal":
 			s.toPlayer(session, event)
 		case "ready":
@@ -240,10 +262,12 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			switch playback.Event {
 			case "playback_started":
+				s.toWorker(envelope("activity", session.id, map[string]string{"state": "speaking"}))
 				s.setState(session, "speaking", "")
 			case "playback_waiting":
 				s.setState(session, "preparing", "")
 			case "playback_ended":
+				s.toWorker(envelope("activity", session.id, map[string]string{"state": "idle"}))
 				s.mu.Lock()
 				if session.currentTurn == current {
 					session.currentTurn = ""
@@ -271,7 +295,7 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		case "emotion_activated":
 			var activation rendercontract.EmotionActivation
-			if json.Unmarshal(event.Data, &activation) != nil || !activation.Emotion.Valid() || activation.PhraseIndex < 0 || activation.PhraseIndex >= 32 {
+			if json.Unmarshal(event.Data, &activation) != nil || !activation.Emotion.Valid() || activation.PhraseIndex < 0 || activation.PhraseIndex >= 1048576 {
 				continue
 			}
 			s.mu.Lock()
@@ -553,6 +577,18 @@ func (s *Service) conversationEvent(session *streamSession, event conversation.E
 	independent := event.Type == "transcript_partial" || event.Type == "transcript_final" || event.Type == "listening" || event.Type == "speech_detected" || event.Type == "microphone_error" || event.Type == "persistence_warning" || event.Type == "cancelled"
 	if !independent && event.TurnID != current {
 		return
+	}
+	activity := ""
+	switch event.Type {
+	case "listening", "speech_detected":
+		activity = "listening"
+	case "accepted", "preparing":
+		activity = "preparing"
+	case "cancelled", "error":
+		activity = "idle"
+	}
+	if activity != "" {
+		s.toWorker(envelope("activity", session.id, map[string]string{"state": activity}))
 	}
 	if event.Type == "accepted" {
 		s.setState(session, "preparing", "")

@@ -2,7 +2,13 @@
 import { computed, onScopeDispose, shallowRef } from 'vue'
 import { useLocaleStore } from '../../../stores/locale'
 
-defineProps<{ disabled: boolean; smile: number; brows: number }>()
+defineProps<{
+  disabled: boolean
+  laughterAvailable?: boolean
+  laughterBusy?: boolean
+  smile: number
+  brows: number
+}>()
 const { t } = useLocaleStore()
 const emit = defineEmits<{
   preview: [kind: string, amount?: number, repetitions?: number]
@@ -21,6 +27,10 @@ const choices = [
 ]
 const selectedLabel = computed(() => choices.find(({ kind }) => kind === gesture.value)!.label)
 function preview(kind: string, amount = 1) {
+  if (kind === 'laugh') {
+    emit('preview', kind, amount, 1)
+    return
+  }
   clearTimeout(timer)
   busy.value = kind
   const count = kind === 'nod' || kind === 'shake' ? repetitions.value : 1
@@ -29,13 +39,7 @@ function preview(kind: string, amount = 1) {
     () => {
       busy.value = ''
     },
-    kind === 'laugh'
-      ? 2600
-      : kind === 'nod'
-        ? count * 420 + 200
-        : kind === 'shake'
-          ? count * 580 + 200
-          : 1400,
+    kind === 'nod' ? count * 420 + 200 : kind === 'shake' ? count * 580 + 200 : 1400,
   )
 }
 onScopeDispose(() => clearTimeout(timer))
@@ -72,9 +76,13 @@ onScopeDispose(() => clearTimeout(timer))
     </label>
     <div class="laugh-row">
       <span>{{ t('Laughter with sound') }}</span>
-      <button type="button" :disabled="disabled || !!busy" @click="preview('laugh')">
+      <button
+        type="button"
+        :disabled="disabled || !!busy || laughterBusy || !laughterAvailable"
+        @click="preview('laugh')"
+      >
         <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7 4 8 6-8 6Z" /></svg>
-        {{ busy === 'laugh' ? t('Playing…') : t('Play laughter') }}
+        {{ laughterBusy ? t('Playing…') : t('Play laughter') }}
       </button>
     </div>
   </fieldset>
@@ -82,7 +90,7 @@ onScopeDispose(() => clearTimeout(timer))
     <legend class="section-title">{{ t('Try a head gesture') }}</legend>
     <label class="select-field">
       {{ t('Gesture') }}
-      <select v-model="gesture" :disabled="disabled || !!busy">
+      <select v-model="gesture" :disabled="disabled || !!busy || laughterBusy">
         <option v-for="choice in choices" :key="choice.kind" :value="choice.kind">
           {{ t(choice.label) }}
         </option>
@@ -94,7 +102,7 @@ onScopeDispose(() => clearTimeout(timer))
       <input
         v-model.number="strength"
         :aria-label="t('Intensity')"
-        :disabled="disabled || !!busy"
+        :disabled="disabled || !!busy || laughterBusy"
         type="range"
         min="0.2"
         max="1"
@@ -107,7 +115,7 @@ onScopeDispose(() => clearTimeout(timer))
       <input
         v-model.number="repetitions"
         :aria-label="t('Repetitions')"
-        :disabled="disabled || !!busy"
+        :disabled="disabled || !!busy || laughterBusy"
         type="range"
         min="1"
         max="8"
@@ -117,7 +125,7 @@ onScopeDispose(() => clearTimeout(timer))
     <button
       class="gesture-play"
       type="button"
-      :disabled="disabled || !!busy"
+      :disabled="disabled || !!busy || laughterBusy"
       @click="preview(gesture, strength)"
     >
       <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7 4 8 6-8 6Z" /></svg>

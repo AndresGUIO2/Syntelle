@@ -1,4 +1,4 @@
-export const AVA_VOICE = 'en-US-Ava:DragonHDLatestNeural'
+export const DEFAULT_VOICE = 'en-US-Emma:DragonHDLatestNeural'
 
 export const emotionStates = [
   'neutral',
@@ -82,7 +82,7 @@ export function defaultSettings(): StreamSettings {
     instructions:
       'Be a clear, friendly assistant. Match the depth and length to the question. Do not invent company knowledge.',
     language: 'en-US',
-    voice: AVA_VOICE,
+    voice: DEFAULT_VOICE,
     background: 'natural-space',
     blur: 0,
     blinking: true,

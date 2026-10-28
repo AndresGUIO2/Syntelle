@@ -68,6 +68,7 @@ func Open(parent context.Context, pool *pgxpool.Pool, conversations *conversatio
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Service{ctx: ctx, cancel: cancel, sessions: map[string]*streamSession{}, workers: map[string]*cloudWorker{}, store: store, conversation: conversations, resolve: resolve, config: config, admission: admission}
+	conversations.Delivery = s
 	s.purgeOldHistory(ctx)
 	s.wg.Add(1)
 	go s.expire()
@@ -106,7 +107,7 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 			available := (s.worker != nil || httpapi.Cloud()) && !s.closing
 			count := len(s.sessions)
 			s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{"available": available, "configured": s.conversation.Speech != nil && s.conversation.Model != nil, "speech_configured": s.conversation.Speech != nil, "recognition": s.conversation.Recognition != nil, "capacity": s.config.MaximumSessions, "active": count, "time_limits_enabled": !s.config.DisableTimeLimits})
+			writeJSON(w, 200, map[string]any{"laughter": map[string]bool{"en-US": s.conversation.HasLaughter(s.conversation.RuntimeVoice(), "en-US"), "es-CO": s.conversation.HasLaughter(s.conversation.RuntimeVoice(), "es-CO")}, "available": available, "configured": s.conversation.Speech != nil && s.conversation.Model != nil, "speech_configured": s.conversation.Speech != nil, "recognition": s.conversation.Recognition != nil, "capacity": s.config.MaximumSessions, "active": count, "time_limits_enabled": !s.config.DisableTimeLimits})
 			return
 		}
 		if len(parts) == 2 && parts[1] == "ws" && r.Method == http.MethodGet {
@@ -192,7 +193,7 @@ func (s *Service) response(session *streamSession, ticket string) SessionRespons
 	if httpapi.Cloud() {
 		startupTimeout = 95000
 	}
-	return SessionResponse{StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
+	return SessionResponse{LaughterAvailable: s.conversation.HasLaughter(session.settings.Voice, session.settings.Language), StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
 }
 func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
 	input := struct {
@@ -232,7 +233,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 			return
 		}
 	}
-	input.Settings.Voice = "en-US-Ava:DragonHDLatestNeural"
+	input.Settings.Voice = s.conversation.RuntimeVoice()
 	if err := input.Settings.Validate(); err != nil {
 		writeError(w, 400, err.Error())
 		return
@@ -358,7 +359,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 func (s *Service) command(ctx context.Context, session *streamSession, c Command) (commandResult, error) {
 	if c.Settings != nil {
 		next := *c.Settings
-		next.Voice = "en-US-Ava:DragonHDLatestNeural"
+		next.Voice = s.conversation.RuntimeVoice()
 		c.Settings = &next
 	}
 	result := commandResult{ID: c.ID}
@@ -483,25 +484,44 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 		}
 		_ = s.store.finish(ctx, session.id, turnID, "complete")
 	case "configure":
-		if c.Settings != nil {
-			err = channel.Send(ctx, conversation.Event{Type: "expression_baseline", ConversationID: session.cid, TurnID: turnID, Baseline: &conversation.ExpressionBaseline{Smile: c.Settings.Smile, Brows: c.Settings.Brows, Emotion: c.Settings.EmotionBaseline, Regulation: c.Settings.EmotionRegulation}})
-		}
-		if modelChange {
-			err = channel.Send(ctx, conversation.Event{Type: "configure", ConversationID: session.cid, TurnID: turnID, Instructions: c.Settings.Instructions, Voice: c.Settings.Voice})
-		}
-		if err == nil {
-			err = s.store.settings(ctx, session.id, *c.Settings)
-		}
+		err = s.store.settings(ctx, session.id, *c.Settings)
 		if err == nil {
 			s.mu.Lock()
-			if settings.EmotionBaseline.Normalized() != c.Settings.EmotionBaseline.Normalized() || settings.EmotionRegulation.Normalized() != c.Settings.EmotionRegulation.Normalized() || settings.AutomaticExpressions != c.Settings.AutomaticExpressions || settings.ReducedMotion != c.Settings.ReducedMotion {
-				session.emotionPolicyRevision++
+			policyChanged := settings.EmotionBaseline.Normalized() != c.Settings.EmotionBaseline.Normalized() || settings.EmotionRegulation.Normalized() != c.Settings.EmotionRegulation.Normalized() || settings.AutomaticExpressions != c.Settings.AutomaticExpressions || settings.ReducedMotion != c.Settings.ReducedMotion
+			if session.requestedPolicyRevision == 0 {
+				session.requestedPolicyRevision = max(1, session.emotionPolicyRevision)
 			}
+			if policyChanged {
+				session.requestedPolicyRevision++
+			}
+			deferred := session.coordinated && previous != "" && policyChanged && settings.ReducedMotion == c.Settings.ReducedMotion
+			if deferred {
+				if session.appliedSettings == nil {
+					copy := settings
+					session.appliedSettings = &copy
+				}
+			} else {
+				copy := *c.Settings
+				session.appliedSettings = &copy
+				session.emotionPolicyRevision = session.requestedPolicyRevision
+			}
+			revision := session.requestedPolicyRevision
 			session.settings = *c.Settings
 			s.mu.Unlock()
-			s.toWorker(envelope("configure", session.id, map[string]any{"settings": *c.Settings, "emotion_policy_revision": session.emotionPolicyRevision}))
-			_ = s.store.finish(ctx, session.id, turnID, "complete")
+			if !deferred {
+				err = channel.Send(ctx, conversation.Event{Type: "expression_baseline", ConversationID: session.cid, TurnID: turnID, Baseline: &conversation.ExpressionBaseline{Smile: c.Settings.Smile, Brows: c.Settings.Brows, Emotion: c.Settings.EmotionBaseline, Regulation: c.Settings.EmotionRegulation}})
+			}
+			if modelChange && err == nil {
+				err = channel.Send(ctx, conversation.Event{Type: "configure", ConversationID: session.cid, TurnID: turnID, Instructions: c.Settings.Instructions, Voice: c.Settings.Voice})
+			}
+			if err == nil && !s.toWorker(envelope("configure", session.id, map[string]any{"settings": *c.Settings, "emotion_policy_revision": revision})) {
+				err = errors.New("private settings delivery unavailable")
+			}
+			if err == nil {
+				err = s.store.finish(ctx, session.id, turnID, "complete")
+			}
 		}
+
 	}
 	if err != nil {
 		_ = s.store.finish(ctx, session.id, turnID, "failed")

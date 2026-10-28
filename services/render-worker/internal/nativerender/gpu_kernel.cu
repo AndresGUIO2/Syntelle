@@ -25,7 +25,38 @@ DEVICE Color sample(const unsigned char *p,int w,int h,double x,double y) {
     for(int k=0;k<4;k++) out.v[k]=mixd(mixd(p[a+k],p[b+k],fx),mixd(p[c+k],p[d+k],fx),fy)/255;
     return out;
 }
-DEVICE Color fragment(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,double u,double v) {
+DEVICE Color view_color(GPUParams p,const unsigned char *views,Color c,double u,double v){
+    for(int i=0;i<p.view_dims[0];i++){double weight=p.view_weights[i];if(weight==0)continue;
+        Color a=sample(views+i*p.view_dims[1]*p.view_dims[2]*4,p.view_dims[1],p.view_dims[2],u*p.sw-.5,v*p.sh-.5);
+        for(int k=0;k<4;k++)c.v[k]=a.v[k]*weight+c.v[k]*(1-a.v[3]*weight);
+    }return c;
+}
+DEVICE double laughter_amount(GPUParams p,double x,double y){
+ double q=p.laughter_values[0];if(p.laughter_values[2]){double outside=0;double a=p.laughter_dims[4]-x,b=x-p.laughter_dims[4]-p.laughter_dims[6],c=p.laughter_dims[5]-y,d=y-p.laughter_dims[5]-p.laughter_dims[7];if(a>outside)outside=a;if(b>outside)outside=b;if(c>outside)outside=c;if(d>outside)outside=d;double width=p.laughter_dims[6]*p.laughter_values[4];double t=outside/width;t=t<0?0:(t>1?1:t);q*=t*t*(3-2*t);}return q;
+}
+DEVICE void laughter_delta(GPUParams p,const unsigned char*field,double x,double y,double *dx,double *dy){
+ *dx=*dy=0;if(!field||x<p.laughter_dims[0]||y<p.laughter_dims[1]||x>p.laughter_dims[0]+p.laughter_dims[2]-1||y>p.laughter_dims[1]+p.laughter_dims[3]-1)return;
+ Color c=sample(field,p.laughter_dims[2],p.laughter_dims[3]*2,x-p.laughter_dims[0],y-p.laughter_dims[1]);*dx=(c.v[0]*255+c.v[1]*255*256-32768)*p.laughter_values[1];*dy=(c.v[2]*255+c.v[3]*255*256-32768)*p.laughter_values[1];
+}
+DEVICE void baseline_delta(GPUParams p,const unsigned char*field,const unsigned char*emotion,double x,double y,double*dx,double*dy){
+ *dx=*dy=0;
+ if(field&&p.fw>0&&p.fh>0){double u=(x-p.ex+.5)/p.ew,v=(y-p.ey+.5)/p.eh;if(u>=0&&u<=1&&v>=0&&v<=1){Color c=sample(field,p.fw,p.fh,u*p.fw-.5,v*p.fh-.5);*dx=(c.v[0]*255-128)*p.smile*p.units;*dy=((c.v[1]*255-128)*p.smile+(c.v[2]*255-128)*p.brows)*p.units;}}
+ if(p.emotion_dims[7]&&emotion){double u=(x-p.emotion_dims[0]+.5)/p.emotion_dims[2],v=(y-p.emotion_dims[1]+.5)/p.emotion_dims[3];if(u>=0&&u<=1&&v>=0&&v<=1){double ex=u*p.emotion_dims[4]-.5,ey=v*p.emotion_dims[5]-.5;ex=ex<0?0:(ex>p.emotion_dims[4]-1?p.emotion_dims[4]-1:ex);ey=ey<0?0:(ey>p.emotion_dims[5]-1?p.emotion_dims[5]-1:ey);for(int k=1;k<10;k++)if(p.emotion_weights[k]){Color c=sample(emotion,p.emotion_dims[4],p.emotion_dims[5]*10,ex,ey+k*p.emotion_dims[5]);*dx+=(c.v[0]*255-128)*p.emotion_units*p.emotion_weights[k];*dy+=(c.v[1]*255-128)*p.emotion_units*p.emotion_weights[k];}}}
+}
+DEVICE void combined_delta(GPUParams p,const unsigned char*field,const unsigned char*emotion,const unsigned char*laughter,double x,double y,double*dx,double*dy){double bx,by,lx,ly;double jx=0,jy=0;GPUParams base=p;
+if(p.laughter_values[5]){base.smile=0;if(x>=p.laughter_dims[0]&&y>=p.laughter_dims[1]&&x<=p.laughter_dims[0]+p.laughter_dims[2]-1&&y<=p.laughter_dims[1]+p.laughter_dims[3]-1){Color j=sample(laughter,p.laughter_dims[2],p.laughter_dims[3]*2,x-p.laughter_dims[0],y-p.laughter_dims[1]+p.laughter_dims[3]);jx=(j.v[0]*255+j.v[1]*255*256-32768)*p.laughter_values[1]*p.smile;jy=(j.v[2]*255+j.v[3]*255*256-32768)*p.laughter_values[1]*p.smile;double outside=0,a=p.laughter_dims[4]-x,b=x-p.laughter_dims[4]-p.laughter_dims[6],c=p.laughter_dims[5]-y,d=y-p.laughter_dims[5]-p.laughter_dims[7];if(a>outside)outside=a;if(b>outside)outside=b;if(c>outside)outside=c;if(d>outside)outside=d;double t=outside/(p.laughter_dims[6]*p.laughter_values[4]);t=t<0?0:(t>1?1:t);double weight=t*t*(3-2*t);jx*=weight;jy*=weight;}}
+baseline_delta(base,field,emotion,x+jx,y+jy,&bx,&by);bx+=jx;by+=jy;laughter_delta(p,laughter,x,y,&lx,&ly);double q=laughter_amount(p,x,y);*dx=(1-q)*bx+q*lx;*dy=(1-q)*by+q*ly;}
+DEVICE Color fragment_laughter(GPUParams p,const unsigned char*subject,const unsigned char*field,const unsigned char*material,const unsigned char*emotion,const unsigned char*views,const unsigned char*laughter,double u,double v){
+ double tx=u*p.sw-.5,ty=v*p.sh-.5,x=tx,y=ty;
+ if((!p.laughter_values[2]&&p.laughter_values[0]>=1)||(!p.smile&&!p.brows&&!p.emotion_dims[7]))return view_color(p,views,sample(subject,p.sw,p.sh,tx,ty),u,v);
+ for(int i=0;i<(int)p.laughter_values[3];i++){double dx,dy;combined_delta(p,field,emotion,laughter,x,y,&dx,&dy);double rx=x+dx-tx,ry=y+dy-ty;if(rx*rx+ry*ry<.000001)break;double xp,xyp,xm,xym,yp,yyp,ym,yym;combined_delta(p,field,emotion,laughter,x+.5,y,&xp,&xyp);combined_delta(p,field,emotion,laughter,x-.5,y,&xm,&xym);combined_delta(p,field,emotion,laughter,x,y+.5,&yp,&yyp);combined_delta(p,field,emotion,laughter,x,y-.5,&ym,&yym);double a=1+xp-xm,b=yp-ym,c=xyp-xym,d=1+yyp-yym,det=a*d-b*c;if(det<=.2)break;double sx=(d*rx-b*ry)/det,sy=(-c*rx+a*ry)/det,scale=1,norm=__builtin_sqrt(sx*sx+sy*sy);if(norm>32)scale=norm/32;x-=sx/scale;y-=sy/scale;}
+
+ double lx,ly;laughter_delta(p,laughter,x,y,&lx,&ly);double q=laughter_amount(p,x,y);u=(x+q*lx+.5)/p.sw;v=(y+q*ly+.5)/p.sh;Color color=sample(subject,p.sw,p.sh,u*p.sw-.5,v*p.sh-.5);double smile=p.smile*(1-q);
+ if(!p.laughter_values[5]&&smile>0&&material){double px=u*p.sw-p.ex-.5,py=v*p.sh-p.ey-.5;if(px>=0&&py>=0&&px<p.ew&&py<p.eh){Color ref=sample(material,p.mw,p.mh,px,py);for(int k=0;k<3;k++)color.v[k]=color.v[k]*(1-ref.v[3]*smile)+ref.v[k]*color.v[3]*smile;}}
+ return view_color(p,views,color,u,v);
+}
+DEVICE Color fragment(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,const unsigned char *views,const unsigned char *laughter,double u,double v) {
+    if(p.laughter_values[0]>0&&laughter)return fragment_laughter(p,subject,field,material,emotion,views,laughter,u,v);
     bool emotional=p.emotion_dims[7]!=0;
     if(p.smile>0 || p.brows>0 || emotional) {
         double tx=u*p.sw-.5,ty=v*p.sh-.5;
@@ -69,7 +100,7 @@ DEVICE Color fragment(GPUParams p,const unsigned char *subject,const unsigned ch
             for(int k=0;k<3;k++) c.v[k]=c.v[k]*(1-ref.v[3]*p.smile)+ref.v[k]*c.v[3]*p.smile;
         }
     }
-    return c;
+    return view_color(p,views,c,u,v);
 }
 // FP32 body path: keep texture interpolation and expression inversion in the
 // same precision as its geometry. The FP64 path remains the pixel reference.
@@ -84,7 +115,8 @@ DEVICE ColorF sample_f(const unsigned char *p,int w,int h,float x,float y) {
         ((p[c+k]+(p[d+k]-p[c+k])*fx)-(p[a+k]+(p[b+k]-p[a+k])*fx))*fy)/255.f;
     return out;
 }
-DEVICE ColorF fragment_f(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,float u,float v) {
+DEVICE ColorF fragment_f(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,const unsigned char *views,const unsigned char *laughter,float u,float v) {
+    if(p.laughter_values[0]>0&&laughter){Color d=fragment_laughter(p,subject,field,material,emotion,views,laughter,u,v);ColorF f;for(int k=0;k<4;k++)f.v[k]=(float)d.v[k];return f;}
     const float smile=(float)p.smile,brows=(float)p.brows,units=(float)p.units,emotion_units=(float)p.emotion_units;
     bool emotional=p.emotion_dims[7]!=0;
     if(smile>0 || brows>0 || emotional) {
@@ -132,11 +164,12 @@ DEVICE ColorF fragment_f(GPUParams p,const unsigned char *subject,const unsigned
             for(int k=0;k<3;k++) c.v[k]=c.v[k]*(1.f-ref.v[3]*smile)+ref.v[k]*c.v[3]*smile;
         }
     }
+    if(p.view_dims[0]){Color d;for(int k=0;k<4;k++)d.v[k]=c.v[k];d=view_color(p,views,d,u,v);for(int k=0;k<4;k++)c.v[k]=(float)d.v[k];}
     return c;
 }
 DEVICE double edge_gpu(GPUVertex a,GPUVertex b,double x,double y) { return (x-a.x)*(b.y-a.y)-(y-a.y)*(b.x-a.x); }
 
-KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,
+KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,const unsigned char *views,const unsigned char *laughter,
                     const GPUTriangle *triangles,const int *offsets,const int *ids,unsigned char *body) {
     unsigned int at=index_1d(); if(at>=(unsigned int)(p.bw*p.bh)) return;
     int x=at%p.bw,y=at/p.bw,tile=(y/16)*p.tiles_x+x/16;
@@ -155,7 +188,7 @@ KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigne
             u=(wa*t.a.u+wb*t.b.u+wc*t.c.u)*inverse;
             v=(wa*t.a.v+wb*t.b.v+wc*t.c.v)*inverse;
         }
-        Color c=fragment(p,subject,field,material,emotion,u,v);
+        Color c=fragment(p,subject,field,material,emotion,views,laughter,u,v);
         if(t.flags[4]) {
             if(c.v[3]>=.995 || c.v[3]<=.001) continue;
             for(int k=0;k<4;k++) c.v[k]+=previous[k]/255.0*(1-c.v[3]);
@@ -172,7 +205,7 @@ KERNEL void syntelle_body(GPUParams p,const unsigned char *subject,const unsigne
 DEVICE float edge_gpu_f(GPUVertex a,GPUVertex b,float x,float y) {
     return (x-(float)a.x)*((float)b.y-(float)a.y)-(y-(float)a.y)*((float)b.x-(float)a.x);
 }
-KERNEL void syntelle_body_fp32(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,
+KERNEL void syntelle_body_fp32(GPUParams p,const unsigned char *subject,const unsigned char *field,const unsigned char *material,const unsigned char *emotion,const unsigned char *views,const unsigned char *laughter,
                     const GPUTriangle *triangles,const int *offsets,const int *ids,unsigned char *body) {
     unsigned int at=index_1d(); if(at>=(unsigned int)(p.bw*p.bh)) return;
     int x=at%p.bw,y=at/p.bw,tile=(y/16)*p.tiles_x+x/16;
@@ -192,7 +225,7 @@ KERNEL void syntelle_body_fp32(GPUParams p,const unsigned char *subject,const un
             u=(wa*(float)t.a.u+wb*(float)t.b.u+wc*(float)t.c.u)*inverse;
             v=(wa*(float)t.a.v+wb*(float)t.b.v+wc*(float)t.c.v)*inverse;
         }
-        ColorF c=fragment_f(p,subject,field,material,emotion,u,v);
+        ColorF c=fragment_f(p,subject,field,material,emotion,views,laughter,u,v);
         if(t.flags[4]) {
             if(c.v[3]>=.995f || c.v[3]<=.001f) continue;
             for(int k=0;k<4;k++) c.v[k]+=previous[k]/255.f*(1.f-c.v[3]);

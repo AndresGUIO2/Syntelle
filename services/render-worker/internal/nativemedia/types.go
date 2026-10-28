@@ -20,22 +20,24 @@ type Viseme = rendercontract.Viseme
 
 // Samples and Visemes are immutable for the lifetime of the callback.
 type SpeechState struct {
-	Preview     bool
-	Active      bool
-	Waiting     bool
-	Revision    uint64
-	TurnID      string
-	Position    time.Duration
-	Duration    time.Duration
-	Samples     []int16
-	SampleRate  int
-	Visemes     []Viseme
-	Text        string
-	Performance json.RawMessage
-	Prepared    *nativeanimation.PreparedSpeech
+	LaughterSpan *rendercontract.LaughterSpan `json:"laughter_span,omitempty"`
+	Preview      bool
+	Active       bool
+	Waiting      bool
+	Revision     uint64
+	TurnID       string
+	Position     time.Duration
+	Duration     time.Duration
+	Samples      []int16
+	SampleRate   int
+	Visemes      []Viseme
+	Text         string
+	Performance  json.RawMessage
+	Prepared     *nativeanimation.PreparedSpeech
 }
 
 type FrameInput struct {
+	Activity       string
 	EmotionControl *nativeanimation.EmotionSnapshot
 	EmotionTime    float64
 

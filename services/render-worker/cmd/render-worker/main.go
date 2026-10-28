@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"syntelle/render-contract"
 	"syscall"
 	"time"
 
@@ -114,7 +115,7 @@ func connection(parent context.Context, address, token string, config nativemedi
 	lifecycle := newCloudLifecycle(cloud, cancel, 90*time.Second, 5*time.Second)
 	defer lifecycle.close()
 	dial, stop := context.WithTimeout(ctx, 10*time.Second)
-	c, _, err := websocket.Dial(dial, address, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}, "X-Syntelle-Allocation": []string{os.Getenv("SYNTELLE_RENDER_ALLOCATION_ID")}}})
+	c, _, err := websocket.Dial(dial, address, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}, "X-Syntelle-Allocation": []string{os.Getenv("SYNTELLE_RENDER_ALLOCATION_ID")}, "X-Syntelle-Performance": []string{rendercontract.DeliveryVersion}}})
 	stop()
 	if err != nil {
 		return fmt.Errorf("connect private control: %w", err)

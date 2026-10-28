@@ -184,7 +184,7 @@ func (s *Store) Interrupt(ctx context.Context, cid, id, reason string) error {
 
 func (s *Store) PlaybackText(ctx context.Context, cid, id string) (string, error) {
 	var text string
-	err := s.Pool.QueryRow(ctx, `SELECT coalesce((SELECT string_agg(request->>'text',' ' ORDER BY (request->>'index')::int) FROM syntelle_conversation.operations WHERE turn_id=t.id AND kind='speech-delivery' AND status='received'),spoken->>'text','') FROM syntelle_conversation.turns t WHERE conversation_id=$1 AND id=$2`, cid, id).Scan(&text)
+	err := s.Pool.QueryRow(ctx, `SELECT CASE WHEN EXISTS(SELECT 1 FROM syntelle_conversation.operations WHERE turn_id=t.id AND kind='performance-reservation') THEN coalesce((SELECT string_agg(a.request->>'text',' ' ORDER BY (a.request->>'index')::int) FROM syntelle_conversation.operations a WHERE a.turn_id=t.id AND a.kind='delivery-activation' AND a.status='received'),'') ELSE coalesce((SELECT string_agg(request->>'text',' ' ORDER BY (request->>'index')::int) FROM syntelle_conversation.operations WHERE turn_id=t.id AND kind='speech-delivery' AND status='received'),spoken->>'text','') END FROM syntelle_conversation.turns t WHERE conversation_id=$1 AND id=$2`, cid, id).Scan(&text)
 	return text, err
 }
 

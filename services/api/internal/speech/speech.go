@@ -2,8 +2,6 @@ package speech
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,33 +20,36 @@ import (
 const speechSDKVersion = "1.52.0"
 const speechNativeSHA256 = "2573d5336cdba31759967b77b3596dcd450b802fa8c1a410245c541a5df0fb47"
 
-var speechVoices = map[string]bool{"en-US-Ava:DragonHDLatestNeural": true, "en-US-Andrew:DragonHDLatestNeural": true}
+var speechVoices = map[string]bool{rendercontract.DefaultVoice: true, "en-US-Serena:DragonHDLatestNeural": true, "en-US-Ava:DragonHDLatestNeural": true, "en-US-Andrew:DragonHDLatestNeural": true}
 var speechKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{8,128}$`)
 
 type Input struct {
-	Text       string `json:"text"`
-	Language   string `json:"language"`
-	Voice      string `json:"voice"`
-	RequestKey string `json:"request_key"`
-	region     string
+	delivery     *rendercontract.VoiceDelivery
+	providerText string
+	Text         string `json:"text"`
+	Language     string `json:"language"`
+	Voice        string `json:"voice"`
+	RequestKey   string `json:"request_key"`
+	region       string
 }
 type Viseme struct {
 	ID       uint    `json:"id"`
 	OffsetMS float64 `json:"offset_ms"`
 }
 type Result struct {
-	Parts            []PreparedPart `json:"parts,omitempty"`
-	Region           string         `json:"region,omitempty"`
-	Audio            []byte         `json:"audio_base64"`
-	Mime             string         `json:"mime"`
-	DurationMS       float64        `json:"duration_ms"`
-	Visemes          []Viseme       `json:"visemes"`
-	Voice            string         `json:"voice"`
-	Language         string         `json:"language"`
-	SDKVersion       string         `json:"sdk_version"`
-	ProviderResultID string         `json:"provider_result_id"`
-	ProviderStatus   string         `json:"provider_status"`
-	Cached           bool           `json:"cached"`
+	Words            []rendercontract.WordBoundary `json:"word_boundaries,omitempty"`
+	Parts            []PreparedPart                `json:"parts,omitempty"`
+	Region           string                        `json:"region,omitempty"`
+	Audio            []byte                        `json:"audio_base64"`
+	Mime             string                        `json:"mime"`
+	DurationMS       float64                       `json:"duration_ms"`
+	Visemes          []Viseme                      `json:"visemes"`
+	Voice            string                        `json:"voice"`
+	Language         string                        `json:"language"`
+	SDKVersion       string                        `json:"sdk_version"`
+	ProviderResultID string                        `json:"provider_result_id"`
+	ProviderStatus   string                        `json:"provider_status"`
+	Cached           bool                          `json:"cached"`
 }
 
 const maxVisemeTailMS = rendercontract.MaxNativeVisemeTailMS
@@ -67,10 +68,11 @@ type Ledger interface {
 	Finish(context.Context, int64, *Result, string, bool) error
 }
 type Service struct {
-	provider Provider
-	ledger   Ledger
-	region   string
-	voice    voiceGate
+	capabilities *VoiceCapabilities
+	provider     Provider
+	ledger       Ledger
+	region       string
+	voice        voiceGate
 }
 
 func NewService(provider Provider, ledger Ledger, region string) *Service {
@@ -84,6 +86,9 @@ func validateSpeechWithLimit(input Input, limit int) error {
 	count := len(utf16.Encode([]rune(input.Text)))
 	if strings.TrimSpace(input.Text) == "" || count > limit || !speechKeyPattern.MatchString(input.RequestKey) {
 		return fmt.Errorf("provide plain text of 1–%d characters and an idempotency key", limit)
+	}
+	if strings.ContainsAny(input.Text, "[]<>") {
+		return errors.New("Spoken text cannot contain provider tags or SSML.")
 	}
 	if !speechVoices[input.Voice] || (input.Language != "en-US" && input.Language != "es-CO") {
 		return errors.New("Choose an allowed Dragon HD voice and English or Spanish.")
@@ -116,7 +121,7 @@ func Handler(next http.Handler, service *Service) http.Handler {
 			if service != nil {
 				active, capacity = service.voice.count(), maxActiveVoiceUsers
 			}
-			httpapi.WriteJSON(w, 200, map[string]any{"configured": service != nil, "voices": []string{"en-US-Ava:DragonHDLatestNeural", "en-US-Andrew:DragonHDLatestNeural"}, "max_characters": 500, "active_voice_users": active, "max_active_voice_users": capacity})
+			httpapi.WriteJSON(w, 200, map[string]any{"configured": service != nil, "voices": []string{rendercontract.DefaultVoice, "en-US-Serena:DragonHDLatestNeural", "en-US-Ava:DragonHDLatestNeural", "en-US-Andrew:DragonHDLatestNeural"}, "max_characters": 500, "active_voice_users": active, "max_active_voice_users": capacity})
 			return
 		}
 		if r.URL.Path != "/api/v1/speech/synthesize" {
@@ -172,8 +177,14 @@ func (service *Service) synthesize(ctx context.Context, input Input) (Result, er
 	return service.synthesizeBounded(ctx, input, 500, 20*time.Second)
 }
 func (service *Service) synthesizeBounded(ctx context.Context, input Input, limit int, timeout time.Duration) (Result, error) {
+	if p, ok := service.provider.(interface{ RequiresVoiceQualification() bool }); ok && p.RequiresVoiceQualification() && (input.Voice == rendercontract.DefaultVoice || input.Voice == "en-US-Serena:DragonHDLatestNeural") && (service.capabilities == nil || service.capabilities.Voice != input.Voice) {
+		return Result{}, errors.New("Selected voice qualification is unavailable; no request was made")
+	}
 	if err := validateSpeechWithLimit(input, limit); err != nil {
 		return Result{}, err
+	}
+	if c := service.capabilities; c != nil && input.Voice == c.Voice && !c.Locales[input.Language].Available {
+		return Result{}, errors.New("selected voice is not qualified for this language")
 	}
 	conversationID, _ := conversation.IDs(ctx)
 	release, err := service.voice.acquire(ctx, conversationID)
@@ -184,10 +195,8 @@ func (service *Service) synthesizeBounded(ctx context.Context, input Input, limi
 		return Result{}, err
 	}
 	defer release()
-	bindingBytes, _ := json.Marshal(struct{ Text, Language, Voice, Region, SDK, Format string }{input.Text, input.Language, input.Voice, service.region, speechSDKVersion, "riff-24khz-16bit-mono-pcm"})
-	hash := sha256.Sum256(bindingBytes)
 	input.region = service.region
-	id, cached, err := service.ledger.Reserve(ctx, input, hex.EncodeToString(hash[:]), len(utf16.Encode([]rune(input.Text))))
+	id, cached, err := service.ledger.Reserve(ctx, input, speechBinding(input, service.region), len(utf16.Encode([]rune(input.Text))))
 	if err != nil {
 		return Result{}, &speechFailure{409, "speech_reservation_failed", err.Error()}
 	}

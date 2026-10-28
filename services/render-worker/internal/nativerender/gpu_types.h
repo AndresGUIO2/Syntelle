@@ -10,11 +10,13 @@ typedef struct {
     int emotion_dims[8]; double emotion_units,emotion_weights[10];
     int mask_mode;
     int precision;
+    int view_dims[4]; double view_weights[4];
+    int laughter_dims[8];double laughter_values[6];
 } GPUParams;
 typedef struct { double p[6],from[6],to[6],area; int flags[4]; } GPUOralTriangle;
 typedef struct { int dims[16]; double values[60]; } GPUOralParams;
 typedef struct { int dims[12]; double values[8]; } GPUEyeParams;
 typedef struct { int dims[12]; double values[4]; } GPUSkinParams;
-typedef struct { int dims[16]; double values[104]; } GPUReferenceParams;
+typedef struct { int dims[16]; double values[149]; } GPUReferenceParams;
 typedef struct { unsigned long long context,planes[3]; int strides[3],width,height,marker; } GPUOutput;
 #endif

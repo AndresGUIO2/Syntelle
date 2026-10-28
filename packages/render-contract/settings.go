@@ -26,7 +26,7 @@ type Settings struct {
 func Defaults() Settings {
 	return Settings{
 		EmotionBaseline: EmotionBaseline{State: "neutral"},
-		Character:       "syntelle", Language: "en-US", Voice: "en-US-Ava:DragonHDLatestNeural",
+		Character:       "syntelle", Language: "en-US", Voice: DefaultVoice,
 		Background: "light-studio", Blinking: true, Movement: true, AutomaticExpressions: true,
 		Instructions: "Be a clear, friendly assistant. Match the depth and length to the question, and explain fully when asked. Do not invent company knowledge.",
 	}
@@ -42,7 +42,7 @@ func (s Settings) Validate() error {
 	if s.Character != "syntelle" || (s.Language != "en-US" && s.Language != "es-CO") {
 		return errors.New("choose Syntelle and a supported language")
 	}
-	if s.Voice != "en-US-Ava:DragonHDLatestNeural" && s.Voice != "en-US-Andrew:DragonHDLatestNeural" {
+	if !SupportedVoice(s.Voice) {
 		return errors.New("choose a supported voice")
 	}
 	if s.Background != "light-studio" && s.Background != "dark-lounge" && s.Background != "natural-space" {

@@ -257,6 +257,8 @@ export const spanish: Record<string, string> = {
   Tilt: 'Inclinar la cabeza',
   'Facial expression': 'Expresión facial',
   'Laughter with sound': 'Risa con sonido',
+  'Emotion changes apply to the next phrase while speaking.':
+    'Mientras habla, los cambios de emoción se aplican en la próxima frase.',
   'Play laughter': 'Reproducir risa',
   'Playing…': 'Reproduciendo…',
   'Try a head gesture': 'Probar un gesto de cabeza',

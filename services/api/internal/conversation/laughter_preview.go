@@ -1,9 +1,12 @@
 package conversation
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"syntelle/render-contract"
 )
 
 // LaughterPreview reads only the reviewed recording bank. It never invokes the
@@ -14,7 +17,7 @@ func (s *Service) LaughterPreview(voice, language string) (any, error) {
 	}
 	raw, ok := s.Performance.Laughter[voice+"|"+language]
 	if !ok {
-		return nil, errors.New("No saved laughter for this voice and language. Select Ava to preview laughter.")
+		return nil, errors.New("Laughter is not available for the selected voice and language.")
 	}
 	var cached cachedSpeech
 	if json.Unmarshal(raw, &cached) != nil || cached.Voice != voice || cached.Language != language {
@@ -34,6 +37,7 @@ func (s *Service) LaughterPreview(voice, language string) (any, error) {
 	}
 	amount := 1.
 	intent := PerformanceIntent{Version: "performance-intent/2", Text: "Cached laughter preview", Tone: "demonstration", Cues: []PerformanceCue{{Kind: "laugh", Anchor: "laughter", Amount: &amount}}}
+	payload["laughter_span"] = &rendercontract.LaughterSpan{Version: "laughter-span/1", Count: len(pcm) / 2, PCMHash: fmt.Sprintf("%x", sha256.Sum256(pcm)), RecordingHash: fmt.Sprintf("%x", sha256.Sum256(cached.Audio))}
 	payload["performance"] = PerformanceValidation{Intent: intent, Resolved: []ResolvedCue{{Kind: "laugh", Time: 0, Duration: duration, Amount: &amount}}}
 	payload["duration_ms"] = duration * 1000
 	payload["preview_only"] = true

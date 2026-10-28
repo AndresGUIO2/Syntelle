@@ -1,0 +1,39 @@
+{
+  "version": "conversational-parallax-input/1",
+  "status": "owner-authorized",
+  "budget_id": "authorized-parallax-left-correction-2026-10-26",
+  "limits": {
+    "image": 1,
+    "analysis": 0
+  },
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "source_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "bundle": ".tools/disgust-readability-93/prepared-v6/resource-bundle.json",
+  "landmarks": ".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json",
+  "model": "gemini-nano-banana-2.1",
+  "response_format": {
+    "type": "image",
+    "mime_type": "image/jpeg",
+    "aspect_ratio": "3:4",
+    "image_size": "1K"
+  },
+  "slots": {
+    "yaw-left": "Turn only the head approximately 12 degrees toward the person's left, showing more of their right cheek and ear. Keep the shoulders, camera and framing stationary.",
+    "yaw-right": "Turn only the head approximately 12 degrees toward the person's right, showing more of their left cheek and ear. Keep the shoulders, camera and framing stationary.",
+    "pitch-up": "Tilt only the head upward approximately 6 degrees. Keep the shoulders, camera and framing stationary.",
+    "pitch-down": "Tilt only the head downward approximately 6 degrees. Keep the shoulders, camera and framing stationary.",
+    "laugh-recovery-open": "Show a relaxed, lightly open smile just after a laugh, with the jaw mostly recovered and lips naturally covering the upper crowns. Keep the frontal head posture, camera and framing stationary.",
+    "laugh-recovery-closed": "Show a gentle, nearly closed smile as the face settles after laughter. The lips should naturally meet rather than exposing a narrow strip across the middle of the teeth. Keep the frontal head posture, camera and framing stationary."
+  },
+  "prompt_prefix": "Create one anatomical preparation reference of the exact same person in the attached immutable original. Preserve identity, age, proportions, hairstyle, hair length, clothing, lighting, camera distance, background and portrait composition. Do not beautify, change face scale, add details or turn the torso. Keep a relaxed closed mouth and neutral eyes for head-turn views. Change only the requested head posture or recovery expression. This is a single reference photograph, not a collage or annotated diagram. Requested degrees are approximate reference directions; no text or angle labels in the output. ",
+  "transport_retries": 0,
+  "stop_on_provider_error": true,
+  "scope": "Only this source is prepared now; implementation must remain generic and source-bound.",
+  "reference_policy": "docs/characters/parallax-reference-policy.json",
+  "reference_policy_sha256": "ed41e14e71d5ba7b10f06d48e9f7b5a83f15a384b809df28f78a0e7016a7c934",
+  "accepted_reference_settings_sha256": [
+    "77a5e8ebedc8df4111af4c770853029fee5c4f86d78d7dfe702f988f46bc9904"
+  ],
+  "parent_budget_id": "authorized-conversational-parallax-2026-10-26",
+  "authorization_note": "Owner explicitly approved one new left reference, no retries, in this chat."
+}

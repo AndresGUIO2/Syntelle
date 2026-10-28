@@ -3,7 +3,7 @@ import { useLocaleStore } from '../../../stores/locale'
 import type { StreamSettings } from '../types'
 import ExpressionPreview from './ExpressionPreview.vue'
 const settings = defineModel<StreamSettings>({ required: true })
-defineProps<{ previewDisabled?: boolean }>()
+defineProps<{ previewDisabled?: boolean; laughterBusy?: boolean; laughterAvailable?: boolean }>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
 function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]) {
@@ -38,6 +38,8 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
       :smile="settings.smile"
       :brows="settings.brows"
       :disabled="previewDisabled ?? false"
+      :laughter-busy="laughterBusy"
+      :laughter-available="laughterAvailable ?? false"
       @update:smile="update('smile', $event)"
       @update:brows="update('brows', $event)"
       @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"

@@ -2,8 +2,11 @@ package nativemedia
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"image"
+	"syntelle/render-contract"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -184,4 +187,26 @@ func TestPreparationCapacityIncludesPlayingPCM(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPreparationLanePreservesLaughterBinding(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		captured := make(chan SpeechState, 1)
+		s := preparationSession(t, preparationScene{prepare: func(_ context.Context, input SpeechState) (*nativeanimation.PreparedSpeech, error) {
+			captured <- input
+			return &nativeanimation.PreparedSpeech{}, nil
+		}})
+		fixture := preparedFixture()
+		sum := sha256.Sum256(fixture.Audio[44:])
+		fixture.LaughterSpan = &rendercontract.LaughterSpan{Version: "laughter-span/1", Count: 480, PCMHash: fmt.Sprintf("%x", sum), RecordingHash: fmt.Sprintf("%x", sum)}
+		if err := s.conversation(conversationData(t, map[string]any{"type": "accepted", "turn_id": "turn_bound"})); err != nil {
+			t.Fatal(err)
+		}
+		queuePreparation(t, s, "turn_bound", "original", 0, fixture)
+		synctest.Wait()
+		input := <-captured
+		if input.LaughterSpan == nil || *input.LaughterSpan != *fixture.LaughterSpan {
+			t.Fatal("actual preparation lane dropped original laughter span")
+		}
+	})
 }

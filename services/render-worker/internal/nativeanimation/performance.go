@@ -18,6 +18,11 @@ func (e *Engine) AdmitPerformance(value *Performance, text string, nowMS float64
 	heads := 0
 	lastHead := math.Inf(-1)
 	lastEnd := math.Inf(-1)
+	continuous := e.config.ConversationalMotion && rendercontract.NaturalPerformance(value.Intent.Version) && value.Motion.Valid()
+	if continuous && value.Motion.ReplyID != e.motionReply {
+		e.motionReply = value.Motion.ReplyID
+		e.motionWindow = rendercontract.GestureWindow{}
+	}
 	cues := make([]PerformanceCue, 0, min(16, len(value.Resolved)))
 	for _, cue := range value.Resolved[:min(16, len(value.Resolved))] {
 		if rendercontract.DirectedPerformance(value.Intent.Version) && (cue.Amount == nil || math.IsNaN(*cue.Amount) || math.IsInf(*cue.Amount, 0) || *cue.Amount < 0 || *cue.Amount > 1) {
@@ -34,7 +39,7 @@ func (e *Engine) AdmitPerformance(value *Performance, text string, nowMS float64
 		if cue.Kind == "shake" && cue.Repetitions != nil {
 			maximumDuration = rendercontract.ShakeCycleSeconds*8 + .001
 		}
-		if value.Intent.Version == "performance-intent/3" && cue.Repetitions != nil {
+		if rendercontract.NaturalPerformance(value.Intent.Version) && cue.Repetitions != nil {
 			if cue.Kind == "nod" {
 				maximumDuration = rendercontract.NaturalNodCycleSeconds*8 + .001
 			}
@@ -79,7 +84,13 @@ func (e *Engine) AdmitPerformance(value *Performance, text string, nowMS float64
 			}
 			continue
 		}
-		if !isHeadCue(cue.Kind) || heads+repeats > 8 || cue.Time-lastHead < 2.2 || cue.Time < lastEnd {
+		if !isHeadCue(cue.Kind) {
+			continue
+		}
+		if continuous && !e.motionWindow.Admit(value.Motion.Offset+cue.Time, cue.Duration, repeats) {
+			continue
+		}
+		if !continuous && (heads+repeats > 8 || cue.Time-lastHead < 2.2 || cue.Time < lastEnd) {
 			continue
 		}
 		lastHead = cue.Time

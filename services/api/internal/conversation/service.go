@@ -50,6 +50,7 @@ type Event struct {
 	Baseline          *ExpressionBaseline               `json:"expression_baseline,omitempty"`
 }
 type Service struct {
+	Delivery    DeliveryCoordinator
 	Store       *Store
 	Model       Model
 	Speech      Speech
@@ -422,7 +423,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				return
 			}
 			if event.Type == "hello" {
-				if cid != "" || !identifier.MatchString(event.ConversationID) || !identifier.MatchString(event.TurnID) || (event.Character != "syntelle" && event.Character != "cafe" && event.Character != "woodland") || (event.Language != "en-US" && event.Language != "es-CO") || len([]rune(event.Instructions)) > 2000 || (event.Voice != "en-US-Ava:DragonHDLatestNeural" && event.Voice != "en-US-Andrew:DragonHDLatestNeural") {
+				if cid != "" || !identifier.MatchString(event.ConversationID) || !identifier.MatchString(event.TurnID) || (event.Character != "syntelle" && event.Character != "cafe" && event.Character != "woodland") || (event.Language != "en-US" && event.Language != "es-CO") || len([]rune(event.Instructions)) > 2000 || !rendercontract.SupportedVoice(event.Voice) {
 					return
 				}
 				s.mu.Lock()
@@ -483,7 +484,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 			switch event.Type {
 			case "emotion_activated":
-				if event.TurnID != turnID || event.EmotionActivation == nil || !event.EmotionActivation.Emotion.Valid() || event.EmotionActivation.PhraseIndex < 0 || event.EmotionActivation.PhraseIndex >= 32 || event.EmotionActivation.Baseline.Normalized() != baseline.Emotion.Normalized() {
+				if event.TurnID != turnID || event.EmotionActivation == nil || !event.EmotionActivation.Emotion.Valid() || event.EmotionActivation.PhraseIndex < 0 || event.EmotionActivation.PhraseIndex >= 1048576 || event.EmotionActivation.Baseline.Normalized() != baseline.Emotion.Normalized() {
 					continue
 				}
 				activated := event.EmotionActivation
@@ -504,7 +505,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					baseline = updateExpressionBaseline(baseline, *event.Baseline)
 				}
 			case "configure":
-				if len([]rune(event.Instructions)) > 2000 || (event.Voice != "en-US-Ava:DragonHDLatestNeural" && event.Voice != "en-US-Andrew:DragonHDLatestNeural") {
+				if len([]rune(event.Instructions)) > 2000 || !rendercontract.SupportedVoice(event.Voice) {
 					continue
 				}
 				if turnDone != nil {

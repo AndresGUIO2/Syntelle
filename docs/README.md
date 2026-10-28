@@ -108,3 +108,21 @@ Historical records describe the implementation at their recorded stage; the late
 - [libyuv color validation](development/libyuv-color-validation.md): explicit BT.601 tolerance with exact scalar reference preserved, sustained CPU savings, two-decoder fixed-frame checks and remaining quality/memory gates.
 - [Natural speech gestures](experiments/motion/natural-speech-gestures.md): bounded nod/shake timing, brow accents, head tilt and emphasis, cached native playback and rollback evidence.
 - [Disgust lip correction](experiments/motion/disgust-lip-correction.md): source-bound nasal/lid calibration, canonical lips, rejected variants and preserved masks/materials.
+- [Conversational parallax](experiments/motion/conversational-parallax.md): shared speech motion, rigid dental recovery, bounded registered side support and Syntelle-only candidate review.
+
+- [Coordinated Serena performance](experiments/motion/coordinated-performance.md): approved direction reservations, staged emotions, shared motion accents, exact voice capabilities, and pending regional qualification.
+
+- [Brief conversational posture](experiments/motion/brief-posture.md): short adjustments and real holds replace slow lateral drift, preserving intentional gesture speeds.
+
+- [Mouth presentation and Emma](experiments/motion/mouth-presentation-and-emma.md): original A/V playback clock, reduced receiver delay, voice-bound Emma qualification and rollback.
+
+- [Emma laughter and presence](experiments/motion/emma-presence.md): bounded voice-bound carcajadas, shorter contextual speaking holds, pending audible review and GPU-contention limits.
+
+- [Audio-matched laughter and mandibular articulation](experiments/motion/audio-matched-articulation.md)
+
+- [Complete laughter and direct expression recovery](experiments/motion/complete-laughter-recovery.md) - phase-109 local review, reproduction, evidence and rollback.
+
+- [Laughter and mandibular regression correction](experiments/motion/laughter-regression-correction.md) - reproduced phase-109 owner rejection, source-supported closed-mouth gaps and isolated mandibular support.
+
+- [Restored-base continuity and subtle speech jaw](experiments/motion/presence-continuity.md) - phase107 laughter preserved, phrase-handoff repair, shorter idle holds and independent skin-only articulation.
+- [Continuous lower-face jaw transition](experiments/motion/continuous-jaw-transition.md) - precise cached lip protection removes the fixed middle skin band while preserving the restored mouth and laughter.

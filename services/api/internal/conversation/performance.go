@@ -10,12 +10,14 @@ import (
 	"sort"
 	"strings"
 	"syntelle/render-contract"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
 // PerformanceIntent is an internal direction language, never a renderer command.
 // An anchor must identify exactly one verbatim span of the spoken text.
 type PerformanceIntent struct {
+	Purpose string                        `json:"purpose,omitempty"`
 	Emotion *rendercontract.EmotionTarget `json:"emotion,omitempty"`
 	Version string                        `json:"version"`
 	Text    string                        `json:"text"`
@@ -29,10 +31,11 @@ type PerformanceCue struct {
 	Repetitions *int     `json:"repetitions,omitempty"`
 }
 type PerformanceValidation struct {
-	Intent   PerformanceIntent `json:"intent"`
-	Omitted  []string          `json:"omitted"`
-	Resolved []ResolvedCue     `json:"resolved,omitempty"`
-	Timing   string            `json:"timing,omitempty"`
+	Motion   *rendercontract.MotionTiming `json:"motion,omitempty"`
+	Intent   PerformanceIntent            `json:"intent"`
+	Omitted  []string                     `json:"omitted"`
+	Resolved []ResolvedCue                `json:"resolved,omitempty"`
+	Timing   string                       `json:"timing,omitempty"`
 }
 type ResolvedCue struct {
 	Kind        string   `json:"kind"`
@@ -62,9 +65,9 @@ func PerformanceSchema() any {
 func ResolvePerformance(v PerformanceValidation, wav []byte, duration float64) PerformanceValidation {
 	return resolvePerformance(v, wav, duration, newAcousticSchedule(v.Intent.Text), 0)
 }
-func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64) PerformanceValidation {
+func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64, words ...rendercontract.WordBoundary) PerformanceValidation {
 	v.Timing = "audio-energy/1-approximate-text-spans"
-	if v.Intent.Version == "performance-intent/3" {
+	if rendercontract.NaturalPerformance(v.Intent.Version) {
 		v.Timing = "audio-energy/2-approximate-gesture-peaks"
 	}
 	v.Resolved = []ResolvedCue{}
@@ -140,14 +143,36 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			continue
 		}
 		target := duration * (float64(utf8.RuneCountInString(v.Intent.Text[:index])) + float64(utf8.RuneCountInString(cue.Anchor))*.5) / float64(max(1, utf8.RuneCountInString(v.Intent.Text)))
+		anchorStart := duration * float64(utf8.RuneCountInString(v.Intent.Text[:index])) / float64(max(1, utf8.RuneCountInString(v.Intent.Text)))
+		anchorEnd := duration * float64(utf8.RuneCountInString(v.Intent.Text[:index]+cue.Anchor)) / float64(max(1, utf8.RuneCountInString(v.Intent.Text)))
+		wordTimed := false
+		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion {
+			if start, end, ok := wordAnchor(v.Intent.Text, cue.Anchor, words); ok {
+				anchorStart, anchorEnd, target, wordTimed = start, end, (start+end)/2, true
+				v.Timing = "native-word-boundaries/1"
+			}
+		}
 		time := target
 		distance := .9
+		found := wordTimed
+		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion {
+			distance = .35
+		}
 		for _, candidate := range boundaries {
+			if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion && (candidate < anchorStart-.15 || candidate > anchorEnd+.15) {
+				continue
+			}
 			if d := math.Abs(candidate - target); d < distance {
 				time = candidate
 				distance = d
+				found = true
 			}
 		}
+		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion && !found && (cue.Kind == "emphasis" || cue.Kind == "brows") {
+			v.Omitted = append(v.Omitted, "uncertain_accent_anchor")
+			continue
+		}
+		aligned := time
 		repeats := rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)
 		length := .85
 		if cue.Kind == "nod" && rendercontract.DirectedPerformance(v.Intent.Version) {
@@ -170,7 +195,7 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			}
 		}
 		lead, minimum := .15, .15
-		if v.Intent.Version == "performance-intent/3" {
+		if rendercontract.NaturalPerformance(v.Intent.Version) {
 			switch cue.Kind {
 			case "nod", "double_nod":
 				length = rendercontract.NaturalNodCycleSeconds * float64(repeats)
@@ -184,7 +209,11 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			lead, minimum = rendercontract.NaturalGestureLead(cue.Kind, length), 0
 		}
 		time = math.Max(minimum, math.Min(time-lead, duration-length))
-		if (headCue(cue.Kind) && (heads+repeats > 8 || time-last < 2.2 || time < end)) || duration-time < length {
+		continuous := v.Motion.Valid() && rendercontract.NaturalPerformance(v.Intent.Version)
+		if continuous && headCue(cue.Kind) {
+			time = math.Max(0, aligned-lead)
+		}
+		if (headCue(cue.Kind) && ((!continuous && heads+repeats > 8) || time-last < 2.2 || time < end)) || (!continuous && duration-time < length) {
 			v.Omitted = append(v.Omitted, "gesture_spacing")
 			continue
 		}
@@ -201,9 +230,39 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 	return v
 }
 
+func wordAnchor(text, anchor string, words []rendercontract.WordBoundary) (float64, float64, bool) {
+	index := strings.Index(text, anchor)
+	if index < 0 {
+		return 0, 0, false
+	}
+	start := len(utf16.Encode([]rune(text[:index])))
+	end := start + len(utf16.Encode([]rune(anchor)))
+	units := utf16.Encode([]rune(text))
+	first, last := -1., 0.
+	coveredStart, coveredEnd := -1, -1
+	for _, w := range words {
+		a, b := w.TextOffset, w.TextOffset+w.Length
+		if a < 0 || b > len(units) || b <= a || string(utf16.Decode(units[a:b])) != w.Text || w.OffsetMS < 0 || w.DurationMS <= 0 {
+			return 0, 0, false
+		}
+		if a >= start && b <= end {
+			if first < 0 {
+				first = w.OffsetMS
+				coveredStart = a
+			}
+			last = w.OffsetMS + w.DurationMS
+			coveredEnd = b
+		}
+	}
+	if first < 0 || coveredStart != start || coveredEnd != end {
+		return 0, 0, false
+	}
+	return first / 1000, last / 1000, true
+}
+
 // ValidatePerformance drops bad optional metadata; valid text always survives.
 func ValidatePerformance(intent PerformanceIntent, spoken string) PerformanceValidation {
-	result := PerformanceValidation{Intent: PerformanceIntent{Version: intent.Version, Text: spoken, Tone: intent.Tone, Emotion: validEmotion(intent.Emotion), Cues: []PerformanceCue{}}, Omitted: []string{}}
+	result := PerformanceValidation{Intent: PerformanceIntent{Version: intent.Version, Purpose: intent.Purpose, Text: spoken, Tone: intent.Tone, Emotion: validEmotion(intent.Emotion), Cues: []PerformanceCue{}}, Omitted: []string{}}
 	if intent.Version != "performance-intent/1" && !rendercontract.DirectedPerformance(intent.Version) {
 		result.Omitted = append(result.Omitted, "unsupported_version")
 		return result
@@ -248,6 +307,10 @@ func ValidatePerformance(intent PerformanceIntent, spoken string) PerformanceVal
 			}
 			smiles++
 		case "laugh":
+			if cue.Amount != nil && *cue.Amount <= 0 {
+				result.Omitted = append(result.Omitted, "zero_laughter")
+				continue
+			}
 			if laughs > 0 || (result.Intent.Tone != "playful" && result.Intent.Tone != "demonstration") {
 				result.Omitted = append(result.Omitted, "laugh_policy")
 				continue

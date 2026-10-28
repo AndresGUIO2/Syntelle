@@ -14,6 +14,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
   const configured = shallowRef(false)
   const speechConfigured = shallowRef(false)
   const recognition = shallowRef(false)
+  const laughterBusy = shallowRef(false)
+  let laughterTurn = ''
+  const laughterLanguages = shallowRef<Record<string, boolean>>({})
+  const laughterAvailable = computed(() => laughterLanguages.value[settings().language] === true)
   const timeLimitsEnabled = shallowRef<boolean | null>(null)
   const pending = shallowRef(false)
   const speaking = shallowRef(false)
@@ -45,13 +49,20 @@ export function useRemoteStream(settings: () => StreamSettings) {
     configured: boolean
     speech_configured?: boolean
     recognition: boolean
+    laughter_available?: boolean
     time_limits_enabled?: boolean
   }
 
   async function loadPolicy() {
     try {
-      const policy = await request<{ time_limits_enabled?: boolean }>('/api/v1/streams/status')
-      if (!disposed) timeLimitsEnabled.value = policy.time_limits_enabled !== false
+      const policy = await request<{
+        time_limits_enabled?: boolean
+        laughter?: Record<string, boolean>
+      }>('/api/v1/streams/status')
+      if (!disposed) {
+        timeLimitsEnabled.value = policy.time_limits_enabled !== false
+        laughterLanguages.value = policy.laughter ?? {}
+      }
     } catch {
       // Starting the stream reports service failures; a policy read starts no work.
     }
@@ -280,7 +291,9 @@ export function useRemoteStream(settings: () => StreamSettings) {
         speaking.value = pending.value = false
       }
     } else if (message.type === 'preview_audio') {
-      currentTurn.value = (message.data as { turn_id: string }).turn_id
+      laughterBusy.value = true
+      laughterTurn = (message.data as { turn_id: string }).turn_id
+      currentTurn.value = laughterTurn
       pending.value = true
     } else if (message.type === 'playback') {
       const data = message.data as { event: string; turn_id: string }
@@ -291,10 +304,12 @@ export function useRemoteStream(settings: () => StreamSettings) {
         pending.value = false
       }
       if (data.event === 'playback_ended') {
+        if (data.turn_id === laughterTurn) laughterBusy.value = false
         replaceTurn(data.turn_id, { status: 'ready' })
         pending.value = false
       }
     } else if (message.type === 'error') {
+      laughterBusy.value = false
       const data = message.data as { message?: string; text?: string } | string | undefined
       error.value =
         typeof data === 'string'
@@ -361,6 +376,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
       configured.value = result.configured
       speechConfigured.value = result.speech_configured ?? result.configured
       recognition.value = result.recognition
+      laughterLanguages.value = {
+        ...laughterLanguages.value,
+        [settings().language]: result.laughter_available === true,
+      }
       timeLimitsEnabled.value = result.time_limits_enabled !== false
       peer = new RTCPeerConnection({ iceServers: result.ice_servers ?? [] })
       const currentPeer = peer
@@ -467,7 +486,12 @@ export function useRemoteStream(settings: () => StreamSettings) {
       error.value = 'Connect the stream before continuing.'
       return false
     }
+    if (type === 'preview' && text === 'laugh') {
+      laughterTurn = ''
+      laughterBusy.value = true
+    }
     if (type === 'message' || type === 'speak') {
+      laughterBusy.value = false
       if (speaking.value) audioSuppressed.value = true
       currentTurn.value = commandID
       pending.value = true
@@ -476,6 +500,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
   }
 
   function interrupt() {
+    laughterBusy.value = false
     audioSuppressed.value = true
     command('interrupt')
     if (currentTurn.value) replaceTurn(currentTurn.value, { status: 'interrupted' })
@@ -483,6 +508,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
   }
 
   function detach() {
+    laughterBusy.value = false
     epoch++
     stopMicrophone()
     audioSuppressed.value = true
@@ -535,6 +561,8 @@ export function useRemoteStream(settings: () => StreamSettings) {
     configured,
     speechConfigured,
     recognition,
+    laughterAvailable,
+    laughterBusy,
     timeLimitsEnabled,
     loadPolicy,
     error,

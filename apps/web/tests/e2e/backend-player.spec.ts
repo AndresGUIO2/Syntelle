@@ -79,7 +79,7 @@ test('arrival shows a static portrait and opens no rendering session until Start
   await expect(page.getByText('Select Start conversation', { exact: false })).toHaveCount(0)
   await expect(page.getByText('Ready when you are.', { exact: true })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Syntelle portrait' })).toBeVisible()
-  await expect(page.locator('video')).toBeHidden()
+  await expect(page.locator('video.remote-source')).toBeHidden()
   await expect(
     page.getByRole('button', { name: 'Start with microphone', exact: true }),
   ).toBeEnabled()
@@ -188,7 +188,9 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     ).toBe(0)
     releaseBackground!()
     await expect
-      .poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.videoWidth))
+      .poll(() =>
+        page.locator('video.remote-source').evaluate((video: HTMLVideoElement) => video.videoWidth),
+      )
       .toBe(720)
     await expect(poster).toHaveCSS('opacity', '0')
     await expect(poster).toHaveCSS(
@@ -260,10 +262,10 @@ test('packed live pixels become a moving composed video with picture in picture'
     }
   })
   await openStream(page)
-  const video = page.locator('video')
+  const video = page.locator('video.remote-source')
   await expect
     .poll(() => video.evaluate((v: HTMLVideoElement) => [v.videoWidth, v.videoHeight]))
-    .toEqual([720, 960])
+    .toEqual([1440, 960])
   const before = await video.evaluate(
     (v: HTMLVideoElement) => v.getVideoPlaybackQuality().totalVideoFrames,
   )
@@ -299,7 +301,11 @@ test('packed live pixels become a moving composed video with picture in picture'
   await page.getByRole('button', { name: 'Picture in picture', exact: true }).click()
   await expect
     .poll(() =>
-      page.evaluate(() => document.pictureInPictureElement === document.querySelector('video')),
+      page.evaluate(
+        () =>
+          document.pictureInPictureElement ===
+          document.querySelector<HTMLVideoElement>('video.remote-pip-source'),
+      ),
     )
     .toBe(true)
   await page.getByRole('button', { name: 'Return to tab', exact: true }).click()
@@ -408,6 +414,64 @@ test('background and blur changes stay local while character controls reach the 
   expect(remote.settings).toHaveLength(1)
 })
 
+test('inline composition preserves native audio/video tracks without recapture or rate changes', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName !== 'chromium',
+    'Actual media tracks are required for the presentation-clock check.',
+  )
+  const remote = await fixture(page, false, true)
+  await page.addInitScript(() => {
+    const capture = HTMLCanvasElement.prototype.captureStream
+    Object.defineProperty(window, 'inlineCaptureCount', { value: { count: 0 }, configurable: true })
+    HTMLCanvasElement.prototype.captureStream = function (...args) {
+      if (this.width === 720 && this.height === 960)
+        Object.getOwnPropertyDescriptor(window, 'inlineCaptureCount')!.value.count++
+      return capture.apply(this, args)
+    }
+  })
+  await openStream(page)
+  await expect(page.locator('canvas.remote-video')).toBeVisible()
+  await expect
+    .poll(() => page.locator('canvas.remote-video').evaluate((c: HTMLCanvasElement) => c.width))
+    .toBe(720)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const v = document.querySelector<HTMLVideoElement>('video.remote-source')!
+        const stream = v.srcObject as MediaStream
+        return (
+          v.videoWidth > 0 &&
+          stream?.getVideoTracks()[0] ===
+            Object.getOwnPropertyDescriptor(window, 'backgroundFixtureVideo')?.value
+        )
+      }),
+    )
+    .toBe(true)
+  await expect(page.getByRole('button', { name: 'Mute sound', exact: true })).toBeVisible()
+  remote.publish({
+    type: 'conversation',
+    data: { type: 'accepted', turn_id: 'sync', text: 'Sync' },
+  })
+  remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'sync' } })
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', false)
+  const state = await page.evaluate(() => {
+    const v = document.querySelector<HTMLVideoElement>('video.remote-source')!,
+      stream = v.srcObject as MediaStream
+    return {
+      audio:
+        stream.getAudioTracks()[0] ===
+        Object.getOwnPropertyDescriptor(window, 'backgroundFixtureAudio')?.value,
+      rate: v.playbackRate,
+      muted: v.muted,
+      captures: Object.getOwnPropertyDescriptor(window, 'inlineCaptureCount')!.value.count,
+    }
+  })
+  expect(state).toEqual({ audio: true, rate: 1, muted: false, captures: 0 })
+})
+
 async function fixture(page: Page, unavailable = false, pixels = false) {
   const commands: { type: string; data?: { type?: string; text?: string; settings?: unknown } }[] =
     []
@@ -446,6 +510,10 @@ async function fixture(page: Page, unavailable = false, pixels = false) {
             draw()
             const timer = setInterval(draw, 33)
             const track = c.captureStream(30).getVideoTracks()[0]!
+            Object.defineProperty(window, 'backgroundFixtureVideo', {
+              value: track,
+              configurable: true,
+            })
             track.addEventListener('ended', () => clearInterval(timer))
             this.ontrack?.({ track })
             const audio = new AudioContext()
@@ -503,7 +571,9 @@ async function fixture(page: Page, unavailable = false, pixels = false) {
     } else if (path === '/api/v1/auth/me') {
       await route.fulfill({ json: { account: null } })
     } else if (path === '/api/v1/streams/status') {
-      await route.fulfill({ json: { time_limits_enabled: true } })
+      await route.fulfill({
+        json: { time_limits_enabled: true, laughter: { 'en-US': true, 'es-CO': true } },
+      })
     } else if (path === '/api/v1/streams' && request.method() === 'POST') {
       sessionRequests.push(request.postDataJSON())
       settings.push(request.postDataJSON().settings)
@@ -514,6 +584,7 @@ async function fixture(page: Page, unavailable = false, pixels = false) {
               json: {
                 id: 'fixture-stream',
                 ticket: 'fixture-ticket',
+                laughter_available: true,
                 state: 'idle',
                 configured: true,
                 recognition: true,
@@ -611,9 +682,13 @@ test('switching tabs keeps the same media and in-flight reply', async ({ page })
   await expect(page.getByText('Hello', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Unmute sound', exact: true }).click()
   await page.evaluate(() => {
-    Object.defineProperty(document.querySelector('video'), 'fixtureOriginalMedia', {
-      value: document.querySelector('video')!.srcObject,
-    })
+    Object.defineProperty(
+      document.querySelector<HTMLVideoElement>('video.remote-source'),
+      'fixtureOriginalMedia',
+      {
+        value: document.querySelector<HTMLVideoElement>('video.remote-source')!.srcObject,
+      },
+    )
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     document.dispatchEvent(new Event('visibilitychange'))
   })
@@ -623,8 +698,8 @@ test('switching tabs keeps the same media and in-flight reply', async ({ page })
   })
   remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'background' } })
   await expect(page.getByText('Still replying', { exact: true })).toBeVisible()
-  await expect(page.locator('video')).toHaveJSProperty('muted', false)
-  const media = await page.locator('video').evaluate((element: HTMLVideoElement) => {
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', false)
+  const media = await page.locator('video.remote-source').evaluate((element: HTMLVideoElement) => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: false })
     document.dispatchEvent(new Event('visibilitychange'))
     return (
@@ -740,6 +815,9 @@ test('sound control stays visible and preserves the selected mute state during r
 }) => {
   const remote = await fixture(page)
   await openStream(page)
+  const initialMute = page.getByRole('button', { name: 'Mute sound', exact: true })
+  await expect(initialMute).toBeVisible()
+  await initialMute.click()
   const unmute = page.getByRole('button', { name: 'Unmute sound', exact: true })
   await expect(unmute).toBeVisible()
   remote.publish({
@@ -753,14 +831,14 @@ test('sound control stays visible and preserves the selected mute state during r
   await expect(page.getByText('Initial reply', { exact: true })).toBeVisible()
   await expect(unmute).toHaveText('')
   await expect(unmute).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.locator('video')).toHaveJSProperty('muted', true)
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', true)
   await unmute.focus()
   await unmute.press('Enter')
   const mute = page.getByRole('button', { name: 'Mute sound', exact: true })
   await expect(mute).toBeVisible()
   await expect(mute).toHaveAttribute('aria-pressed', 'true')
   await expect(mute).toBeFocused()
-  await expect(page.locator('video')).toHaveJSProperty('muted', false)
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', false)
   await mute.click()
   remote.publish({
     type: 'conversation',
@@ -768,10 +846,10 @@ test('sound control stays visible and preserves the selected mute state during r
   })
   remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'muted-reply' } })
   await expect(page.getByText('Hello', { exact: true })).toBeVisible()
-  await expect(page.locator('video')).toHaveJSProperty('muted', true)
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', true)
   await expect(unmute).toBeVisible()
   await unmute.click()
-  await expect(page.locator('video')).toHaveJSProperty('muted', false)
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', false)
   await expect(mute).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('sound-control.png') })
   expect(remote.settings).toHaveLength(1)
@@ -781,6 +859,9 @@ test('sound control stays visible and preserves the selected mute state during r
 test('failed sound activation keeps the muted control available for retry', async ({ page }) => {
   const remote = await fixture(page)
   await openStream(page)
+  const initialMute = page.getByRole('button', { name: 'Mute sound', exact: true })
+  await expect(initialMute).toBeVisible()
+  await initialMute.click()
   const unmute = page.getByRole('button', { name: 'Unmute sound', exact: true })
   await expect(unmute).toBeVisible()
   remote.publish({
@@ -789,19 +870,19 @@ test('failed sound activation keeps the muted control available for retry', asyn
   })
   remote.publish({ type: 'playback', data: { event: 'playback_started', turn_id: 'sound-retry' } })
   await expect(page.getByText('Retry reply', { exact: true })).toBeVisible()
-  await page.locator('video').evaluate((element: HTMLVideoElement) => {
+  await page.locator('video.remote-source').evaluate((element: HTMLVideoElement) => {
     element.play = () => Promise.reject(new DOMException('Blocked', 'NotAllowedError'))
   })
   await unmute.click()
   await expect(page.getByRole('status').filter({ hasText: 'Sound could not start.' })).toBeVisible()
   await expect(unmute).toBeVisible()
-  await expect(page.locator('video')).toHaveJSProperty('muted', true)
-  await page.locator('video').evaluate((element: HTMLVideoElement) => {
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', true)
+  await page.locator('video.remote-source').evaluate((element: HTMLVideoElement) => {
     element.play = () => Promise.resolve()
   })
   await unmute.click()
   await expect(page.getByRole('button', { name: 'Mute sound', exact: true })).toBeVisible()
-  await expect(page.locator('video')).toHaveJSProperty('muted', false)
+  await expect(page.locator('video.remote-source')).toHaveJSProperty('muted', false)
   await expect(
     page.getByText('Sound could not start. Select Unmute sound to try again.'),
   ).toHaveCount(0)
@@ -809,8 +890,10 @@ test('failed sound activation keeps the muted control available for retry', asyn
 
 test('picture in picture handles enter, browser close and denial without reconnecting', async ({
   page,
+  browserName,
 }) => {
-  const remote = await fixture(page)
+  test.skip(browserName !== 'chromium', 'Actual PiP capture needs a media-capable browser.')
+  const remote = await fixture(page, false, true)
   await page.addInitScript(() => {
     Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
     HTMLVideoElement.prototype.requestPictureInPicture = async function () {
@@ -843,7 +926,7 @@ test('picture in picture handles enter, browser close and denial without reconne
   await expect(
     page.getByRole('button', { name: 'Picture in picture', exact: true }),
   ).toHaveAttribute('aria-pressed', 'false')
-  await page.locator('video').evaluate((element) => {
+  await page.locator('video.remote-pip-source').evaluate((element) => {
     element.dataset.deny = 'true'
   })
   await page.getByRole('button', { name: 'Picture in picture', exact: true }).click()
@@ -870,8 +953,10 @@ test('unsupported picture in picture has no unusable control', async ({ page }) 
 
 test('browser automatic PiP action opens once while hidden with a quiet accessible control', async ({
   page,
+  browserName,
 }) => {
-  const remote = await fixture(page)
+  test.skip(browserName !== 'chromium', 'Actual PiP capture needs a media-capable browser.')
+  const remote = await fixture(page, false, true)
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'mediaSession', {
       value: {
@@ -908,7 +993,7 @@ test('browser automatic PiP action opens once while hidden with a quiet accessib
   expect(await button.evaluate((e) => e.getBoundingClientRect().width)).toBe(44)
   // The real browser, not the visibility listener, dispatches this action.
   await page.evaluate(() => Object.getOwnPropertyDescriptor(window, 'fixtureAutoPip')!.value())
-  await expect(page.locator('video')).not.toHaveAttribute('data-pip-requests')
+  await expect(page.locator('video.remote-pip-source')).not.toHaveAttribute('data-pip-requests')
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     document.dispatchEvent(new Event('visibilitychange'))
@@ -919,13 +1004,13 @@ test('browser automatic PiP action opens once while hidden with a quiet accessib
     'true',
   )
   await page.evaluate(() => Object.getOwnPropertyDescriptor(window, 'fixtureAutoPip')!.value())
-  await expect(page.locator('video')).toHaveAttribute('data-pip-requests', '1')
+  await expect(page.locator('video.remote-pip-source')).toHaveAttribute('data-pip-requests', '1')
   await page.evaluate(async () => {
     await document.exitPictureInPicture()
-    document.querySelector('video')!.dataset.deny = 'true'
+    document.querySelector<HTMLVideoElement>('video.remote-pip-source')!.dataset.deny = 'true'
     Object.getOwnPropertyDescriptor(window, 'fixtureAutoPip')!.value()
   })
-  await expect(page.locator('video')).toHaveAttribute('data-pip-requests', '2')
+  await expect(page.locator('video.remote-pip-source')).toHaveAttribute('data-pip-requests', '2')
   await expect(
     page.getByText('Picture in picture could not open. Try again or use this tab.'),
   ).toHaveCount(0)
@@ -945,7 +1030,7 @@ test('all former workspace/trial links use only the remote player', async ({ pag
     await openStream(page, url)
     await expect(page.getByRole('heading', { name: 'Chat with Syntelle' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
-    await expect(page.locator('video')).toHaveCount(1)
+    await expect(page.locator('video.remote-source')).toHaveCount(1)
     await expect(page.locator('canvas, .demo-workspace, .stream-composer')).toHaveCount(0)
     const layout = await page.locator('.voice-actions').evaluate((element) => {
       const row = element.getBoundingClientRect()
@@ -998,7 +1083,7 @@ test('current appearance, transcript and controls use the backend protocol', asy
   await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toBeEnabled()
   expect(remote.settings[0]).toMatchObject({
     movement: false,
-    voice: 'en-US-Ava:DragonHDLatestNeural',
+    voice: 'en-US-Emma:DragonHDLatestNeural',
     background: 'dark-lounge',
     blur: 5,
     instructions: 'Preserve these instructions.',
@@ -1058,7 +1143,7 @@ test('platform language translates the workspace, pricing and guest account and 
   await expect.poll(() => remote.settings.length).toBe(2)
   expect(remote.settings[1]).toMatchObject({
     language: 'es-CO',
-    voice: 'en-US-Ava:DragonHDLatestNeural',
+    voice: 'en-US-Emma:DragonHDLatestNeural',
   })
   expect(remote.deleted).toHaveLength(1)
   await expect.poll(() => remote.commands.filter((e) => e.type === 'authenticate').length).toBe(2)
@@ -1103,7 +1188,7 @@ test('platform language translates the workspace, pricing and guest account and 
   await expect.poll(() => remote.settings.length).toBe(3)
   expect(remote.settings[2]).toMatchObject({
     language: 'en-US',
-    voice: 'en-US-Ava:DragonHDLatestNeural',
+    voice: 'en-US-Emma:DragonHDLatestNeural',
   })
   await expect(page.getByRole('heading', { name: 'Chat with Syntelle' })).toBeVisible()
   await expect(page.getByText('Preserve this original text.', { exact: true })).toBeVisible()
@@ -1246,7 +1331,7 @@ for (const language of ['en', 'es'] as const) {
                 character: 'syntelle',
                 instructions: 'Saved instructions',
                 language: language === 'es' ? 'es-CO' : 'en-US',
-                voice: 'en-US-Ava:DragonHDLatestNeural',
+                voice: 'en-US-Emma:DragonHDLatestNeural',
                 background: 'natural-space',
                 blur: 0,
                 blinking: true,
@@ -1411,6 +1496,26 @@ test('expression previews use a direct command without sending a chat message', 
     false,
   )
   await expect(page.getByRole('button', { name: 'Playing…', exact: true })).toBeDisabled()
+  await page.waitForTimeout(3000)
+  await expect(page.getByRole('button', { name: 'Playing…', exact: true })).toBeDisabled()
+  remote.publish({ type: 'preview_audio', data: { turn_id: 'laugh-lifecycle' } })
+  remote.publish({
+    type: 'playback',
+    data: { event: 'playback_started', turn_id: 'laugh-lifecycle' },
+  })
+  await expect(page.getByRole('button', { name: 'Playing…', exact: true })).toBeDisabled()
+  remote.publish({
+    type: 'playback',
+    data: { event: 'playback_ended', turn_id: 'laugh-lifecycle' },
+  })
+  await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Play laughter', exact: true }).click()
+  remote.publish({
+    type: 'playback',
+    data: { event: 'playback_ended', turn_id: 'laugh-lifecycle' },
+  })
+  await expect(page.getByRole('button', { name: 'Playing…', exact: true })).toBeDisabled()
+  remote.publish({ type: 'error', data: { message: 'Preview fixture stopped.' } })
   await expect(page.getByRole('button', { name: 'Play laughter', exact: true })).toBeEnabled()
 })
 
@@ -1450,7 +1555,7 @@ test('backend unavailability has no browser rendering fallback', async ({ page }
   await expect(
     page.getByRole('button', { name: 'Start with microphone', exact: true }),
   ).toBeEnabled()
-  await expect(page.locator('video')).toHaveCount(1)
+  await expect(page.locator('video.remote-source')).toHaveCount(1)
   await expect(page.locator('canvas')).toHaveCount(0)
 })
 
@@ -1665,7 +1770,7 @@ test('customization navigation preserves the live session, transcript scroll and
   })
   await page.evaluate(() =>
     Object.defineProperty(document, 'originalCustomizeVideo', {
-      value: document.querySelector('video'),
+      value: document.querySelector<HTMLVideoElement>('video.remote-source'),
     }),
   )
   const count = remote.commands.length
@@ -1712,7 +1817,7 @@ test('customization navigation preserves the live session, transcript scroll and
     await page.evaluate(
       () =>
         Object.getOwnPropertyDescriptor(document, 'originalCustomizeVideo')?.value ===
-        document.querySelector('video'),
+        document.querySelector<HTMLVideoElement>('video.remote-source'),
     ),
   ).toBe(true)
   expect(remote.commands.slice(count)).toEqual([])

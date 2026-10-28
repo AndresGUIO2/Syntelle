@@ -232,6 +232,11 @@ func (s *session) closePeer() {
 func (s *session) sendEncoded(data []byte, video bool, pts time.Duration, generation uint64) (bool, error) {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
+	return s.sendEncodedLocked(data, video, pts, generation)
+}
+
+// Caller owns sendMu across first-PCM selection, publication and policy commit.
+func (s *session) sendEncodedLocked(data []byte, video bool, pts time.Duration, generation uint64) (bool, error) {
 	s.mu.Lock()
 	current := generation == s.generation
 	s.mu.Unlock()

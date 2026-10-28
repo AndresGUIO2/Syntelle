@@ -2,8 +2,75 @@ package nativeanimation
 
 import (
 	"context"
+	"math"
 	"testing"
 )
+
+func TestReferenceLaughterJawSettlesBeforeReferenceEnds(t *testing.T) {
+	config := Config{Expressions: true, SmileAvailable: true, SpeakingSmile: true, LaughAvailable: true, ReferenceLaugh: true, OralRecovery: true, Directed: true}
+	samples := make([]float32, 16000)
+	for i := range samples {
+		samples[i] = .7 // Include a loud tail: PCM completion cannot guarantee silence.
+	}
+	prepared, err := PrepareSpeech(t.Context(), samples, 16000, []NativeViseme{{ID: 18, OffsetMS: 0}}, 1, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount := 1.
+	speech := BindSpeech(prepared, &Performance{Intent: &PerformanceIntent{Version: "performance-intent/2"}, Resolved: []PerformanceCue{{Kind: "laugh", Duration: 1, Amount: &amount}}})
+	e := NewEngine(config)
+	settings := DefaultSettings()
+	settings.Movement, settings.Blinking = false, false
+	for _, position := range []float64{.65, .9, .95, .98, .99, .999} {
+		f := e.Sample(position*1000, SpeechState{Active: true, Position: position, Session: 1, Speech: speech}, settings)
+		if f.Mouth.Amount > f.Laugh+1e-9 {
+			t.Fatalf("jaw outlived the closing laugh envelope at %.3f: laugh=%g jaw=%g", position, f.Laugh, f.Mouth.Amount)
+		}
+		if math.Round(f.Laugh*120) == 0 && f.Mouth.Amount > 1./240 {
+			t.Fatal("reference handoff opened the ordinary A pose", f)
+		}
+	}
+	last := e.Sample(1000, SpeechState{}, settings)
+	if last.Mouth.Amount > 1./240 {
+		t.Fatal("completion recovery reopened the jaw", last)
+	}
+}
+
+func TestReferenceLaughterCompletionKeepsManualSmile(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		smile float64
+	}{{"neutral", 0}, {"half", .5}, {"full", 1}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Config{Expressions: true, SmileAvailable: true, SpeakingSmile: true, LaughAvailable: true, ReferenceLaugh: true, OralRecovery: true, Directed: true}
+			samples := make([]float32, 16000)
+			for i := range samples {
+				samples[i] = .7
+			}
+			prepared, err := PrepareSpeech(t.Context(), samples, 16000, []NativeViseme{{ID: 18, OffsetMS: 0}}, 1, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			amount := 1.
+			speech := BindSpeech(prepared, &Performance{Intent: &PerformanceIntent{Version: "performance-intent/2"}, Resolved: []PerformanceCue{{Kind: "laugh", Duration: 1, Amount: &amount}}})
+			e := NewEngine(c)
+			settings := DefaultSettings()
+			settings.Smile, settings.Movement, settings.Blinking = tc.smile, false, false
+			e.Sample(0, SpeechState{}, settings)
+			e.Sample(1000, SpeechState{}, settings)
+			for i := 0; i < 30; i++ {
+				position := float64(i) / 30
+				e.Sample(1000+position*1000, SpeechState{Active: true, Position: position, Session: 1, Speech: speech}, settings)
+			}
+			for _, ms := range []float64{2000, 2033, 2120, 2240} {
+				got := e.Sample(ms, SpeechState{Speech: speech, Position: speech.Duration, Session: 1}, settings)
+				if math.Abs(got.Smile-tc.smile) > 1e-6 {
+					t.Fatalf("completion dipped the manual smile at %.0f ms: want %g, got %g", ms, tc.smile, got.Smile)
+				}
+			}
+		})
+	}
+}
 
 func TestLaughterUsesAudioEnergyInsteadOfSpeechVisemes(t *testing.T) {
 	samples := make([]float32, 16000)

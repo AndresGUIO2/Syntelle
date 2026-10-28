@@ -12,6 +12,9 @@ func idleAttention(ms float64, seed uint32, expressive ...bool) attention {
 	if len(expressive) > 0 && expressive[0] {
 		transition, holdRange = [2]float64{2500, 4500}, [2]float64{600, 1600}
 	}
+	if len(expressive) > 1 && expressive[1] {
+		transition, holdRange = [2]float64{1800, 3600}, [2]float64{350, 1000}
+	}
 	r := random{seed ^ 0x51a7}
 	from := Head{}
 	start := 0.0
@@ -92,12 +95,16 @@ func idleAttention(ms float64, seed uint32, expressive ...bool) attention {
 	}
 	return attention{Head{values.Yaw*(1-math.Abs(follow)*.1) + follow*.3, values.Pitch, values.Roll}, glance}
 }
-func speakingAttentionAt(ms float64, seed uint32) attention {
+func speakingAttentionAt(ms float64, seed uint32, brief ...bool) attention {
 	r := random{seed ^ 0x6a23}
 	start := between(&r, [2]float64{850, 1500})
 	for {
 		move := between(&r, [2]float64{110, 170})
-		hold := between(&r, [2]float64{900, 1700})
+		holdRange := [2]float64{900, 1700}
+		if len(brief) > 0 && brief[0] {
+			holdRange = [2]float64{250, 600}
+		}
+		hold := between(&r, holdRange)
 		back := between(&r, [2]float64{200, 320})
 		sign := 1.0
 		if r.next() < .5 {
@@ -131,7 +138,7 @@ type speakingDirector struct {
 func newSpeaking(seed uint32) speakingDirector {
 	return speakingDirector{lastSpeakingAt: math.Inf(-1), episodeSeed: seed}
 }
-func (d *speakingDirector) sample(ms float64, speaking bool, idle attention, seed uint32, expressive bool) attention {
+func (d *speakingDirector) sample(ms float64, speaking bool, idle attention, seed uint32, expressive bool, continuous ...bool) attention {
 	if speaking != d.active {
 		if speaking && ms-d.lastSpeakingAt > 900 {
 			d.start = ms
@@ -151,29 +158,42 @@ func (d *speakingDirector) sample(ms float64, speaking bool, idle attention, see
 		duration = 700
 	}
 	d.weight = blend(d.from, goal, ease((ms-d.changedAt)/duration))
-	speech := speakingAttentionAt(math.Max(0, ms-d.start), d.episodeSeed)
+	speech := speakingAttentionAt(math.Max(0, ms-d.start), d.episodeSeed, len(continuous) > 0 && continuous[0])
 	reduction := .7
 	if expressive {
 		reduction = .35
+	}
+	if len(continuous) > 0 && continuous[0] {
+		reduction = 0
+		// Speaking gaze remains independent; its slow automatic head-follow
+		// used to add another lateral excursion on top of posture changes.
+		speech.Head = Head{}
 	}
 	postureWeight := 1 - d.weight*reduction
 	return attention{Head{idle.Head.Yaw*postureWeight + speech.Head.Yaw*d.weight, idle.Head.Pitch*postureWeight + speech.Head.Pitch*d.weight, idle.Head.Roll*postureWeight + speech.Head.Roll*d.weight}, [2]float64{idle.Glance[0]*(1-d.weight) + speech.Glance[0]*d.weight, idle.Glance[1]*(1-d.weight) + speech.Glance[1]*d.weight}}
 }
 
 type attentionDirector struct {
-	natural              bool
-	active               bool
-	session              uint64
-	changedAt            float64
-	previous, from       Head
-	idleWeight, idleFrom float64
-	speaking             speakingDirector
+	posture                                          briefPosture
+	semanticRelease                                  accentMotion
+	purposeGain, purposeFrom, purposeGoal, purposeAt float64
+	motionReply                                      string
+	motionSession                                    uint64
+	motionTrack                                      []Gesture
+	motionLastActive                                 float64
+	natural                                          bool
+	active                                           bool
+	session                                          uint64
+	changedAt                                        float64
+	previous, from                                   Head
+	idleWeight, idleFrom                             float64
+	speaking                                         speakingDirector
 }
 
 func newAttention(seed uint32) attentionDirector {
-	return attentionDirector{session: ^uint64(0), idleWeight: 1, idleFrom: 1, speaking: newSpeaking(seed)}
+	return attentionDirector{purposeGain: 1, purposeFrom: 1, purposeGoal: 1, session: ^uint64(0), idleWeight: 1, idleFrom: 1, speaking: newSpeaking(seed)}
 }
-func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config) attention {
+func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config, presentation ...Settings) attention {
 	if speech.Active {
 		d.natural = speech.plan() != nil && speech.plan().natural
 	}
@@ -192,16 +212,56 @@ func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config) att
 	goal := Head{}
 	if speech.Active {
 		goal = gestureAt(speech.plan(), speech.Position)
+		if p := speech.plan(); c.ConversationalMotion && p != nil && p.Performance != nil && p.Performance.Motion.Valid() {
+			m := p.Performance.Motion
+			if d.motionReply != m.ReplyID {
+				d.motionReply = m.ReplyID
+				d.motionTrack = nil
+				d.motionSession = ^uint64(0)
+			}
+			at := m.Offset + speech.Position
+			if d.motionSession != speech.Session {
+				kept := make([]Gesture, 0, len(p.Gestures)+2)
+				for _, g := range d.motionTrack {
+					if g.Time+g.Duration > at && ms-d.motionLastActive <= 240 {
+						kept = append(kept, g)
+					}
+				}
+				for _, g := range p.Gestures {
+					g.Time += m.Offset
+					kept = append(kept, g)
+				}
+				d.motionTrack = kept
+				d.motionSession = speech.Session
+			}
+			goal = gestureAt(&Plan{natural: true, Gestures: d.motionTrack}, at)
+			d.motionLastActive = ms
+		}
 	}
 	d.previous = blendHead(d.from, goal, t)
 	if d.natural && speech.Active {
 		// Preserve the previous phrase's residual while the new audio-clock
 		// trajectory starts at full strength, without a second onset fade.
 		d.previous = Head{d.from.Yaw*(1-t) + goal.Yaw, d.from.Pitch*(1-t) + goal.Pitch, d.from.Roll*(1-t) + goal.Roll}
+		if c.ConversationalMotion {
+			d.previous = goal
+		}
 	}
 	a := idleAttention(ms, c.Seed, c.Expressive)
+	if c.ConversationalMotion {
+		speaking := speech.Active || ms-d.speaking.lastSpeakingAt < 900
+		quiet := false
+		if coordinatedSpeech(speech) {
+			quiet = speech.plan().Performance.Intent.Purpose == "reassure"
+		}
+		if len(presentation) > 0 && presentation[0].EmotionControl != nil {
+			_, energy := presentation[0].EmotionControl.Sample(presentation[0].EmotionTime)
+			quiet = quiet || energy <= .35
+		}
+		a.Head = d.posture.sample(ms, speaking, c.Seed, c.Bounds, quiet)
+	}
 	if c.Conversational {
-		a = d.speaking.sample(ms, speech.Active, a, c.Seed, c.Expressive)
+		a = d.speaking.sample(ms, speech.Active, a, c.Seed, c.Expressive, c.ConversationalMotion)
 	} else if c.Directed {
 		goal := 1.0
 		duration := 1800.0
@@ -215,6 +275,31 @@ func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config) att
 		a.Head.Roll *= d.idleWeight
 		a.Glance[0] *= d.idleWeight
 		a.Glance[1] *= d.idleWeight
+	}
+	purposeGoal := 1.
+	if speech.Active && coordinatedSpeech(speech) && speech.plan().Performance.Intent.Purpose == "reassure" {
+		purposeGoal = .6
+	}
+	if purposeGoal != d.purposeGoal {
+		d.purposeFrom, d.purposeAt, d.purposeGoal = d.purposeGain, ms, purposeGoal
+	}
+	d.purposeGain = blend(d.purposeFrom, d.purposeGoal, ease((ms-d.purposeAt)/320))
+	a.Head.Yaw *= d.purposeGain
+	a.Head.Pitch *= d.purposeGain
+	a.Head.Roll *= d.purposeGain
+	glanceGain := .15 + .85*unit((d.purposeGain-.6)/.4)
+	a.Glance[0] *= glanceGain
+	a.Glance[1] *= glanceGain
+	// A phrase-local cue can finish after its phrase's PCM. Keep its existing
+	// release on the session animation clock rather than exposing all of the
+	// competing posture in the first frame of the following phrase or idle.
+	// The admitted head gesture itself keeps its original audio-clock path.
+	if focus := d.semanticRelease.sample(ms, semanticFocus(speech), speech.Active, speech.Session, false); focus > 0 {
+		a.Head.Yaw *= 1 - .8*focus
+		a.Head.Pitch *= 1 - .8*focus
+		a.Head.Roll *= 1 - .8*focus
+		a.Glance[0] *= 1 - focus
+		a.Glance[1] *= 1 - focus
 	}
 	reserve := func(base, gesture, limit float64) float64 {
 		if limit <= 0 {

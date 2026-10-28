@@ -71,7 +71,7 @@ func (s *session) preparationLoop() {
 		value := task.clip
 		// Decoding transferred ownership to the clip. Only immutable data crosses
 		// this call; no scene engine or animation-clock state is touched here.
-		prepared, err := preparer.PrepareSpeech(task.ctx, SpeechState{Samples: value.samples, SampleRate: sampleRate, Duration: value.duration, Visemes: value.visemes, Text: value.text, Performance: value.performance})
+		prepared, err := preparer.PrepareSpeech(task.ctx, SpeechState{LaughterSpan: value.laughterSpan, Preview: value.preview, TurnID: task.turn, Samples: value.samples, SampleRate: sampleRate, Duration: value.duration, Visemes: value.visemes, Text: value.text, Performance: value.performance})
 		task.cancel()
 		s.mu.Lock()
 		s.preparing = nil

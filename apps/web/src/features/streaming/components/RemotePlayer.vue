@@ -15,10 +15,12 @@ const props = defineProps<{
   controlsTarget: HTMLElement | null
 }>()
 const posterImage = computed(() => `/characters/posters/syntelle-${props.background}-portrait.webp`)
-const composed = useBackgroundVideo(() => props)
 const video = useTemplateRef<HTMLVideoElement>('video')
+const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
+const pipVideo = useTemplateRef<HTMLVideoElement>('pipVideo')
+const composed = useBackgroundVideo({ settings: () => props, source: video, canvas })
 const frameReady = shallowRef(false)
-const showVideo = computed(() => props.ready && frameReady.value)
+const showVideo = computed(() => props.ready && frameReady.value && composed.ready.value)
 const muted = shallowRef(true)
 const audioError = shallowRef('')
 let audioAttempt = 0
@@ -38,11 +40,10 @@ const autoPipAction = 'enterpictureinpicture' as Parameters<
 >[0]
 let autoPipRegistered = false
 function updatePictureInPicture() {
-  const element = video.value as SafariVideo | null
+  const element = pipVideo.value as SafariVideo | null
   pipSupported.value = Boolean(
     (document.pictureInPictureEnabled && element?.requestPictureInPicture) ||
-    (element?.webkitSetPresentationMode &&
-      element.webkitSupportsPresentationMode?.('picture-in-picture')),
+    element?.webkitSetPresentationMode,
   )
   pipActive.value = Boolean(
     element &&
@@ -51,7 +52,7 @@ function updatePictureInPicture() {
   )
 }
 async function changePictureInPicture(automatic = false) {
-  const element = video.value as SafariVideo | null
+  const element = pipVideo.value as SafariVideo | null
   if (!element || !props.ready || pipPending.value) return
   const alreadyOpen =
     document.pictureInPictureElement === element ||
@@ -65,11 +66,22 @@ async function changePictureInPicture(automatic = false) {
     if (document.pictureInPictureElement === element) await document.exitPictureInPicture()
     else if (element.webkitPresentationMode === 'picture-in-picture')
       element.webkitSetPresentationMode?.('inline')
-    else if (document.pictureInPictureEnabled && element.requestPictureInPicture)
-      await element.requestPictureInPicture()
-    else element.webkitSetPresentationMode?.('picture-in-picture')
+    else {
+      element.srcObject = composed.captureForPictureInPicture()
+      await element.play()
+      if (document.pictureInPictureEnabled && element.requestPictureInPicture)
+        await element.requestPictureInPicture()
+      else if (
+        element.webkitSetPresentationMode &&
+        element.webkitSupportsPresentationMode?.('picture-in-picture') !== false
+      )
+        element.webkitSetPresentationMode('picture-in-picture')
+      else throw Error('Picture in picture is unavailable.')
+    }
     updatePictureInPicture()
   } catch {
+    composed.stopCapture()
+    element.srcObject = null
     if (!automatic) pipError.value = 'Picture in picture could not open. Try again or use this tab.'
   } finally {
     pipPending.value = false
@@ -85,9 +97,9 @@ onMounted(() => {
     // Unsupported actions keep the manual video control available.
   }
 })
-watch([video, () => props.ready], updatePictureInPicture, { flush: 'post' })
+watch([pipVideo, () => props.ready], updatePictureInPicture, { flush: 'post' })
 watch(
-  [video, composed.media],
+  [video, () => props.media],
   ([element, stream], _previous, onCleanup) => {
     frameReady.value = false
     if (!element) return
@@ -141,6 +153,18 @@ async function enableAudio() {
     audioError.value = 'Sound could not start. Select Unmute sound to try again.'
   }
 }
+function leavePictureInPicture() {
+  updatePictureInPicture()
+  composed.stopCapture()
+  if (pipVideo.value) {
+    pipVideo.value.pause()
+    pipVideo.value.srcObject = null
+  }
+}
+function presentationModeChanged() {
+  updatePictureInPicture()
+  if (!pipActive.value) leavePictureInPicture()
+}
 function toggleAudio() {
   if (muted.value || audioError.value) {
     void enableAudio()
@@ -154,11 +178,15 @@ function toggleAudio() {
 onScopeDispose(() => {
   audioAttempt++
   if (autoPipRegistered) navigator.mediaSession.setActionHandler(autoPipAction, null)
-  if (video.value && document.pictureInPictureElement === video.value)
+  if (pipVideo.value && document.pictureInPictureElement === pipVideo.value)
     void document.exitPictureInPicture().catch(() => undefined)
-  const element = video.value as SafariVideo | null
+  const element = pipVideo.value as SafariVideo | null
   if (element?.webkitPresentationMode === 'picture-in-picture')
     element.webkitSetPresentationMode?.('inline')
+  if (pipVideo.value) {
+    pipVideo.value.pause()
+    pipVideo.value.srcObject = null
+  }
   if (video.value) {
     video.value.pause()
     video.value.srcObject = null
@@ -193,19 +221,32 @@ defineExpose({ enableAudio })
           fetchpriority="high"
         />
       </picture>
-      <video
-        v-show="Boolean(media)"
-        ref="video"
+      <canvas
+        ref="canvas"
         class="remote-video"
+        :aria-hidden="!showVideo"
+        role="img"
+        :aria-label="t('Animated Syntelle with synchronized speech')"
+      />
+      <video
+        ref="video"
+        class="remote-source"
         autoplay
         playsinline
         :muted="muted || suppressed"
-        :aria-label="t('Animated Syntelle with synchronized speech')"
-        :aria-hidden="!showVideo"
+        aria-hidden="true"
+      />
+      <video
+        ref="pipVideo"
+        class="remote-pip-source"
+        autoplay
+        playsinline
+        muted
+        aria-hidden="true"
         @loadedmetadata="updatePictureInPicture"
         @enterpictureinpicture="updatePictureInPicture"
-        @leavepictureinpicture="updatePictureInPicture"
-        @webkitpresentationmodechanged="updatePictureInPicture"
+        @leavepictureinpicture="leavePictureInPicture"
+        @webkitpresentationmodechanged="presentationModeChanged"
       />
       <p v-if="composed.error.value" class="audio-error" role="alert">
         {{ errorMessage(composed.error.value) }}
@@ -272,6 +313,14 @@ defineExpose({ enableAudio })
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+.remote-source,
+.remote-pip-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 .remote-video {
   position: absolute;

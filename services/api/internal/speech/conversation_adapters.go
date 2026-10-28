@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"syntelle/api/internal/conversation"
+	"syntelle/render-contract"
 )
 
 type localOwnerSpeechLedger struct{ store *conversation.Store }
@@ -143,7 +144,7 @@ func (s conversationSpeech) PrepareParts(ctx context.Context, text, language, vo
 	return s.prepare(ctx, text, language, voice, id, splitProgressiveSpeech(text), publish)
 }
 
-func (s conversationSpeech) prepare(ctx context.Context, text, language, voice, id string, chunks []string, publish func(conversation.SpeechPart) error) (any, error) {
+func (s conversationSpeech) prepare(ctx context.Context, text, language, voice, id string, chunks []string, publish func(conversation.SpeechPart) error, delivery ...rendercontract.VoiceDelivery) (any, error) {
 	// runTurn supplies the session ID through a context value shared only within Go.
 	if cid, ok := conversation.IDs(ctx); ok {
 		ctx = context.WithValue(ctx, speechTurnKey{}, speechTurnRef{cid, id})
@@ -172,7 +173,15 @@ func (s conversationSpeech) prepare(ctx context.Context, text, language, voice, 
 				hash := sha256.Sum256([]byte(id))
 				key = fmt.Sprintf("chat-%x-part-%03d", hash, index)
 			}
-			part, err := s.service.synthesizeBounded(ctx, Input{Text: chunk, Language: language, Voice: voice, RequestKey: key}, conversationPartUnits, 60*time.Second)
+			input := Input{Text: chunk, Language: language, Voice: voice, RequestKey: key}
+			if len(delivery) > 0 {
+				var err error
+				input, err = WithVoiceDelivery(input, delivery[0])
+				if err != nil {
+					return nil, err
+				}
+			}
+			part, err := s.service.synthesizeBounded(ctx, input, conversationPartUnits, 60*time.Second)
 			if err != nil {
 				return nil, err
 			}

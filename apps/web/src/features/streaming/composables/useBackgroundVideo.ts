@@ -1,33 +1,49 @@
-import { onScopeDispose, shallowRef, watch } from 'vue'
+import { onScopeDispose, shallowRef, watch, type Ref } from 'vue'
 import { createBackgroundCompositor } from '../backgroundCompositor'
 import { backgrounds } from '../settingsCatalog'
 import type { StreamSettings } from '../types'
 
-// Owns only receiver-side background composition and its captured presentation
-// track. The original audio tracks remain untouched and are never stopped here.
-export function useBackgroundVideo(
-  props: () => {
+// Inline rendering samples the native A/V playback element directly. Only PiP
+// requests create a capture track; the original audio never changes clock/rate.
+export function useBackgroundVideo(options: {
+  settings: () => {
     media: MediaStream | null
     background: StreamSettings['background']
     blur: number
-  },
-) {
-  const media = shallowRef<MediaStream | null>(null)
+  }
+  source: Readonly<Ref<HTMLVideoElement | null>>
+  canvas: Readonly<Ref<HTMLCanvasElement | null>>
+}) {
+  const ready = shallowRef(false)
   const error = shallowRef('')
   let redraw: (() => void) | undefined
   let setBackground: (() => void) | undefined
-  watch(
-    () => props().media,
-    (stream, _previous, onCleanup) => {
-      error.value = ''
-      if (!stream) {
-        media.value = null
-        return
+  let capture: MediaStream | undefined
+  function stopCapture() {
+    capture?.getVideoTracks().forEach((track) => track.stop())
+    capture = undefined
+  }
+  function captureForPictureInPicture() {
+    const canvas = options.canvas.value
+    if (!canvas || !ready.value || !canvas.captureStream)
+      throw Error('This browser cannot present composed live video.')
+    if (!capture) {
+      capture = canvas.captureStream(0)
+      if (!(capture.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack).requestFrame) {
+        stopCapture()
+        capture = canvas.captureStream(60)
       }
-      const output = new MediaStream(stream.getAudioTracks())
-      media.value = output
-      let source: HTMLVideoElement | undefined
-      let capture: MediaStream | undefined
+    }
+    redraw?.()
+    return capture
+  }
+  watch(
+    [() => options.settings().media, options.source, options.canvas],
+    ([stream, source, canvas], _previous, onCleanup) => {
+      ready.value = false
+      error.value = ''
+      stopCapture()
+      if (!stream || !source || !canvas) return
       let compositor: ReturnType<typeof createBackgroundCompositor> | undefined
       let image: HTMLImageElement | undefined
       let imageURL = ''
@@ -35,13 +51,12 @@ export function useBackgroundVideo(
         fallback = 0,
         disposed = false,
         failed = false
-      const canvas = document.createElement('canvas')
       function fail(failure: unknown) {
         failed = true
         error.value = failure instanceof Error ? failure.message : 'Live video composition failed.'
       }
       function background() {
-        const settings = props()
+        const settings = options.settings()
         const url = backgrounds.find((item) => item.id === settings.background)!.image
         if (url !== imageURL) {
           imageURL = url
@@ -66,30 +81,24 @@ export function useBackgroundVideo(
         }
       }
       function draw() {
-        if (disposed || failed || !source || source.readyState < 2) return
+        if (disposed || failed || source!.readyState < 2) return
         try {
           if (!(
-            (source.videoWidth === 1440 && source.videoHeight === 960) ||
-            (source.videoWidth === 1080 && source.videoHeight === 720)
+            (source!.videoWidth === 1440 && source!.videoHeight === 960) ||
+            (source!.videoWidth === 1080 && source!.videoHeight === 720)
           ))
             throw Error('The renderer must be updated for browser backgrounds.')
           if (!compositor) {
-            compositor = createBackgroundCompositor(canvas, source.videoWidth, source.videoHeight)
+            compositor = createBackgroundCompositor(
+              canvas!,
+              source!.videoWidth,
+              source!.videoHeight,
+            )
             background()
-            if (!canvas.captureStream)
-              throw Error('This browser cannot present composed live video.')
           }
           if (image?.complete && image.naturalWidth) {
-            compositor.draw(source)
-            // The capture track's initial frame must already contain the scene.
-            if (!capture) {
-              capture = canvas.captureStream(0)
-              if (!(capture.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack).requestFrame) {
-                capture.getVideoTracks().forEach((track) => track.stop())
-                capture = canvas.captureStream(60)
-              }
-              capture.getVideoTracks().forEach((track) => output.addTrack(track))
-            }
+            compositor.draw(source!)
+            ready.value = true
             ;(
               capture?.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
             )?.requestFrame?.()
@@ -99,9 +108,9 @@ export function useBackgroundVideo(
         }
       }
       function schedule() {
-        if (disposed || failed || !source) return
-        if (source.requestVideoFrameCallback)
-          frame = source.requestVideoFrameCallback(() => {
+        if (disposed || failed) return
+        if (typeof source!.requestVideoFrameCallback === 'function')
+          frame = source!.requestVideoFrameCallback(() => {
             draw()
             schedule()
           })
@@ -110,21 +119,6 @@ export function useBackgroundVideo(
             draw()
             schedule()
           }, 33)
-      }
-      function tracks() {
-        for (const track of stream!.getAudioTracks())
-          if (!output.getTrackById(track.id)) output.addTrack(track)
-        if (source || !stream!.getVideoTracks().length) return
-        source = document.createElement('video')
-        source.muted = true
-        source.autoplay = true
-        source.playsInline = true
-        source.srcObject = stream!
-        source.addEventListener('loadeddata', draw)
-        source.play().catch(() => {
-          if (!disposed) fail(Error('Live video could not start. Reconnect to try again.'))
-        })
-        schedule()
       }
       redraw = draw
       setBackground = () => {
@@ -135,21 +129,18 @@ export function useBackgroundVideo(
           fail(failure)
         }
       }
+      source.addEventListener('loadeddata', draw)
       background()
-      tracks()
-      stream.addEventListener('addtrack', tracks)
+      draw()
+      schedule()
       onCleanup(() => {
         disposed = true
         redraw = undefined
         setBackground = undefined
-        stream.removeEventListener('addtrack', tracks)
-        if (source) {
-          source.cancelVideoFrameCallback?.(frame)
-          source.pause()
-          source.srcObject = null
-        }
+        source.cancelVideoFrameCallback?.(frame)
+        source.removeEventListener('loadeddata', draw)
         clearTimeout(fallback)
-        capture?.getVideoTracks().forEach((track) => track.stop())
+        stopCapture()
         compositor?.dispose()
         if (image) {
           image.onload = null
@@ -157,14 +148,17 @@ export function useBackgroundVideo(
         }
       })
     },
-    { immediate: true },
+    { immediate: true, flush: 'post' },
   )
   watch(
-    () => [props().background, props().blur],
+    () => [options.settings().background, options.settings().blur],
     () => setBackground?.(),
   )
   const resume = () => redraw?.()
   document.addEventListener('visibilitychange', resume)
-  onScopeDispose(() => document.removeEventListener('visibilitychange', resume))
-  return { media, error }
+  onScopeDispose(() => {
+    document.removeEventListener('visibilitychange', resume)
+    stopCapture()
+  })
+  return { ready, error, captureForPictureInPicture, stopCapture }
 }

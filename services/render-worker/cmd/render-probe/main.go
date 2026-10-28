@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"image/png"
 	"io"
 	"net"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v4"
+	"syntelle/render-contract"
 	"syntelle/render-worker/internal/nativeadapter"
 	"syntelle/render-worker/internal/nativeclock"
 	"syntelle/render-worker/internal/nativemedia"
@@ -34,6 +36,31 @@ type probe struct {
 	cursor int
 	events []map[string]any
 	ids    []string
+}
+
+// Only the offline receiver-timing probe uses readback and a tiny opaque mask
+// tile so the existing color marker survives packed-alpha composition.
+type receiverTimingScene struct{ nativemedia.Scene }
+
+func (s receiverTimingScene) Render(ctx context.Context, input nativemedia.FrameInput, frame *image.RGBA) error {
+	if err := s.Scene.Render(ctx, input, frame); err != nil {
+		return err
+	}
+	if frame.Bounds().Dx() == 1080 || frame.Bounds().Dx() == 1440 {
+		for y := 0; y < 32; y++ {
+			for x := frame.Bounds().Dx() / 2; x < frame.Bounds().Dx()/2+32; x++ {
+				p := y*frame.Stride + x*4
+				frame.Pix[p], frame.Pix[p+1], frame.Pix[p+2], frame.Pix[p+3] = 255, 255, 255, 255
+			}
+		}
+	}
+	return nil
+}
+func (s receiverTimingScene) Close() error {
+	if closer, ok := s.Scene.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 func (p *probe) emit(e nativemedia.Envelope) {
@@ -145,6 +172,7 @@ func run(ctx context.Context) error {
 	listen := flag.String("listen", "127.0.0.1:3000", "offline probe address")
 	unpublished := flag.Bool("unpublished-network", false, "permit an unpublished dedicated-container network")
 	foreground := flag.Bool("foreground", false, "replay the current packed character transport")
+	receiverTiming := flag.Bool("receiver-timing", false, "offline readback marker for receiver A/V timing; not a performance benchmark")
 	loopbackDocker := flag.Bool("loopback-docker", false, "explicit local fixture; publish HTTP and media on host 127.0.0.1 only")
 	mediaPort := flag.Int("local-media-port", 0, "loopback-only Docker fixture UDP port")
 	sessions := flag.Int("sessions", 1, "bounded offline fixture capacity: 1, 2, 4 or 8")
@@ -220,6 +248,16 @@ func run(ctx context.Context) error {
 		return err
 	}
 	p := &probe{}
+	if *receiverTiming {
+		original := factory
+		factory = func(settings rendercontract.Settings) (nativemedia.Scene, error) {
+			scene, err := original(settings)
+			if err != nil {
+				return nil, err
+			}
+			return receiverTimingScene{scene}, nil
+		}
+	}
 	p.host, err = nativemedia.New(ctx, nativemedia.Config{Capacity: *sessions, Width: width, Height: height, PackageHash: hash, SceneFactory: factory, Emit: p.emit, OfflineCalibration: true, NetworkSettings: network})
 	if err != nil {
 		return err

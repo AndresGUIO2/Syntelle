@@ -6,7 +6,13 @@ import BehaviorSettings from './BehaviorSettings.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
 import PrivacyStorageNotice from './PrivacyStorageNotice.vue'
 const settings = defineModel<StreamSettings>({ required: true })
-const props = defineProps<{ active: boolean; disabled: boolean; previewDisabled?: boolean }>()
+const props = defineProps<{
+  active: boolean
+  disabled: boolean
+  previewDisabled?: boolean
+  laughterBusy?: boolean
+  laughterAvailable?: boolean
+}>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
 const selected = shallowRef(0)
@@ -79,6 +85,8 @@ function navigate(event: KeyboardEvent, index: number) {
           v-model:expanded="expanded"
           :disabled="disabled"
           :preview-disabled="previewDisabled"
+          :laughter-busy="laughterBusy"
+          :laughter-available="laughterAvailable"
           @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"
         />
       </div>

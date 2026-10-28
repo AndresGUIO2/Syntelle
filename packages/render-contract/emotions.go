@@ -39,7 +39,7 @@ func (v EmotionTarget) Valid() bool {
 	return EmotionIndex(v.State) >= 0 && UnitAmount(v.Intensity) && UnitAmount(v.Energy)
 }
 func DirectedPerformance(version string) bool {
-	return version == "performance-intent/2" || version == "performance-intent/3"
+	return version == "performance-intent/2" || NaturalPerformance(version)
 }
 
 // EmotionWeights blend prepared displacement fields continuously, including

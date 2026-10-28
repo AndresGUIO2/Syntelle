@@ -65,6 +65,11 @@ func main() {
 			activeLedger = speech.NewOwnerLedger(ownerStore)
 		}
 		speechServiceInstance = speech.NewService(provider, activeLedger, os.Getenv("AZURE_SPEECH_REGION"))
+		if path := os.Getenv("SYNTELLE_VOICE_CAPABILITIES"); path != "" {
+			if err := speechServiceInstance.LoadVoiceCapabilities(path); err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 	if owner || streamMode {
 		var model conversation.Model

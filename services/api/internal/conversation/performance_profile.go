@@ -25,11 +25,28 @@ func (b ExpressionBaseline) valid() bool {
 }
 
 type PerformanceProfile struct {
+	Voice        string                     `json:"voice,omitempty"`
+	MotionPolicy string                     `json:"motion_policy,omitempty"`
 	Version      string                     `json:"version"`
 	PackageHash  string                     `json:"package_hash"`
 	Reviewed     bool                       `json:"reviewed"`
 	Capabilities []string                   `json:"capabilities"`
 	Laughter     map[string]json.RawMessage `json:"laughter"`
+}
+
+func (s *Service) RuntimeVoice() string {
+	if s != nil && s.Performance != nil && s.Performance.Voice != "" && rendercontract.SupportedVoice(s.Performance.Voice) {
+		return s.Performance.Voice
+	}
+	return rendercontract.DefaultVoice
+}
+
+func (s *Service) HasLaughter(voice, language string) bool {
+	if s == nil || s.Performance == nil {
+		return false
+	}
+	_, ok := s.Performance.Laughter[voice+"|"+language]
+	return ok
 }
 
 func LoadPerformanceProfile(path, packageHash string) (*PerformanceProfile, error) {
@@ -41,7 +58,13 @@ func LoadPerformanceProfile(path, packageHash string) (*PerformanceProfile, erro
 	if json.Unmarshal(data, &p) != nil || p.Version != "character-performance/1" || !p.Reviewed || p.PackageHash != packageHash || len(packageHash) != 64 {
 		return nil, errors.New("invalid reviewed character performance profile")
 	}
+	if p.Voice != "" && !rendercontract.SupportedVoice(p.Voice) {
+		return nil, errors.New("invalid character voice")
+	}
 	seen := map[string]bool{}
+	if p.MotionPolicy != "" && p.MotionPolicy != rendercontract.ConversationalMotionVersion {
+		return nil, errors.New("invalid prepared motion policy")
+	}
 	for _, kind := range p.Capabilities {
 		if seen[kind] || (!headCue(kind) && kind != "brows" && kind != "smile" && kind != "laugh") {
 			return nil, errors.New("invalid prepared capability")
@@ -91,7 +114,11 @@ func (s *Service) directionContext(b ExpressionBaseline, voiceLanguage ...string
 		capabilities = kept
 	}
 	value, _ := json.Marshal(map[string]any{"prepared_capabilities": capabilities, "emotion_regulation": map[string]any{"version": rendercontract.EmotionPolicyVersion, "settings": b.Regulation.Normalized(), "temperament": b.Regulation.Profile(), "ceilings": map[string]float64{"joyful": rendercontract.EmotionCeiling("joyful"), "playful": rendercontract.EmotionCeiling("playful"), "affectionate": rendercontract.EmotionCeiling("affectionate"), "curious": rendercontract.EmotionCeiling("curious"), "sad": rendercontract.EmotionCeiling("sad"), "angry": rendercontract.EmotionCeiling("angry"), "fearful": rendercontract.EmotionCeiling("fearful"), "surprised": rendercontract.EmotionCeiling("surprised"), "disgusted": rendercontract.EmotionCeiling("disgusted")}}, "manual_expression_baseline": b, "baseline_policy": "temporary-targets-then-return", "legacy_speaking_smile_maximum": .5, "emotion_policy": "temporary-contextual-targets-then-return-to-owner-baseline"})
-	return "\nApplication-owned performance context: " + string(value)
+	motion := ""
+	if s.Performance != nil && s.Performance.MotionPolicy == rendercontract.ConversationalMotionVersion {
+		motion = "\nApplication-owned head policy: eight movement cycles per rolling 20 seconds, minimum 2.2-second spacing, semantic priority over acoustic beats. Movement timing continues across phrases; do not treat eight as a whole-reply ceiling."
+	}
+	return "\nApplication-owned performance context: " + string(value) + motion
 }
 func (s *Service) filterCapabilities(v PerformanceValidation) PerformanceValidation {
 	allowed := map[string]bool{"nod": true, "double_nod": true, "shake": true, "emphasis": true, "tilt": true, "brows": true}
@@ -133,14 +160,19 @@ func (s *Service) beginPerformance(cid, reply string) {
 	s.laughPolicy[cid] = p
 }
 func (s *Service) reserveLaughter(cid, reply string) bool {
+	return s.laughterAllowed(cid, reply, true)
+}
+func (s *Service) laughterAllowed(cid, reply string, commit bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.laughPolicy[cid]
 	if p.reply != reply || p.blocked || time.Since(p.last) < 60*time.Second || p.previous {
 		return false
 	}
-	p.last = time.Now()
-	p.previous = true
-	s.laughPolicy[cid] = p
+	if commit {
+		p.last = time.Now()
+		p.previous = true
+		s.laughPolicy[cid] = p
+	}
 	return true
 }

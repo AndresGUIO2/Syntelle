@@ -7,12 +7,16 @@ import (
 )
 
 type acousticSchedule struct {
-	seed uint32
-	next float64
+	seed       uint32
+	next       float64
+	continuous bool
 }
 
-func newAcousticSchedule(identity string) *acousticSchedule {
+func newAcousticSchedule(identity string, continuous ...bool) *acousticSchedule {
 	a := &acousticSchedule{seed: 2166136261}
+	if len(continuous) > 0 {
+		a.continuous = continuous[0]
+	}
 	for _, b := range []byte(identity) {
 		a.seed = (a.seed ^ uint32(b)) * 16777619
 	}
@@ -21,6 +25,9 @@ func newAcousticSchedule(identity string) *acousticSchedule {
 }
 func (a *acousticSchedule) gap() float64 {
 	a.seed = 1664525*a.seed + 1013904223
+	if a.continuous {
+		return 2.8 + float64(a.seed)/4294967296*2.2
+	}
 	return 4 + float64(a.seed)/4294967296*3
 }
 
@@ -41,11 +48,11 @@ func (a *acousticSchedule) supplement(v PerformanceValidation, boundaries, energ
 			}
 		}
 		start, length := at, .85
-		if v.Intent.Version == "performance-intent/3" {
+		if rendercontract.NaturalPerformance(v.Intent.Version) {
 			length = .72
 			start = math.Max(0, at-rendercontract.NaturalGestureLead("emphasis", length))
 		}
-		if distance >= .8 || at < .15 || start+length > duration {
+		if distance >= .8 || at < .15 || (!a.continuous && start+length > duration) {
 			continue
 		}
 		heads, near := 0, false

@@ -1,0 +1,54 @@
+{
+  "version": "parallax-reference-policy/4",
+  "minimum_yaw_degrees": 8,
+  "maximum_yaw_degrees": 17,
+  "maximum_cross_axis_degrees": 4,
+  "maximum_roll_degrees": 3,
+  "maximum_eye_center_shift_fraction": 0.08,
+  "eye_distance_ratio": [
+    0.85,
+    1.15
+  ],
+  "yaw_safety_margin_degrees": 2,
+  "required_yaw_slots": [
+    "yaw-left",
+    "yaw-right"
+  ],
+  "prompt_prefix": "",
+  "views": {
+    "yaw-left": {
+      "axis": 0,
+      "sign": -1,
+      "target_degrees": 12,
+      "minimum_degrees": 8,
+      "maximum_degrees": 17,
+      "prompt": "Girar la cabeza 12 grados mirando a la izquierda de la cámara. Mantén la imagen idéntica salvo por ese detalle. No solo los ojos: que haya rotación real de su cabeza. Deja que los ojos acompañen el giro de forma natural."
+    },
+    "yaw-right": {
+      "axis": 0,
+      "sign": 1,
+      "target_degrees": 12,
+      "minimum_degrees": 8,
+      "maximum_degrees": 17,
+      "prompt": "Girar la cabeza 12 grados mirando a la derecha de la cámara. Mantén la imagen idéntica salvo por ese detalle. No solo los ojos: que haya rotación real de su cabeza. Deja que los ojos acompañen el giro de forma natural."
+    },
+    "pitch-up": {
+      "axis": 1,
+      "sign": 1,
+      "target_degrees": 6,
+      "minimum_degrees": 4,
+      "maximum_degrees": 9,
+      "prompt": "Raise the chin slightly and tilt the head UPWARD about 6 degrees around the neck, keeping yaw and roll unchanged. The underside of the chin becomes slightly more visible. Do not lift or translate the whole head in the frame. Preserve the original identity, neutral expression, hair, shoulders, clothing, lighting, background and framing."
+    },
+    "pitch-down": {
+      "axis": 1,
+      "sign": -1,
+      "target_degrees": 6,
+      "minimum_degrees": 4,
+      "maximum_degrees": 9,
+      "prompt": "Lower the chin slightly and tilt the head DOWNWARD about 6 degrees around the neck, keeping yaw and roll unchanged. The top of the head becomes slightly more visible. Do not lower or translate the whole head in the frame. Preserve the original identity, neutral expression, hair, shoulders, clothing, lighting, background and framing."
+    }
+  },
+  "identity_acceptance": "Automatic geometry/framing checks do not establish likeness. Preserve every rejected result; identity and material continuity still require visual review.",
+  "request_policy": "No automatic retries or new allowance. Any revised acquisition configuration must have its own explicit authorization and immutable budget binding."
+}

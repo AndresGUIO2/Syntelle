@@ -7,6 +7,19 @@ import (
 	"testing"
 )
 
+func TestNonverbalRestTimelineRemainsSeparateFromSpeech(t *testing.T) {
+	events := []NativeViseme{{ID: 0, OffsetMS: 0}, {ID: 0, OffsetMS: 400}}
+	if _, err := timeline(t.Context(), events, 800); err == nil {
+		t.Fatal("ordinary speech accepted only Rest")
+	}
+	if _, err := timeline(t.Context(), events, 800, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := timeline(t.Context(), events, 2600, true); err == nil {
+		t.Fatal("nonverbal duration gate weakened")
+	}
+}
+
 func TestBuildSpeechMatchesOriginalTypeScript(t *testing.T) {
 	t.Parallel()
 	ref, c, samples := loadReference(t)

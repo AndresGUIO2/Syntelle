@@ -22,7 +22,12 @@ import (
 )
 
 type session struct {
-	emotionInstance string
+	activity          string
+	coordinated       bool
+	delivery          *pendingDelivery
+	requestedSettings *rendercontract.Settings
+	requestedRevision uint64
+	emotionInstance   string
 
 	emotionController nativeanimation.EmotionController
 	emotionClock      float64
@@ -30,6 +35,8 @@ type session struct {
 	policyRevision    uint64
 
 	emotionSuppressedTurn string
+	previewEnd            string
+	previewTurn           string
 	previewKind           string
 	previewAmount         float64
 	previewRepetitions    int
@@ -148,9 +155,12 @@ func (s *session) interrupt() {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
 	s.mu.Lock()
+	s.invalidateDeliveryLocked("interrupted")
 	s.emotionController.End(s.emotionClock, true)
 	s.emotionEpoch++
 	s.rememberTurn()
+	s.previewEnd = ""
+	s.previewTurn = ""
 	s.previewKind = ""
 	s.waiting = false
 	s.generation++
@@ -171,6 +181,8 @@ func (s *session) interrupt() {
 }
 
 func (s *session) configure(data json.RawMessage) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var wrapped struct {
@@ -195,6 +207,33 @@ func (s *session) configure(data json.RawMessage) error {
 	}
 	if err := json.Unmarshal(data, &optional); err != nil {
 		return errors.New("invalid native pause setting")
+	}
+	alreadyRequested := s.requestedSettings != nil && performanceSettingsEqual(next, *s.requestedSettings) && wrapped.PolicyRevision == s.requestedRevision
+	if alreadyRequested {
+		next = preservePerformanceSettings(next, s.settings)
+	}
+	if s.coordinated && next.ReducedMotion != s.settings.ReducedMotion {
+		s.invalidateDeliveryLocked("accessibility_changed")
+		s.requestedSettings = nil
+	}
+	if s.turn == "" {
+		s.requestedSettings = nil
+	}
+	if !alreadyRequested && s.coordinated && s.turn != "" && !performanceSettingsEqual(next, s.settings) && next.ReducedMotion == s.settings.ReducedMotion {
+		copy := next
+		s.requestedSettings = &copy
+		s.requestedRevision = wrapped.PolicyRevision
+		if s.requestedRevision == 0 {
+			s.requestedRevision = max(s.policyRevision, s.requestedRevision) + 1
+		}
+		s.invalidateDeliveryLocked("superseded_by_settings")
+		next = preservePerformanceSettings(next, s.settings)
+	} else if !alreadyRequested && s.coordinated && s.requestedSettings != nil && performanceSettingsEqual(next, s.settings) {
+		// A -> B -> A is a distinct requested revision, not revival of B.
+		copy := next
+		s.requestedSettings = &copy
+		s.requestedRevision = wrapped.PolicyRevision
+		s.invalidateDeliveryLocked("superseded_by_settings")
 	}
 	if next.EmotionBaseline.Normalized() != s.settings.EmotionBaseline.Normalized() || next.EmotionRegulation.Normalized() != s.settings.EmotionRegulation.Normalized() {
 		s.emotionSuppressedTurn = s.turn
@@ -308,6 +347,21 @@ func (s *session) conversation(raw json.RawMessage) error {
 	if generation != s.generation || e.TurnID != s.turn {
 		return nil
 	}
+	var metadata struct {
+		Intent *struct {
+			Version string `json:"version"`
+		} `json:"intent"`
+	}
+	_ = json.Unmarshal(decoded.performance, &metadata)
+	if metadata.Intent != nil && metadata.Intent.Version == rendercontract.CoordinatedPerformanceVersion && decoded.delivery == nil {
+		return errors.New("coordinated speech requires an approved delivery")
+	}
+	if decoded.delivery != nil && !s.deliveryMatchesLocked(decoded.delivery, text, index) {
+		if s.delivery != nil && decoded.delivery.Token == s.delivery.reservation.Token && s.emotionClock > s.delivery.expires {
+			s.invalidateDeliveryLocked("expired_delivery")
+		}
+		return nil
+	}
 	if index < s.nextIndex {
 		return nil
 	}
@@ -354,13 +408,17 @@ func (s *session) frameInput() FrameInput {
 		clock += float64(s.tickElapsedLocked()) / float64(time.Millisecond)
 	}
 	capability, available := s.scene.(interface{ EmotionsAvailable() bool })
-	if available && capability.EmotionsAvailable() && !state.Preview && (s.settings.EmotionRegulation.Normalized().Enabled || s.emotionController.Controlled(state.TurnID)) {
+	unified := false
+	if value, ok := s.scene.(interface{ UnifiedLaughterAvailable() bool }); ok {
+		unified = value.UnifiedLaughterAvailable()
+	}
+	if available && capability.EmotionsAvailable() && (!state.Preview || unified) && (s.coordinated || s.settings.EmotionRegulation.Normalized().Enabled || s.emotionController.Controlled(state.TurnID)) {
 		copyController := s.emotionController
 		copyController.Configure(clock, s.settings, state.TurnID)
 		value := copyController.Motion
 		controlled = &value
 	}
-	return FrameInput{EmotionControl: controlled, EmotionTime: clock, PreviewKind: s.previewKind, PreviewAmount: s.previewAmount, PreviewRepetitions: s.previewRepetitions, PreviewSequence: s.previewSequence, MediaTime: mediaTime, Generation: s.generation, Settings: s.settings, Paused: s.paused, Speech: state}
+	return FrameInput{Activity: s.activity, EmotionControl: controlled, EmotionTime: clock, PreviewKind: s.previewKind, PreviewAmount: s.previewAmount, PreviewRepetitions: s.previewRepetitions, PreviewSequence: s.previewSequence, MediaTime: mediaTime, Generation: s.generation, Settings: s.settings, Paused: s.paused, Speech: state}
 }
 
 func (s *session) videoLoop() {
@@ -420,6 +478,10 @@ func (s *session) videoLoop() {
 				start, end := s.calibration()
 				timingMarker(s.frame, input.MediaTime, start, end)
 			}
+			presenting := false
+			if owner, ok := s.scene.(interface{ LaughterPresenting() bool }); ok {
+				presenting = owner.LaughterPresenting()
+			}
 			s.frameMu.Unlock()
 			s.renderNS.Add(uint64((nativeclock.Now() - start)))
 			if err != nil {
@@ -468,6 +530,7 @@ func (s *session) videoLoop() {
 				s.keyframe.Store(true)
 				continue
 			}
+			s.finishPreviewPresentation(input.Generation, presenting)
 			s.encoded.Add(1)
 			if hasLastPTS && input.MediaTime <= lastPTS {
 				s.repeatedVideoPTS.Add(1)
@@ -487,48 +550,57 @@ func (s *session) audioLoop() {
 		if _, ok := ticker.Next(s.ctx); !ok {
 			return
 		}
-		{
-			if !s.connected.Load() {
-				continue
-			}
-			clear(pcm)
-			block := s.nextAudioBlock(time.Now(), pcm)
-			generation, pts := block.generation, block.pts
-			if s.host.config.OfflineCalibration {
-				start, end := s.calibration()
-				timingTone(pcm, pts, start, end)
-			}
-			for _, notification := range block.events {
-				s.host.emit(event("playback", s.id, notification.turn, map[string]string{"event": notification.kind, "turn_id": notification.turn}))
-			}
-			start := nativeclock.Now()
-			data, err := s.audio.Encode(pcm)
-			s.audioEncodeNS.Add(uint64((nativeclock.Now() - start)))
-			if err != nil {
-				s.fail(err)
-				return
-			}
-			sent, err := s.sendEncoded(data, false, pts, generation)
-			if err != nil {
-				s.fail(err)
-				return
-			}
-			if !sent {
-				continue
-			}
-			for _, decision := range s.commitEmotions(block, true) {
-				s.host.emit(event("emotion_decision", s.id, decision.TurnID, decision))
-			}
-			for _, activation := range block.activations {
-				s.mu.Lock()
-				valid := activation.Generation == s.generation && s.emotionSuppressedTurn != activation.TurnID && activation.Baseline == s.settings.EmotionBaseline.Normalized() && !s.settings.EmotionRegulation.Normalized().Enabled
-				s.mu.Unlock()
-				if valid {
-					s.host.emit(event("emotion_activated", s.id, activation.TurnID, activation))
-				}
-			}
-			s.audioFrames.Add(1)
+		if !s.connected.Load() {
+			continue
 		}
+		// Keep configuration acceptance outside the first-PCM send/commit transaction.
+		s.sendMu.Lock()
+		block := s.nextAudioBlock(time.Now(), pcm)
+		if s.host.config.OfflineCalibration {
+			start, end := s.calibration()
+			timingTone(pcm, block.pts, start, end)
+		}
+		start := nativeclock.Now()
+		data, err := s.audio.Encode(pcm)
+		s.audioEncodeNS.Add(uint64(nativeclock.Now() - start))
+		if err != nil {
+			s.sendMu.Unlock()
+			s.fail(err)
+			return
+		}
+		sent, err := s.sendEncodedLocked(data, false, block.pts, block.generation)
+		if err != nil {
+			s.sendMu.Unlock()
+			s.fail(err)
+			return
+		}
+		decisions := s.commitEmotions(block, sent)
+		s.sendMu.Unlock()
+		if !sent {
+			if block.delivery != nil {
+				s.fail(errors.New("reserved phrase audio was not published"))
+				return
+			}
+			continue
+		}
+		for _, decision := range decisions {
+			s.host.emit(event("emotion_decision", s.id, decision.TurnID, decision))
+		}
+		for _, notification := range block.events {
+			if s.deferPreviewEnd(notification, block.generation) {
+				continue
+			}
+			s.host.emit(event("playback", s.id, notification.turn, map[string]string{"event": notification.kind, "turn_id": notification.turn}))
+		}
+		for _, activation := range block.activations {
+			s.mu.Lock()
+			valid := activation.Generation == s.generation && s.emotionSuppressedTurn != activation.TurnID && activation.Baseline == s.settings.EmotionBaseline.Normalized() && !s.settings.EmotionRegulation.Normalized().Enabled
+			s.mu.Unlock()
+			if valid {
+				s.host.emit(event("emotion_activated", s.id, activation.TurnID, activation))
+			}
+		}
+		s.audioFrames.Add(1)
 	}
 }
 
@@ -570,11 +642,14 @@ func (s *session) rendererBackend() string {
 
 type playbackNotification struct{ kind, turn string }
 type audioBlock struct {
-	controller nativeanimation.EmotionController
-	clock      float64
-	epoch      uint64
-	policy     bool
-	decisions  []rendercontract.EmotionDecision
+	delivery       *pendingDelivery
+	applied        *rendercontract.Settings
+	policyRevision uint64
+	controller     nativeanimation.EmotionController
+	clock          float64
+	epoch          uint64
+	policy         bool
+	decisions      []rendercontract.EmotionDecision
 
 	activations []rendercontract.EmotionActivation
 	generation  uint64
@@ -612,6 +687,9 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 		}
 		for i := range block.decisions {
 			block.decisions[i].PolicyRevision = s.policyRevision
+			if block.policyRevision > 0 {
+				block.decisions[i].PolicyRevision = block.policyRevision
+			}
 			block.decisions[i].Instance = s.emotionInstance
 		}
 	}()
@@ -640,6 +718,13 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 						s.rememberTurn()
 						s.started = false
 						s.turn = ""
+						if s.requestedSettings != nil {
+							copy := *s.requestedSettings
+							block.applied = &copy
+							block.policyRevision = s.requestedRevision
+							block.controller.Configure(block.clock, copy, "")
+							block.decisions = append(block.decisions, block.controller.Evidence(nil, "configuration", "", -1, s.generation))
+						}
 						s.revision++
 					} else if !s.waiting {
 						block.events = append(block.events, playbackNotification{"playback_waiting", s.turn})
@@ -648,16 +733,27 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 				}
 				break
 			}
-			s.playing = s.queue[0]
+			candidate := s.queue[0]
+			if candidate.delivery != nil && !s.deliveryMatchesLocked(candidate.delivery, candidate.text, candidate.phraseIndex) {
+				s.invalidateDeliveryLocked("expired_delivery")
+				break
+			}
+			s.playing = candidate
 			s.queue = s.queue[1:]
 			s.position = 0
 			s.started = true
 			s.waiting = false
 			s.revision++
 			block.events = append(block.events, playbackNotification{"playback_started", s.turn})
-			if emotional && capability.EmotionsAvailable() && !s.playing.preview && s.playing.prepared != nil {
+			if s.playing.delivery != nil {
+				block.delivery = s.delivery
+				copy := s.delivery.settings
+				block.applied = &copy
+				block.policyRevision = s.delivery.reservation.Request.Revision
+				block.decisions = append(block.decisions, block.controller.ActivateReserved(block.clock, s.delivery.policy))
+			} else if emotional && capability.EmotionsAvailable() && !s.playing.preview && s.playing.prepared != nil {
 				p := s.playing.prepared.Performance
-				if p != nil && p.Intent != nil && p.Intent.Version == "performance-intent/3" {
+				if p != nil && p.Intent != nil && rendercontract.NaturalPerformance(p.Intent.Version) {
 					if s.settings.EmotionRegulation.Normalized().Enabled || block.controller.Controlled(s.turn) {
 						block.decisions = append(block.decisions, block.controller.Propose(block.clock, p.Intent.Emotion, s.turn, s.playing.phraseIndex, s.generation))
 					} else if s.settings.AutomaticExpressions && !s.settings.ReducedMotion && s.emotionSuppressedTurn != s.turn && p.Intent.Emotion != nil && p.Intent.Emotion.Valid() {
@@ -683,7 +779,7 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 }
 
 func (s *session) clipState(value *clip, position int) SpeechState {
-	return SpeechState{Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
+	return SpeechState{LaughterSpan: value.laughterSpan, Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
 }
 func (s *session) rememberTurn() {
 	if s.turn == "" {
@@ -730,6 +826,11 @@ func (s *session) preview(raw json.RawMessage) error {
 		s.previewKind = ""
 		s.generation++
 		s.turn = p.TurnID
+		s.previewEnd = ""
+		s.previewTurn = ""
+		if value, ok := s.scene.(interface{ UnifiedLaughterAvailable() bool }); ok && value.UnifiedLaughterAvailable() {
+			s.previewTurn = p.TurnID
+		}
 		s.queue = []*clip{decoded}
 		s.queuedBytes = len(decoded.samples) * 2
 		s.nextIndex = 1
@@ -756,4 +857,29 @@ func (s *session) preview(raw json.RawMessage) error {
 	s.previewSequence++
 	s.revision++
 	return nil
+}
+
+// PCM completion and visual completion share the existing notification contract.
+// A preview's final notification belongs to the first successfully sent settled frame.
+func (s *session) deferPreviewEnd(n playbackNotification, generation uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n.kind != "playback_ended" || n.turn != s.previewTurn || generation != s.generation {
+		return false
+	}
+	s.previewEnd = n.turn
+	return true
+}
+func (s *session) finishPreviewPresentation(generation uint64, presenting bool) {
+	s.mu.Lock()
+	turn := ""
+	if !s.paused && !presenting && generation == s.generation && s.previewEnd != "" {
+		turn = s.previewEnd
+		s.previewEnd = ""
+		s.previewTurn = ""
+	}
+	s.mu.Unlock()
+	if turn != "" {
+		s.host.emit(event("playback", s.id, turn, map[string]string{"event": "playback_ended", "turn_id": turn}))
+	}
 }

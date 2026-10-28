@@ -148,7 +148,7 @@ func (d *expressionDirector) sample(ms float64, manual expression, automatic, re
 	result := expression{1 - (1-d.manualCurrent.Smile)*(1-autoSmile), 1 - (1-d.manualCurrent.Brows)*(1-d.previousAuto.Brows)}
 	if plan != nil && plan.Performance != nil && plan.Performance.Intent != nil {
 		d.v2Seen = rendercontract.DirectedPerformance(plan.Performance.Intent.Version)
-		d.naturalBrows = plan.Performance.Intent.Version == "performance-intent/3"
+		d.naturalBrows = rendercontract.NaturalPerformance(plan.Performance.Intent.Version)
 	}
 	if d.v2Seen {
 		target := d.manualCurrent
@@ -166,6 +166,9 @@ func (d *expressionDirector) sample(ms float64, manual expression, automatic, re
 					weight = ease(phase/.28) * (1 - ease((phase-.42)/.58))
 				}
 				if cue.Kind == "brows" || cue.Kind == "emphasis" {
+					if coordinatedSpeech(speech) {
+						continue
+					}
 					amount := *cue.Amount
 					if cue.Kind == "emphasis" {
 						amount *= .5

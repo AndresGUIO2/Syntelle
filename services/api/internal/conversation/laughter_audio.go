@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"syntelle/render-contract"
 )
 
 type cachedViseme struct {
@@ -50,7 +51,7 @@ func pcm16(wav []byte) ([]byte, []byte, error) {
 
 // appendLaughter creates a derived WAV. Both original provider recordings and
 // their native event streams remain unchanged in their original evidence.
-func (s *Service) appendLaughter(cid, reply, voice, language string, payload map[string]any, v PerformanceValidation) (PerformanceValidation, error) {
+func (s *Service) appendLaughter(cid, reply, voice, language string, payload map[string]any, v PerformanceValidation, commit ...bool) (PerformanceValidation, error) {
 	index := -1
 	for i, c := range v.Resolved {
 		if c.Kind == "laugh" {
@@ -65,6 +66,9 @@ func (s *Service) appendLaughter(cid, reply, voice, language string, payload map
 		v.Resolved = append(v.Resolved[:index], v.Resolved[index+1:]...)
 		v.Omitted = append(v.Omitted, "laughter_unavailable_or_cooldown")
 		return v
+	}
+	if v.Resolved[index].Amount != nil && *v.Resolved[index].Amount <= 0 {
+		return omit(), nil
 	}
 	if s.Performance == nil {
 		return omit(), nil
@@ -92,10 +96,10 @@ func (s *Service) appendLaughter(cid, reply, voice, language string, payload map
 	if err != nil {
 		return omit(), nil
 	}
-	if string(format) != string(other) {
+	if len(b) == 0 || float64(len(b))/float64(binary.LittleEndian.Uint32(other[4:])*2) > 2.5 || string(format) != string(other) {
 		return omit(), nil
 	}
-	if !s.reserveLaughter(cid, reply) {
+	if !s.laughterAllowed(cid, reply, len(commit) == 0 || commit[0]) {
 		return omit(), nil
 	}
 	rate := int(binary.LittleEndian.Uint32(format[4:]))
@@ -117,10 +121,13 @@ func (s *Service) appendLaughter(cid, reply, voice, language string, payload map
 		event.Offset += offset
 		spoken.Visemes = append(spoken.Visemes, event)
 	}
+	payload["laughter_span"] = &rendercontract.LaughterSpan{Version: "laughter-span/1", Offset: (len(a) + silence) / 2, Count: len(b) / 2, PCMHash: fmt.Sprintf("%x", sha256.Sum256(b)), RecordingHash: fmt.Sprintf("%x", sha256.Sum256(laugh.Audio))}
 	payload["audio_base64"] = wav
 	payload["visemes"] = spoken.Visemes
 	payload["duration_ms"] = float64(len(pcm)) / float64(rate*2) * 1000
 	payload["derived_audio"] = map[string]any{"version": "cached-laughter-sequence/1", "speech_sha256": fmt.Sprintf("%x", sha256.Sum256(spoken.Audio)), "laughter_sha256": fmt.Sprintf("%x", sha256.Sum256(laugh.Audio)), "new_provider_requests": 0}
+	complete := 1.
+	v.Resolved[index].Amount = &complete
 	v.Resolved[index].Time = offset / 1000
 	v.Resolved[index].Duration = float64(len(b)) / float64(rate*2)
 	return v, nil

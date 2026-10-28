@@ -28,6 +28,7 @@ static struct {
     tcuMemFree_v2 *free;
     tcuMemcpyHtoD_v2 *upload;
     tcuMemcpy2D_v2 *copy2d;
+    tcuMemcpy2DAsync_v2 *copy2d_async;
     tcuLaunchKernel *launch;
     tcuStreamCreate *stream_create;
     tcuStreamDestroy_v2 *stream_destroy;
@@ -50,7 +51,7 @@ static void load_driver(void) {
     LOAD(push,"cuCtxPushCurrent_v2"); LOAD(pop,"cuCtxPopCurrent_v2");
     LOAD(module_load,"cuModuleLoadData"); LOAD(module_free,"cuModuleUnload"); LOAD(function,"cuModuleGetFunction");
     LOAD(alloc,"cuMemAlloc_v2"); LOAD(free,"cuMemFree_v2"); LOAD(upload,"cuMemcpyHtoD_v2");
-    LOAD(copy2d,"cuMemcpy2D_v2"); LOAD(launch,"cuLaunchKernel");
+    LOAD(copy2d,"cuMemcpy2D_v2"); LOAD(copy2d_async,"cuMemcpy2DAsync_v2"); LOAD(launch,"cuLaunchKernel");
     LOAD(stream_create,"cuStreamCreate"); LOAD(stream_destroy,"cuStreamDestroy_v2"); LOAD(stream_sync,"cuStreamSynchronize");
     LOAD(event_create,"cuEventCreate"); LOAD(event_destroy,"cuEventDestroy_v2");
     LOAD(event_record,"cuEventRecord"); LOAD(event_elapsed,"cuEventElapsedTime");
@@ -73,19 +74,19 @@ struct GPUContext {
     CUfunction body,body_fp32,compose,oral,eyes,skin,reference,convert;
     CUstream stream;
     GPUSkinParams skin_params;
-    CUdeviceptr buffers[24];
-    size_t capacity[24];
-    SharedBuffer *shared[24];
+    CUdeviceptr buffers[28];
+    size_t capacity[28];
+    SharedBuffer *shared[28];
     int frozen_mask_ready;
     CUevent timing_events[4];
 };
 _Static_assert(sizeof(GPUVertex)==48,"vertex ABI");
 _Static_assert(sizeof(GPUTriangle)==176,"triangle ABI");
 _Static_assert(sizeof(GPUAxis)==24,"axis ABI");
-_Static_assert(sizeof(GPUParams)==216,"parameter ABI");
+_Static_assert(sizeof(GPUParams)==344,"parameter ABI");
 
 static int reserve(GPUContext *g,int slot,size_t n) {
-    if(slot<0 || slot>=24 || n>128*1024*1024) return -1001;
+    if(slot<0 || slot>=28 || n>128*1024*1024) return -1001;
     // A borrowed immutable allocation must never become a writable target.
     if(g->shared[slot]) return -1001;
     if(g->capacity[slot]>=n) return 0;
@@ -147,11 +148,11 @@ int syntelle_gpu_upload(GPUContext *g,int slot,const void *source,size_t n) {
 }
 
 int syntelle_gpu_share(GPUContext *g,int slot,const void *source,size_t n,const unsigned char digest[32]) {
-    if(!g || !digest || !n || n>128*1024*1024 || slot<0 || slot>=24 || g->buffers[slot]) return -1001;
+    if(!g || !digest || !n || n>128*1024*1024 || slot<0 || slot>=26 || g->buffers[slot]) return -1001;
     // Only read-only kernel inputs qualify. Subject, patches, projected geometry,
     // bins, backgrounds and output/encoder surfaces remain session-owned.
     if(slot!=1 && slot!=2 && slot!=4 && slot!=5 && slot!=11 && slot!=14 &&
-       slot!=16 && slot!=17 && slot!=18 && slot!=19 && slot!=20 && slot!=21 && slot!=22 && slot!=23) return -1001;
+       slot!=16 && slot!=17 && slot!=18 && slot!=19 && slot!=20 && slot!=21 && slot!=22 && slot!=23 && slot!=24 && slot!=25) return -1001;
     int status=driver.push(g->context);if(status)return status;
     pthread_mutex_lock(&shared_lock);
     SharedBuffer *entry=shared_buffers;
@@ -179,7 +180,7 @@ void syntelle_gpu_memory(size_t *bytes,size_t *allocations,size_t *leases) {
 
 size_t syntelle_gpu_private_bytes(GPUContext *g) {
     size_t bytes=0;
-    if(g)for(int i=0;i<24;i++)if(!g->shared[i])bytes+=g->capacity[i];
+    if(g)for(int i=0;i<28;i++)if(!g->shared[i])bytes+=g->capacity[i];
     return bytes;
 }
 
@@ -234,7 +235,7 @@ int syntelle_gpu_run(GPUContext *g,const GPUParams *p,unsigned char *out,int str
     if(parameters.mask_mode==1 && !g->frozen_mask_ready) parameters.mask_mode=0;
     if(!status && timing) status=driver.event_record(g->timing_events[0],g->stream);
     if(!status) {
-        void *args[]={ (void*)&parameters,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[23],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
+        void *args[]={ (void*)&parameters,&g->buffers[0],&g->buffers[1],&g->buffers[2],&g->buffers[23],&g->buffers[24],&g->buffers[25],&g->buffers[6],&g->buffers[7],&g->buffers[8],&g->buffers[9] };
         status=driver.launch(p->precision==1?g->body_fp32:g->body,(p->bw*p->bh+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
     }
     if(!status && timing) status=driver.event_record(g->timing_events[1],g->stream);
@@ -312,8 +313,12 @@ int syntelle_gpu_update(GPUContext *g,int kind,const void *params,int sw) {
         status=driver.launch(g->eyes,(p->dims[0]*p->dims[1]+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
     }else if(kind==4){
         const GPUReferenceParams *p=params;
-        void *args[]={(void*)p,&g->buffers[21],&g->buffers[22],&g->buffers[18],&g->buffers[19],&g->buffers[20],&g->buffers[11],&g->buffers[0],&g->buffers[14],&sw};
-        status=driver.launch(g->reference,(p->dims[2]*p->dims[3]+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
+        if(p->values[144]&&!p->dims[15]){
+            status=reserve(g,27,(size_t)p->dims[12]*p->dims[13]*4);
+            if(!status){CUDA_MEMCPY2D copy={0};copy.srcMemoryType=CU_MEMORYTYPE_DEVICE;copy.srcDevice=g->buffers[0];copy.srcPitch=sw*4;copy.srcXInBytes=p->dims[10]*4;copy.srcY=p->dims[11];copy.dstMemoryType=CU_MEMORYTYPE_DEVICE;copy.dstDevice=g->buffers[27];copy.dstPitch=p->dims[12]*4;copy.WidthInBytes=p->dims[12]*4;copy.Height=p->dims[13];status=driver.copy2d_async(&copy,g->stream);}
+        }
+        void *args[]={(void*)p,&g->buffers[21],&g->buffers[22],&g->buffers[18],&g->buffers[19],&g->buffers[20],&g->buffers[11],&g->buffers[0],&g->buffers[14],&sw,&g->buffers[26],&g->buffers[27]};
+        if(!status)status=driver.launch(g->reference,(p->dims[2]*p->dims[3]+127)/128,1,1,128,1,1,0,g->stream,args,NULL);
     }else status=-1001;
     CUcontext previous;int pop=driver.pop(&previous);return status?status:pop;
 }
@@ -323,7 +328,7 @@ int syntelle_gpu_close(GPUContext *g) {
     int status=driver.push(g->context);
     if(!status) {
         int synced=driver.stream_sync(g->stream);if(!status)status=synced;
-        for(int i=0;i<24;i++) if(g->buffers[i]) { int e=g->shared[i]?release_shared(g->shared[i],1):driver.free(g->buffers[i]); if(!status) status=e; }
+        for(int i=0;i<28;i++) if(g->buffers[i]) { int e=g->shared[i]?release_shared(g->shared[i],1):driver.free(g->buffers[i]); if(!status) status=e; }
         for(int i=0;i<4;i++) if(g->timing_events[i]) { int e=driver.event_destroy(g->timing_events[i]); if(!status) status=e; }
         if(g->stream){int e=driver.stream_destroy(g->stream);if(!status)status=e;}
         if(g->module) { int e=driver.module_free(g->module); if(!status) status=e; }
@@ -331,7 +336,7 @@ int syntelle_gpu_close(GPUContext *g) {
     } else {
         // A lost context cannot be used for CUDA frees. Still retire CPU leases
         // so a later primary context cannot acquire dangling cached pointers.
-        for(int i=0;i<24;i++)if(g->shared[i])release_shared(g->shared[i],0);
+        for(int i=0;i<26;i++)if(g->shared[i])release_shared(g->shared[i],0);
     }
     int released=driver.release(g->device); if(!status) status=released;
     free(g); return status;

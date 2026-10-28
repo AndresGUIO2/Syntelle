@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"syntelle/render-contract"
 	"time"
 
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/common"
@@ -18,6 +19,8 @@ type azureSpeechProvider struct {
 	key, region string
 	synthesis   synthesisGate
 }
+
+func (*azureSpeechProvider) RequiresVoiceQualification() bool { return true }
 
 func NewAzureProvider(key, region string) (Provider, error) {
 	concurrency, err := configuredSpeechConcurrency(os.Getenv("SYNTELLE_SPEECH_CONCURRENCY"))
@@ -39,6 +42,7 @@ func (p *azureSpeechProvider) SynthesizeQueued(ctx context.Context, input Input,
 		return result, err
 	}
 	defer release()
+	if err:=ctx.Err();err!=nil{return result,err}
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -61,6 +65,13 @@ func (p *azureSpeechProvider) SynthesizeQueued(ctx context.Context, input Input,
 	defer synthesizer.Close()
 	var lock sync.Mutex
 	events := []Viseme{}
+	words := []rendercontract.WordBoundary{}
+	synthesizer.WordBoundary(func(event speech.SpeechSynthesisWordBoundaryEventArgs) {
+		defer event.Close()
+		lock.Lock()
+		defer lock.Unlock()
+		words = append(words, rendercontract.WordBoundary{Text: event.Text, TextOffset: int(event.TextOffset), Length: int(event.WordLength), OffsetMS: float64(event.AudioOffset) / 10000, DurationMS: float64(event.Duration) / float64(time.Millisecond)})
+	})
 	synthesizer.VisemeReceived(func(event speech.SpeechSynthesisVisemeEventArgs) {
 		defer event.Close()
 		lock.Lock()
@@ -68,7 +79,13 @@ func (p *azureSpeechProvider) SynthesizeQueued(ctx context.Context, input Input,
 		events = append(events, Viseme{event.VisemeID, float64(event.AudioOffset) / 10000})
 	})
 	// Text-only synthesis intentionally mirrors OrgLens; no SVG/blendshape SSML request.
-	pending := synthesizer.SpeakTextAsync(input.Text)
+	var pending <-chan speech.SpeechSynthesisOutcome
+	if err:=ctx.Err();err!=nil{return result,err}
+	if input.providerText != "" {
+		pending = synthesizer.SpeakSsmlAsync(input.providerText)
+	} else {
+		pending = synthesizer.SpeakTextAsync(input.Text)
+	}
 	var outcome speech.SpeechSynthesisOutcome
 	select {
 	case outcome = <-pending:
@@ -92,6 +109,7 @@ func (p *azureSpeechProvider) SynthesizeQueued(ctx context.Context, input Input,
 	}
 	lock.Lock()
 	result.Visemes = append([]Viseme(nil), events...)
+	result.Words = normalizeWords(input, words, result.DurationMS)
 	lock.Unlock()
 	sort.SliceStable(result.Visemes, func(i, j int) bool { return result.Visemes[i].OffsetMS < result.Visemes[j].OffsetMS })
 	if ctx.Err() != nil {

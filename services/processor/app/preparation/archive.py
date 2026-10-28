@@ -102,8 +102,12 @@ class Archive:
     def restore(self,snapshot,destination):
         destination=destination.resolve()
         with self.connect() as conn:
-            rows=conn.execute('SELECT f.path,b.sha256,b.data FROM snapshot_files f JOIN blobs b ON f.blob_sha256=b.sha256 WHERE f.snapshot_id=%s ORDER BY f.path',(snapshot,)).fetchall()
-            if not rows: raise PreparationError('Snapshot is missing or empty.')
+            # Complete preparation snapshots include models and many rejected
+            # renderings. Bound restore memory without changing stored evidence.
+            rows=conn.cursor(name='preparation_restore')
+            rows.itersize=4
+            rows.execute('SELECT f.path,b.sha256,b.data FROM snapshot_files f JOIN blobs b ON f.blob_sha256=b.sha256 WHERE f.snapshot_id=%s ORDER BY f.path',(snapshot,))
+            restored=0
             for row in rows:
                 name=PurePosixPath(row['path'])
                 if name.is_absolute() or '..' in name.parts or '\\' in row['path']:
@@ -114,7 +118,9 @@ class Archive:
                 if sha256(data).hexdigest()!=row['sha256']:raise PreparationError('Database blob checksum failed.')
                 if path.exists() and path.read_bytes()!=data:raise PreparationError('Restore refuses to overwrite a different working file.')
                 path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
-        return len(rows)
+                restored+=1
+            if not restored:raise PreparationError('Snapshot is missing or empty.')
+        return restored
 
     def budget(self,name,binding,limits):
         self.checked(encoded({'id':name,'binding':binding,'limits':limits}))

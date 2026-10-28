@@ -25,6 +25,7 @@ type Camera struct {
 	PivotPx                    [2]float64 `json:"pivot_px"`
 }
 type Projection struct {
+	MultiView *MultiView `json:"multiview"`
 	Version   string
 	SourceSHA string `json:"source_sha256"`
 	Pivot     vector3
@@ -39,9 +40,11 @@ type Projection struct {
 	Articulation json.RawMessage
 }
 type Motion struct {
-	BuildID     string `json:"build_id"`
-	OriginalSHA string `json:"original_sha256"`
-	OralBuildID string `json:"oral_build_id"`
+	SpeechJaw   *rendercontract.SpeechJawRig `json:"speech_jaw"`
+	Mandible    *rendercontract.MandibleRig  `json:"mandible"`
+	BuildID     string                       `json:"build_id"`
+	OriginalSHA string                       `json:"original_sha256"`
+	OralBuildID string                       `json:"oral_build_id"`
 	Canvas      Size
 	Foreground  string
 	Projection  Projection
@@ -100,6 +103,9 @@ type JointPair struct {
 	Triangles [][3]int     `json:"triangles"`
 }
 type JointExpression struct {
+	SkinAppearance struct {
+		FieldSHA string `json:"field_sha256"`
+	} `json:"skin_appearance"`
 	LipMaterial          *textureRecord `json:"lip_material"`
 	Mode                 string         `json:"mode"`
 	MaximumArticulation  float64        `json:"maximum_articulation"`
@@ -145,29 +151,30 @@ func mathFloat32(b []byte) float32 { return math.Float32frombits(binary.LittleEn
 
 // Assets is loaded once. Sessions must never mutate its package or texture data.
 type Assets struct {
+	viewTextures []*Texture
 	// Only small content identities are cached here, never concatenated atlases.
 	// Prepared texture bytes and their ordering remain immutable after Load.
-	gpuAtlasKeys                                   sync.Map
-	MotionScale                                    float64
-	PackageHash                                    string
-	Motion                                         Motion
-	MotionJSON, OralJSON, GazeJSON, ExpressionJSON json.RawMessage
-	Foreground, ExpressionField, SmileMaterial     *Texture
-	EmotionField                                   *Texture
-	Expression                                     Expression
-	SkinFrames                                     []*Texture
-	LaughFrames                                    []*Texture
-	LaughLips                                      *Texture
-	ReferenceFrames                                []*Texture
-	ReferenceCavity                                *Texture
-	ReferenceUpper, ReferenceLower                 *Texture
-	Oral                                           *OralAssets
-	Opened, Closed, EyeMask, Sclera, Ownership     *Texture
-	EyeSplit                                       float64
-	Backgrounds                                    map[string]*Texture
-	vertices                                       []sourceVertex
-	indices                                        []uint16
-	fringe                                         []fringeTriangle
+	gpuAtlasKeys                                               sync.Map
+	MotionScale                                                float64
+	PackageHash                                                string
+	Motion                                                     Motion
+	MotionJSON, OralJSON, GazeJSON, ExpressionJSON             json.RawMessage
+	Foreground, ReferenceField, ExpressionField, SmileMaterial *Texture
+	EmotionField                                               *Texture
+	Expression                                                 Expression
+	SkinFrames                                                 []*Texture
+	LaughFrames                                                []*Texture
+	LaughLips                                                  *Texture
+	ReferenceFrames                                            []*Texture
+	ReferenceCavity                                            *Texture
+	ReferenceUpper, ReferenceLower                             *Texture
+	Oral                                                       *OralAssets
+	Opened, Closed, EyeMask, Sclera, Ownership                 *Texture
+	EyeSplit                                                   float64
+	Backgrounds                                                map[string]*Texture
+	vertices                                                   []sourceVertex
+	indices                                                    []uint16
+	fringe                                                     []fringeTriangle
 }
 
 func readChecked(root, path, hash string) ([]byte, error) {
@@ -460,6 +467,37 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 	if err = a.loadReference(load); err != nil {
 		return nil, err
 	}
+	if v := a.Motion.Projection.MultiView; v != nil {
+		if v.Version != "registered-multiview/1" || v.SourceSHA != a.Motion.OriginalSHA || v.GeometrySHA != a.Motion.Projection.Geometry.SHA256 || !v.Protected || len(v.Views) == 0 || len(v.Views) > 4 {
+			return nil, errors.New("invalid multiview source binding")
+		}
+		for _, view := range v.Views {
+			if view.Axis < 0 || view.Axis > 2 || !patchFinite(view.Pose[view.Axis]) || math.Abs(view.Pose[view.Axis]) < 5 || math.Abs(view.Pose[view.Axis]) > 25 || len(view.ReferenceSHA) != 64 || len(view.UV.SHA256) != 64 {
+				return nil, errors.New("invalid registered view")
+			}
+			t, e := load("multiview/" + view.Texture.File)
+			if e != nil {
+				return nil, e
+			}
+			if t.Width != a.Motion.Canvas.Width || t.Height != a.Motion.Canvas.Height {
+				return nil, errors.New("registered view dimensions differ")
+			}
+			protected := []Rect{oralBinding.Crop, a.Motion.Eyes.Crop, a.Expression.Crop}
+			if a.Expression.ReferenceLaughter != nil {
+				protected = append(protected, a.Expression.ReferenceLaughter.Crop)
+			}
+			for _, crop := range protected {
+				for y := crop.Y; y < crop.Y+crop.Height; y++ {
+					for x := crop.X; x < crop.X+crop.Width; x++ {
+						if t.Pixels[(y*t.Width+x)*4+3] != 0 {
+							return nil, errors.New("registered view overlaps protected eye or oral material")
+						}
+					}
+				}
+			}
+			a.viewTextures = append(a.viewTextures, t.Premultiply())
+		}
+	}
 	for name := range m.Textures {
 		if backgrounds && strings.HasPrefix(name, "background/") {
 			id := strings.TrimPrefix(name, "background/")
@@ -477,6 +515,31 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 	if p.SHA256 != m.Geometry.SHA256 || p.Vertices < 4 || p.Vertices > 65535 || len(g) != p.Vertices*20+(p.Triangles+p.FringeTriangles)*6 {
 		return nil, errors.New("invalid native geometry length")
 	}
+	if rig := a.Motion.Mandible; rig != nil {
+		if (rig.Version != "mandibular-rig/1" && rig.Version != "mandibular-rig/2") || rig.SourceSHA != a.Motion.OriginalSHA || rig.MotionBuild != a.Motion.BuildID || rig.OralBuild != a.Motion.OralBuildID || rig.GeometrySHA != p.SHA256 || len(rig.Weights) != p.Vertices || !rig.Validation.Valid || rig.Validation.MinimumAreaRatio <= .25 || rig.Validation.ChinTravel720 < 3 || !patchFinite(rig.MaximumAngle) || rig.MaximumAngle <= 0 || rig.MaximumAngle > .3 {
+			return nil, errors.New("invalid source-bound mandibular companion")
+		}
+		for _, n := range append(append(rig.Hinge[:], rig.Chin[:]...), rig.OralTravel, rig.CornerTravel, rig.ReferenceGap, rig.LowerStop, rig.Validation.MinimumAreaRatio, rig.Validation.ChinTravel720) {
+			if !patchFinite(n) {
+				return nil, errors.New("non-finite mandibular calibration")
+			}
+		}
+		if rig.OralTravel <= 0 || rig.CornerTravel < 0 || rig.ReferenceGap <= 0 {
+			return nil, errors.New("invalid mandibular range")
+		}
+		for pose := range a.Oral.poses {
+			jaw, ok := rig.PoseJaw[pose]
+			gap, found := rig.PoseGap[pose]
+			if !ok || !found || !patchFinite(jaw) || jaw < 0 || jaw > 1 || !patchFinite(gap) || gap < 0 {
+				return nil, errors.New("incomplete mandibular pose calibration")
+			}
+		}
+		for _, w := range rig.Weights {
+			if !patchFinite(w) || w < 0 || w > 1 {
+				return nil, errors.New("invalid mandibular weight")
+			}
+		}
+	}
 	a.vertices = make([]sourceVertex, p.Vertices)
 	for i := range a.vertices {
 		at := i * 20
@@ -488,6 +551,9 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 				return nil, errors.New("non-finite native geometry")
 			}
 		}
+	}
+	if err := a.validateSpeechJaw(); err != nil {
+		return nil, err
 	}
 	decodeIndices := func(at, n int) ([]uint16, error) {
 		out := make([]uint16, n)
@@ -501,6 +567,9 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 	}
 	a.indices, err = decodeIndices(p.Vertices*20, p.Triangles*3)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.validateSpeechJawSamplingProtection(); err != nil {
 		return nil, err
 	}
 	f, err := decodeIndices(p.Vertices*20+p.Triangles*6, p.FringeTriangles*3)

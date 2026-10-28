@@ -72,6 +72,7 @@ DEVICE Color oral_shade(const unsigned char *atlas,GPUOralParams p,int x,int y,d
                 if(v[56]>0){double ambient=pmix(v[57],1,smooth(0,v[58],openingRatio));illumination=maxd(.12,mind(1,1-v[12]*xd*xd-v[10]*expd(-apertureDistance/v[59])))*ambient;}
                 double e=exposure(illumination);for(int k=0;k<3;k++){upper.v[k]*=e;lower.v[k]*=e;}
             }
+            if(p.dims[12]&4){for(int k=0;k<4;k++){upper.v[k]=0;lower.v[k]=0;}}
             for(int k=0;k<3;k++){double oral=pmix(interior.v[k],lower.v[k],lower.v[3]);oral=pmix(oral,upper.v[k],upper.v[3]);color.v[k]=pmix(color.v[k],oral,coverage);}
         }
     }
@@ -177,7 +178,13 @@ DEVICE Color reference_interior(const unsigned char *atlas,const Color *iris,int
     for(int k=0;k<3;k++)base.v[k]=i.v[k]+base.v[k]*missing+clean.v[k]*maxd(0,1-i.v[3]-missing);
     return base;
 }
-KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,const double *profiles,const unsigned char *eyes,const Color *iris,const double *source_curves,const unsigned char *oral,unsigned char *subject,const unsigned char *original,int sw){
+DEVICE double reference_column_gap(double x,const double *v){
+    double lo=1e30,hi=-1e30;
+    for(int i=0;i<20;i++){int j=(i+1)%20;double ax=v[i*2],ay=v[i*2+1],bx=v[j*2],by=v[j*2+1];
+        if((ax<=x&&x<bx)||(bx<=x&&x<ax)){double y=ay+(x-ax)*(by-ay)/(bx-ax);lo=mind(lo,y);hi=maxd(hi,y);}}
+    return lo==1e30?0:maxd(0,hi-lo);
+}
+KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,const double *profiles,const unsigned char *eyes,const Color *iris,const double *source_curves,const unsigned char *oral,unsigned char *subject,const unsigned char *original,int sw,const GPUOralTriangle *triangles,const unsigned char *closed){
     int at=index_1d(),w=p.dims[2],h=p.dims[3];if(at>=w*h)return;
     int x=at%w,y=at/w,gx=x+p.dims[0],gy=y+p.dims[1],global=(gy*sw+gx)*4;
     if(p.dims[15]){for(int k=0;k<4;k++)subject[global+k]=original[global+k];return;}
@@ -186,8 +193,20 @@ KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,c
     Color color=color_mix(sample(faces+p.dims[4]*w*h*4,w,h,x,sy-p.dims[1]),sample(faces+p.dims[5]*w*h*4,w,h,x,sy-p.dims[1]),v[0]);
     double alpha=original[global+3]/255.0;
     if(color.v[3]>0)for(int k=0;k<3;k++)color.v[k]*=alpha/color.v[3];color.v[3]=alpha;
+    if(v[144]){double outside=maxd(0,maxd(maxd(p.dims[10]-gx,gx-p.dims[10]-p.dims[12]),maxd(p.dims[11]-gy,gy-p.dims[11]-p.dims[13])));double ownership=smooth(0,maxd(1,p.dims[12]*v[146]),outside);Color baseline;for(int k=0;k<4;k++)baseline.v[k]=subject[global+k]/255.0;color=color_mix(baseline,color,v[19]+(1-v[19])*ownership);}
     int ox=gx-p.dims[10],oy=gy-p.dims[11],ow=p.dims[12],oh=p.dims[13];
     if(ox>=0&&oy>=0&&ox<ow&&oy<oh){
+        if(v[144]&&!v[145]){
+            double fx=ox+.5,fy=oy+.5,tx=fx,ty=fy;
+            for(int j=0;j<(int)v[148];j++){
+                GPUOralTriangle t=triangles[j];double a=oral_edge(t.p+2,t.p+4,ox+.5,oy+.5),b=oral_edge(t.p+4,t.p,ox+.5,oy+.5),c=oral_edge(t.p,t.p+2,ox+.5,oy+.5);
+                if(a < -1e-7 || b < -1e-7 || c < -1e-7)continue;
+                a/=t.area;b/=t.area;c/=t.area;fx=t.from[0]*a+t.from[2]*b+t.from[4]*c;fy=t.from[1]*a+t.from[3]*b+t.from[5]*c;tx=t.to[0]*a+t.to[2]*b+t.to[4]*c;ty=t.to[1]*a+t.to[3]*b+t.to[5]*c;break;
+            }
+            Color reference=sample(faces+24*w*h*4,w,h,tx+p.dims[10]-p.dims[0]-.5,ty+p.dims[11]-p.dims[1]-.5);
+            if(reference.v[3]>0)for(int k=0;k<3;k++)reference.v[k]*=alpha/reference.v[3];reference.v[3]=alpha;
+            color=color_mix(sample(closed,ow,oh,fx-.5,fy-.5),reference,v[19]);
+        }
         double px=ox+.5,py=oy+.5,distance=1e30;bool inside=false;
         for(int i=0;i<20;i++){int j=(i+1)%20;const double *a=v+20+i*2,*b=v+20+j*2;
             if(crosses(px,py,a[0],a[1],b[0],b[1]))inside=!inside;
@@ -195,10 +214,12 @@ KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,c
         double d=sqrtd(distance);if(!inside)d=-d;double coverage=smooth(-.5,.65,d);
         if(coverage>0){
             Color cavity=sample(oral+p.dims[14]*ow*oh*4,ow,oh,ox,oy-v[2]*.5);
-            Color lower=sample(oral+(p.dims[14]+2)*ow*oh*4,ow,oh,ox-v[9],oy-v[10]),upper=sample(oral+(p.dims[14]+1)*ow*oh*4,ow,oh,ox,oy);
+            Color lower=sample(oral+(v[144]?1:p.dims[14]+2)*ow*oh*4,ow,oh,ox-v[9],oy-v[10]),upper=sample(oral+(v[144]?0:p.dims[14]+1)*ow*oh*4,ow,oh,ox-v[7],oy-v[8]);
             double light=1;
             if(v[100]>0 && v[102]>0){
-                double closure=clipd(1-(v[51]-v[31])/v[102],0,1);
+                double gap=v[51]-v[31],refgap=v[102];
+                if(v[103]){gap=reference_column_gap(px,v+20);refgap=reference_column_gap(px,v+104);}
+                double closure=refgap>0?clipd(1-gap/refgap,0,1):0;
                 light=exposure(maxd(.55,1-v[100]*closure*expd(-maxd(0,d)/v[101])));
             }
             for(int k=0;k<3;k++){lower.v[k]*=light;upper.v[k]*=light;}
@@ -210,6 +231,7 @@ KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,c
         const double *a=profiles+4*(p.dims[4]*ew+ex),*b=profiles+4*(p.dims[5]*ew+ex);
         if(a[3]>0 || b[3]>0){
             double upper=pmix(a[0],b[0],v[0]),lower=pmix(a[1],b[1],v[0]),seam=pmix(a[2],b[2],v[0]);
+            if(v[144])lower-=(source_curves[4*ex+1]-source_curves[4*ex])*v[147]*(1-v[1]);
             double open=clipd(mind(ey+.5,lower)-maxd(ey-.5,upper),0,1);
             {
                 double cu=pmix(upper,seam,v[4]),cl=pmix(lower,seam,v[4]);
@@ -229,6 +251,7 @@ KERNEL void syntelle_reference(GPUReferenceParams p,const unsigned char *faces,c
             }
         }
     }
+    if(v[145]){double outside=maxd(0,maxd(maxd(p.dims[10]-gx,gx-p.dims[10]-ow),maxd(p.dims[11]-gy,gy-p.dims[11]-oh)));double weight=smooth(0,maxd(1,ow*v[146]),outside);Color base;for(int k=0;k<4;k++)base.v[k]=subject[global+k]/255.0;color=color_mix(base,color,weight);}
     for(int k=0;k<4;k++)subject[global+k]=byte_color(color.v[k]);
 }
 

@@ -18,7 +18,12 @@ import StreamSettingsPanel from './components/StreamSettings.vue'
 import { useWorkspaceViewport } from '../conversation/composables/useWorkspaceViewport'
 import { useAccount } from './composables/useAccount'
 import { useRemoteStream } from './composables/useRemoteStream'
-import { AVA_VOICE, defaultSettings, type SavedConfiguration, type StreamSettings } from './types'
+import {
+  DEFAULT_VOICE,
+  defaultSettings,
+  type SavedConfiguration,
+  type StreamSettings,
+} from './types'
 import type { ConversationTurn } from '../conversation/types'
 
 const locale = useLocaleStore()
@@ -45,7 +50,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
 try {
   const previous = JSON.parse(localStorage.getItem('syntelle.stream.settings') ?? 'null')
   if (previous?.character === 'syntelle')
-    settings.value = { ...defaultSettings(), ...previous, voice: AVA_VOICE }
+    settings.value = { ...defaultSettings(), ...previous, voice: DEFAULT_VOICE }
   else {
     // Carry the owner's existing appearance/instructions into the unified player.
     const appearance = JSON.parse(localStorage.getItem('syntelle.demo.appearance') ?? 'null')
@@ -213,7 +218,7 @@ async function continueHistory(
     ...defaultSettings(),
     ...item.settings,
     language: locale.speechLanguage,
-    voice: AVA_VOICE,
+    voice: DEFAULT_VOICE,
     reduced_motion: reducedMotion.matches,
   }
   await nextTick()
@@ -228,7 +233,7 @@ async function load(configuration: SavedConfiguration) {
     ...defaultSettings(),
     ...configuration.settings,
     language: locale.speechLanguage,
-    voice: AVA_VOICE,
+    voice: DEFAULT_VOICE,
     reduced_motion: reducedMotion.matches,
   }
 }
@@ -491,6 +496,8 @@ onScopeDispose(() => {
         :active="settingsOpen"
         :disabled="controlsLocked"
         :preview-disabled="previewDisabled"
+        :laughter-busy="remote.laughterBusy.value"
+        :laughter-available="remote.laughterAvailable.value"
         @preview="previewExpression"
       />
     </dialog>

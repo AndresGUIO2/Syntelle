@@ -6,7 +6,12 @@ import EmotionControls from './EmotionControls.vue'
 import AdvancedSettings from './AdvancedSettings.vue'
 const settings = defineModel<StreamSettings>({ required: true })
 const expanded = defineModel<boolean>('expanded', { required: true })
-defineProps<{ disabled: boolean; previewDisabled?: boolean }>()
+defineProps<{
+  disabled: boolean
+  previewDisabled?: boolean
+  laughterBusy?: boolean
+  laughterAvailable?: boolean
+}>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
 const id = useId()
@@ -32,6 +37,9 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
       :model-value="settings.emotion_baseline"
       @update:model-value="update('emotion_baseline', $event)"
     />
+    <p class="customization-note">
+      {{ t('Emotion changes apply to the next phrase while speaking.') }}
+    </p>
     <fieldset class="customization-group">
       <legend class="sr-only">{{ t('Automatic reactions') }}</legend>
       <label class="customization-toggle"
@@ -110,6 +118,8 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
         <AdvancedSettings
           v-model="settings"
           :preview-disabled="previewDisabled"
+          :laughter-busy="laughterBusy"
+          :laughter-available="laughterAvailable"
           @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"
         />
       </div>

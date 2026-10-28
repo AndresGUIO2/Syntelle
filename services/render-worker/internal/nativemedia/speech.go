@@ -17,11 +17,13 @@ const maxQueuedParts = 32
 const maxQueuedPCMBytes = 32 << 20
 
 type preparedSpeech struct {
-	Preview     bool            `json:"preview_only"`
-	Audio       []byte          `json:"audio_base64"`
-	DurationMS  float64         `json:"duration_ms"`
-	Visemes     []Viseme        `json:"visemes"`
-	Performance json.RawMessage `json:"performance"`
+	LaughterSpan *rendercontract.LaughterSpan        `json:"laughter_span,omitempty"`
+	Delivery     *rendercontract.DeliveryReservation `json:"delivery,omitempty"`
+	Preview      bool                                `json:"preview_only"`
+	Audio        []byte                              `json:"audio_base64"`
+	DurationMS   float64                             `json:"duration_ms"`
+	Visemes      []Viseme                            `json:"visemes"`
+	Performance  json.RawMessage                     `json:"performance"`
 }
 
 type speechPart struct {
@@ -33,13 +35,15 @@ type speechPart struct {
 }
 
 type clip struct {
-	phraseIndex int
-	preview     bool
-	samples     []int16
-	visemes     []Viseme
-	duration    time.Duration
-	text        string
-	performance json.RawMessage
+	laughterSpan *rendercontract.LaughterSpan
+	delivery     *rendercontract.DeliveryReservation
+	phraseIndex  int
+	preview      bool
+	samples      []int16
+	visemes      []Viseme
+	duration     time.Duration
+	text         string
+	performance  json.RawMessage
 	// These fields are published under the session lock before audio can pop
 	// the clip. Source slices and prepared analysis are immutable thereafter.
 	needsPreparation bool
@@ -65,7 +69,10 @@ func decodeClip(prepared preparedSpeech, text string) (*clip, error) {
 	if len(prepared.Visemes) < 2 {
 		return nil, errors.New("missing native viseme timeline")
 	}
-	return &clip{preview: prepared.Preview, samples: samples, visemes: prepared.Visemes, duration: duration, text: text, performance: prepared.Performance}, nil
+	if err := nativeanimation.ValidateLaughterSpan(prepared.LaughterSpan, samples, sampleRate); err != nil {
+		return nil, err
+	}
+	return &clip{laughterSpan: prepared.LaughterSpan, delivery: prepared.Delivery, preview: prepared.Preview, samples: samples, visemes: prepared.Visemes, duration: duration, text: text, performance: prepared.Performance}, nil
 }
 
 func decodeWAV(data []byte) ([]int16, error) {

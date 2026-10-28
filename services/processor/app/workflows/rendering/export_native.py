@@ -74,9 +74,6 @@ def validate_bindings(packages: dict, specification: dict | None) -> None:
 
 
 def export(destination: Path, expressions_dir: Path | None = None, motion_scale: float = 1, envelopes: Path | None = None, bundle: Path | None = None) -> dict:
-    destination.mkdir(parents=True, exist_ok=True)
-    data_dir = destination / "data"
-    data_dir.mkdir(exist_ok=True)
     folders, specification = resource_paths(bundle, expressions_dir)
     oral_dir, motion_dir, expression_dir = (folders[key] for key in ("oral", "motion", "expressions"))
     package_paths = {
@@ -87,6 +84,11 @@ def export(destination: Path, expressions_dir: Path | None = None, motion_scale:
     }
     packages = {name: json.loads(path.read_bytes()) for name, path in package_paths.items()}
     validate_bindings(packages, specification)
+    from app.preparation.reference_policy import validate_export_coverage
+    validate_export_coverage(packages['motion'])
+    destination.mkdir(parents=True, exist_ok=True)
+    data_dir = destination / "data"
+    data_dir.mkdir(exist_ok=True)
     # Preserve the public API's character identity, including unused prepared
     # files. It must not depend on a worker implementation or raw RGBA export.
     identity_files = []
@@ -167,6 +169,15 @@ def export(destination: Path, expressions_dir: Path | None = None, motion_scale:
     catalog = json.loads((folders["backgrounds"] / "catalog.json").read_bytes())
     for background in catalog["items"]:
         texture("background/" + background["id"], folders["backgrounds"] / background["image"])
+    views = motion['projection'].get('multiview')
+    if views:
+        if views['version']!='registered-multiview/1' or views['source_sha256']!=motion['original_sha256'] or views['geometry_sha256']!=motion['projection']['geometry']['sha256']:
+            raise ValueError('Multiview source/geometry binding mismatch')
+        for view in views['views']:
+            for kind in ('texture','uv'):
+                item=view[kind]
+                if digest((motion_dir/item['file']).read_bytes())!=item['sha256']:raise ValueError('Multiview resource checksum mismatch')
+            texture('multiview/'+view['texture']['file'],motion_dir/view['texture']['file'])
     geometry = motion_dir / motion["projection"]["geometry"]["file"]
     geometry_bytes = geometry.read_bytes()
     geometry_hash = digest(geometry_bytes)

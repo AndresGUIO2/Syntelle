@@ -2,9 +2,11 @@ package nativeadapter
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"image"
 	"math"
 	"os"
@@ -347,5 +349,39 @@ func TestSceneReplaysOriginalTypeScriptRecordedFrames(t *testing.T) {
 			}
 			t.Logf("%d recorded TS frames crossed media/scene boundary; max error %.3g", len(scenario.Rows), maximum)
 		})
+	}
+}
+
+func TestAppendedLaughterUsesSpanRelativePulseAnalysis(t *testing.T) {
+	s, _ := fixtureScene(t)
+	s.config.Mandible = &rendercontract.MandibleRig{PoseJaw: map[string]float64{"Rest": 0, "A": 1}, PoseGap: map[string]float64{"Rest": 0, "A": 50}}
+	s.config.ReferenceLaugh = true
+	s.config.LaughAvailable = true
+	s.engine = nativeanimation.NewEngine(s.config)
+	samples := make([]int16, 48000)
+	for i := 24000; i < 48000; i++ {
+		samples[i] = int16(12000 * math.Sin(float64(i)*2*math.Pi*180/24000))
+	}
+	pcm := make([]byte, 48000)
+	for i, v := range samples[24000:] {
+		binary.LittleEndian.PutUint16(pcm[i*2:], uint16(v))
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256(pcm))
+	amount := 1.
+	p := nativeanimation.Performance{Intent: &nativeanimation.PerformanceIntent{Version: "performance-intent/2", Text: "cached mixed", Cues: []nativeanimation.PerformanceAnchor{{Kind: "laugh", Anchor: "mixed"}}}, Resolved: []nativeanimation.PerformanceCue{{Kind: "laugh", Time: 1, Duration: 1, Amount: &amount}}}
+	raw, _ := json.Marshal(p)
+	clip := nativemedia.SpeechState{Active: true, TurnID: "mixed", Samples: samples, SampleRate: 24000, Duration: 2 * time.Second, Text: "cached mixed", Performance: raw, Visemes: []nativemedia.Viseme{{ID: 1, OffsetMS: 0}, {ID: 0, OffsetMS: 1000}, {ID: 0, OffsetMS: 2000}}, LaughterSpan: &rendercontract.LaughterSpan{Version: "laughter-span/1", Offset: 24000, Count: 24000, PCMHash: hash, RecordingHash: hash}}
+	var err error
+	clip.Prepared, err = s.PrepareSpeech(t.Context(), clip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip.Position = 1300 * time.Millisecond
+	f, err := s.sample(nativemedia.FrameInput{MediaTime: clip.Position, Speech: clip, Settings: rendercontract.Defaults()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Laugh < .7 || f.JawOpen < .5 {
+		t.Fatal("full audible appended laugh lost its analysis", f.Laugh, f.JawOpen)
 	}
 }

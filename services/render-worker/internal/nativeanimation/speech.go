@@ -40,6 +40,7 @@ type PerformanceAnchor struct {
 	Repetitions *int     `json:"repetitions,omitempty"`
 }
 type PerformanceIntent struct {
+	Purpose string                        `json:"purpose,omitempty"`
 	Emotion *rendercontract.EmotionTarget `json:"emotion,omitempty"`
 	Version string                        `json:"version"`
 	Text    string                        `json:"text"`
@@ -47,11 +48,12 @@ type PerformanceIntent struct {
 	Cues    []PerformanceAnchor           `json:"cues"`
 }
 type Performance struct {
-	Intent   *PerformanceIntent `json:"intent,omitempty"`
-	Omitted  []string           `json:"omitted,omitempty"`
-	Timing   string             `json:"timing,omitempty"`
-	Resolved []PerformanceCue   `json:"resolved"`
-	ReplyID  string             `json:"reply_id,omitempty"`
+	Motion   *rendercontract.MotionTiming `json:"motion,omitempty"`
+	Intent   *PerformanceIntent           `json:"intent,omitempty"`
+	Omitted  []string                     `json:"omitted,omitempty"`
+	Timing   string                       `json:"timing,omitempty"`
+	Resolved []PerformanceCue             `json:"resolved"`
+	ReplyID  string                       `json:"reply_id,omitempty"`
 }
 type Plan struct {
 	natural     bool         // Application-owned trajectory profile; never decoded from JSON.
@@ -66,22 +68,27 @@ type TimelineEvent struct {
 	Pose string  `json:"pose"`
 }
 type Speech struct {
-	Plan     *Plan           `json:"plan"`
-	Timeline []TimelineEvent `json:"timeline"`
-	Duration float64         `json:"duration"`
-	energy   []float64
+	laughter     *preparedLaughter
+	articulation *preparedArticulation
+	Plan         *Plan           `json:"plan"`
+	Timeline     []TimelineEvent `json:"timeline"`
+	Duration     float64         `json:"duration"`
+	energy       []float64
 }
 
 // PreparedSpeech is immutable after preparation. It contains no retained PCM;
 // optional performance has not spent the session engine's admission allowance.
 type PreparedSpeech struct {
-	plan        Plan
-	timeline    []TimelineEvent
-	duration    float64
-	directed    bool
-	bounds      Bounds
-	energy      []float64
-	Performance *Performance
+	laughter     *preparedLaughter
+	articulation *preparedArticulation
+	plan         Plan
+	timeline     []TimelineEvent
+	duration     float64
+	directed     bool
+	continuous   bool
+	bounds       Bounds
+	energy       []float64
+	Performance  *Performance
 }
 type SpeechState struct {
 	ReplyID  string  `json:"reply_id"`
@@ -99,7 +106,7 @@ const VisemePacingVersion = "bounded-articulation/4"
 func Timeline(events []NativeViseme, durationMS float64) ([]TimelineEvent, error) {
 	return timeline(context.Background(), events, durationMS)
 }
-func timeline(ctx context.Context, events []NativeViseme, durationMS float64) ([]TimelineEvent, error) {
+func timeline(ctx context.Context, events []NativeViseme, durationMS float64, nonverbal ...bool) ([]TimelineEvent, error) {
 	previous := -1.0
 	timeline := []TimelineEvent{}
 	spoken := false
@@ -121,7 +128,8 @@ func timeline(ctx context.Context, events []NativeViseme, durationMS float64) ([
 			timeline = append(timeline, TimelineEvent{event.OffsetMS / 1000, pose})
 		}
 	}
-	if !spoken {
+	allowRest := len(nonverbal) > 0 && nonverbal[0] && durationMS > 0 && durationMS <= 2500 && len(events) >= 2
+	if !spoken && !allowRest {
 		return nil, errors.New("dragon HD returned no spoken visemes")
 	}
 	// Suppress fleeting targets without shifting retained events off the PCM clock.
@@ -318,7 +326,7 @@ func BuildSpeechWithPerformance(samples []float32, sampleRate int, visemes []Nat
 
 // PrepareSpeech performs the PCM-sized work without touching an Engine. Its
 // caller owns the input during this call; the result does not retain samples.
-func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visemes []NativeViseme, seed uint32, config Config) (*PreparedSpeech, error) {
+func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visemes []NativeViseme, seed uint32, config Config, nonverbal ...bool) (*PreparedSpeech, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -326,7 +334,7 @@ func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visem
 		return nil, errors.New("empty speech PCM")
 	}
 	duration := float64(len(samples)) / float64(sampleRate)
-	timeline, err := timeline(ctx, visemes, duration*1000)
+	timeline, err := timeline(ctx, visemes, duration*1000, nonverbal...)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +391,14 @@ func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visem
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &PreparedSpeech{plan: Plan{Version: "speech-context/1", Duration: duration, Cues: cues, Gestures: gestures}, timeline: timeline, duration: duration, directed: config.Directed, bounds: config.Bounds, energy: energy}, nil
+	var articulation *preparedArticulation
+	if config.Mandible != nil {
+		articulation, err = prepareArticulation(ctx, samples, sampleRate, visemes, timeline, energy, config, len(nonverbal) > 0 && nonverbal[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &PreparedSpeech{articulation: articulation, plan: Plan{Version: "speech-context/1", Duration: duration, Cues: cues, Gestures: gestures}, timeline: timeline, duration: duration, directed: config.Directed, continuous: config.ConversationalMotion, bounds: config.Bounds, energy: energy}, nil
 }
 
 // BindSpeech attaches only already-admitted performance. It shares immutable
@@ -391,12 +406,12 @@ func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visem
 func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 	plan := prepared.plan
 	plan.Performance = performance
-	plan.natural = prepared.directed && performance != nil && performance.Intent != nil && performance.Intent.Version == "performance-intent/3"
+	plan.natural = prepared.directed && performance != nil && performance.Intent != nil && rendercontract.NaturalPerformance(performance.Intent.Version)
 	if prepared.directed {
 		plan.Gestures = []Gesture{}
 		if performance != nil {
 			for _, cue := range performance.Resolved {
-				if !isHeadCue(cue.Kind) || cue.Time+cue.Duration > prepared.duration {
+				if !isHeadCue(cue.Kind) || (!(prepared.continuous && performance.Motion.Valid()) && cue.Time+cue.Duration > prepared.duration) {
 					continue
 				}
 				if plan.natural {
@@ -458,7 +473,7 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 			}
 		}
 	}
-	return &Speech{Plan: &plan, Timeline: prepared.timeline, Duration: prepared.duration, energy: prepared.energy}
+	return &Speech{laughter: prepared.laughter, articulation: prepared.articulation, Plan: &plan, Timeline: prepared.timeline, Duration: prepared.duration, energy: prepared.energy}
 }
 func gestureAt(plan *Plan, position float64) Head {
 	result := Head{}

@@ -1,0 +1,12 @@
+{
+  "id": "authorized-coordinated-serena-2026-10-27",
+  "voice": "en-US-Serena:DragonHDLatestNeural",
+  "region": "canadacentral",
+  "limits": {"tts": 14, "characters": 4000, "image": 0, "analysis": 0},
+  "retries": 0,
+  "stop_on_provider_error": true,
+  "purposes": ["reassure", "ask", "playful"],
+  "languages": ["en-US", "es-CO"],
+  "explicit_style_probe_languages": ["en-US"],
+  "laughter_slots": ["laughter-en", "laughter-es"]
+}

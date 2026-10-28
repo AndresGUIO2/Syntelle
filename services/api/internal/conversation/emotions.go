@@ -29,7 +29,7 @@ func decodeEmotion(raw json.RawMessage) *rendercontract.EmotionTarget {
 }
 
 func phraseVersion(v string) string {
-	if v == "performance-intent/3" {
+	if rendercontract.NaturalPerformance(v) {
 		return v
 	}
 	return "performance-intent/2"

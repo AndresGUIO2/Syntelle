@@ -100,6 +100,19 @@ func (h *Host) Dispatch(ctx context.Context, command Envelope) error {
 		return nil
 	}
 	switch command.Type {
+	case "activity":
+		var activity struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(command.Data, &activity) != nil || (activity.State != "listening" && activity.State != "preparing" && activity.State != "speaking" && activity.State != "idle") {
+			return errors.New("invalid performance activity")
+		}
+		s.mu.Lock()
+		s.activity = activity.State
+		s.mu.Unlock()
+		return nil
+	case "performance_preflight":
+		return s.preflight(command.Data)
 	case "stop":
 		s.cancel()
 		select {

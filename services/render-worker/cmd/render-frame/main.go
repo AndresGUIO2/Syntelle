@@ -23,12 +23,16 @@ func run() error {
 	var profile string
 	var repeat int
 	var components bool
+	var packed bool
+	var height int
 	flag.StringVar(&packageDir, "package", "", "Private native package directory")
 	flag.StringVar(&states, "states", "", "Recorded frame-state JSON")
 	flag.StringVar(&output, "output", "", "New output directory")
 	flag.StringVar(&profile, "cpuprofile", "", "Optional offline CPU profile")
 	flag.IntVar(&repeat, "repeat", 1, "Number of offline state replays")
 	flag.BoolVar(&components, "components", false, "Also export diagnostic mouth/eye patches")
+	flag.BoolVar(&packed, "packed", false, "Export the private premultiplied RGB/alpha transport frame")
+	flag.IntVar(&height, "height", 960, "Native portrait height: 720 or 960")
 	flag.Parse()
 	if packageDir == "" || states == "" || output == "" {
 		return fmt.Errorf("package, states and output are required")
@@ -37,7 +41,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	renderer, err := nativerender.New(assets)
+	width := height * 3 / 4
+	renderer, err := nativerender.NewSized(assets, width, height)
 	if err != nil {
 		return err
 	}
@@ -55,7 +60,11 @@ func run() error {
 	if err = os.MkdirAll(output, 0700); err != nil {
 		return err
 	}
-	frame := image.NewRGBA(image.Rect(0, 0, 720, 960))
+	outputWidth := width
+	if packed {
+		outputWidth *= 2
+	}
+	frame := image.NewRGBA(image.Rect(0, 0, outputWidth, height))
 	mouth := nativerender.NewOralRenderer(assets.Oral)
 	eye, err := nativerender.NewEyeRenderer(assets.Opened, assets.Closed, assets.EyeMask, assets.Sclera, assets.Ownership, assets.Motion.Eyes.Curves, assets.EyeSplit)
 	if err != nil {

@@ -1,0 +1,34 @@
+{
+  "version": "conversational-parallax-input/1",
+  "status": "offline-cached-only",
+  "budget_id": "authorized-conversational-parallax-2026-10-26",
+  "limits": {
+    "image": 6,
+    "analysis": 0
+  },
+  "original": "E:/Carpetas/Documentos/01-MisProyectos/Colors/Syntelle.jpg",
+  "source_sha256": "3939c6033bd4cb2cd06c6d3405f244ed470c74330bb8adc9de35b9b00c4579e9",
+  "bundle": ".tools/disgust-readability-93/prepared-v6/resource-bundle.json",
+  "landmarks": ".tools/rgbd-motion-18/prepared-current/syntelle/inputs/landmarks.json",
+  "model": "gemini-nano-banana-2.1",
+  "response_format": {
+    "type": "image",
+    "mime_type": "image/jpeg",
+    "aspect_ratio": "3:4",
+    "image_size": "1K"
+  },
+  "slots": {
+    "yaw-left": "Turn the head 12 degrees toward the viewer’s left. Keep the image identical except for this change. Rotate the head itself, not just the eyes. Let the gaze follow the head turn naturally.",
+    "yaw-right": "Turn the head 12 degrees toward the viewer’s right. Keep the image identical except for this change. Rotate the head itself, not just the eyes. Let the gaze follow the head turn naturally."
+  },
+  "prompt_prefix": "",
+  "transport_retries": 0,
+  "stop_on_provider_error": true,
+  "scope": "Prepare only the current approved source using two recorded references. No provider calls or acquisition authorization.",
+  "reference_policy": "docs/characters/parallax-reference-policy-v5.json",
+  "reference_policy_sha256": "b9a6aa9baa54efdf5bc89dd017fb2245fe0a7e8cdf1f33bd12ae26141a3f4fcc",
+  "accepted_reference_settings_sha256": [
+    "536a3c7837ad6e41e29eeaa8829d8d14e6d9131ef60b60c325002b179e6bae51",
+    "77a5e8ebedc8df4111af4c770853029fee5c4f86d78d7dfe702f988f46bc9904"
+  ]
+}

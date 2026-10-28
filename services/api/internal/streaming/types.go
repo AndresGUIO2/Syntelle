@@ -42,6 +42,7 @@ type Command struct {
 }
 
 type SessionResponse struct {
+	LaughterAvailable bool                       `json:"laughter_available"`
 	StartupTimeoutMS  int                        `json:"startup_timeout_ms,omitempty"`
 	ICEServers        []rendercontract.ICEServer `json:"ice_servers,omitempty"`
 	ID                string                     `json:"id"`
@@ -62,6 +63,11 @@ type commandResult struct {
 }
 
 type streamSession struct {
+	coordinated             bool
+	requestedPolicyRevision uint64
+	appliedSettings         *rendercontract.Settings
+	deliveryWaiters         map[string]chan rendercontract.DeliveryNotice
+	reservedDelivery        *rendercontract.DeliveryReservation
 	emotionInstance         string
 	retiredEmotionInstances []string
 
