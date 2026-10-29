@@ -35,15 +35,16 @@ type speechPart struct {
 }
 
 type clip struct {
-	laughterSpan *rendercontract.LaughterSpan
-	delivery     *rendercontract.DeliveryReservation
-	phraseIndex  int
-	preview      bool
-	samples      []int16
-	visemes      []Viseme
-	duration     time.Duration
-	text         string
-	performance  json.RawMessage
+	streaming, streamFinal bool
+	laughterSpan           *rendercontract.LaughterSpan
+	delivery               *rendercontract.DeliveryReservation
+	phraseIndex            int
+	preview                bool
+	samples                []int16
+	visemes                []Viseme
+	duration               time.Duration
+	text                   string
+	performance            json.RawMessage
 	// These fields are published under the session lock before audio can pop
 	// the clip. Source slices and prepared analysis are immutable thereafter.
 	needsPreparation bool

@@ -69,6 +69,7 @@ type session struct {
 	nextIndex             int
 	complete              bool
 	playing               *clip
+	stream                *clip
 	position              int
 	started               bool
 	mediaTime             time.Duration
@@ -167,6 +168,7 @@ func (s *session) interrupt() {
 	s.revision++
 	s.turn = ""
 	s.queue = nil
+	s.stream = nil
 	// An interrupted in-flight analysis keeps its PCM reservation until it has
 	// observed cancellation and released its temporary conversion buffer.
 	s.queuedBytes = s.cancelPreparationLocked()
@@ -299,6 +301,9 @@ func (s *session) conversation(raw json.RawMessage) error {
 		s.interrupt()
 		return nil
 	}
+	if e.Type == "speech_prefix" {
+		return s.acceptSpeechPrefix(e.TurnID, e.Data, generation)
+	}
 	if e.Type == "speech_complete" {
 		var complete struct {
 			Parts *int `json:"parts"`
@@ -313,6 +318,9 @@ func (s *session) conversation(raw json.RawMessage) error {
 		}
 		if complete.Parts != nil && (*complete.Parts < 1 || *complete.Parts != s.nextIndex) {
 			return errors.New("speech completion does not match received parts")
+		}
+		if s.stream != nil && !s.stream.streamFinal {
+			return errors.New("opening stream has no final recording")
 		}
 		s.complete = true
 		s.revision++
@@ -765,11 +773,29 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 		if filled == 0 {
 			s.presentation = s.clipState(s.playing, s.position)
 		}
-		count := copy(pcm[filled:], s.playing.samples[s.position:])
+		available := len(s.playing.samples)
+		if s.playing.streaming && !s.playing.streamFinal {
+			available = max(0, available-sampleRate/5)
+		}
+		if s.position >= available {
+			if !s.waiting {
+				block.events = append(block.events, playbackNotification{"playback_waiting", s.turn})
+				s.waiting = true
+			}
+			break
+		}
+		if s.waiting {
+			block.events = append(block.events, playbackNotification{"playback_started", s.turn})
+			s.waiting = false
+		}
+		count := copy(pcm[filled:], s.playing.samples[s.position:available])
 		s.position += count
 		filled += count
-		if s.position == len(s.playing.samples) {
+		if s.position == len(s.playing.samples) && (!s.playing.streaming || s.playing.streamFinal) {
 			s.queuedBytes -= len(s.playing.samples) * 2
+			if s.stream == s.playing {
+				s.stream = nil
+			}
 			s.playing = nil
 			s.position = 0
 			s.revision++
@@ -779,7 +805,7 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 }
 
 func (s *session) clipState(value *clip, position int) SpeechState {
-	return SpeechState{LaughterSpan: value.laughterSpan, Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
+	return SpeechState{Streaming: value.streaming, LaughterSpan: value.laughterSpan, Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
 }
 func (s *session) rememberTurn() {
 	if s.turn == "" {

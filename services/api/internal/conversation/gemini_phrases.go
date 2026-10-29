@@ -16,6 +16,7 @@ func (p *Gemini) PhraseRequest(instructions string, messages []Message) any {
 	request := p.Request(instructions, messages).(map[string]any)
 	request["system_instruction"] = strings.Replace(DefaultInstructions+"\n"+instructions, "Reply in plain text in", "Write spoken text in", 1) + "\n" + PhraseDirectionInstructions + " Write version and tone before the phrases array."
 	request["response_format"] = map[string]any{"type": "text", "mime_type": "application/json", "schema": PhrasePerformanceSchema()}
+	request["system_instruction"] = request["system_instruction"].(string) + " Begin with a useful short complete phrase, normally 5 to 12 words, then continue the full answer. Avoid filler acknowledgements. Prefer a quiet opening with an empty cues array when natural; retain the appropriate emotion and purpose. Do not delay that opening to compose the rest of the answer."
 	return request
 }
 

@@ -163,7 +163,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			var attempt *phraseAttempt
 			if job.phrase.Version == rendercontract.CoordinatedPerformanceVersion {
 				var prepareErr error
-				attempt, prepareErr = s.prepareDirectedPhrase(ctx, cid, id, voice, language, job.phrase, count)
+				attempt, prepareErr = s.prepareDirectedPhrase(ctx, cid, id, voice, language, job.phrase, count, s.openingPublisher(ctx, cid, id, job.phrase, count, emit))
 				if errors.Is(prepareErr, ErrDeliverySuperseded) {
 					continue
 				}
@@ -197,11 +197,19 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 				return
 			}
 			intent := PerformanceIntent{Version: phraseVersion(job.phrase.Version), Purpose: job.phrase.Purpose, Emotion: job.phrase.Emotion, Text: job.phrase.Text, Tone: job.phrase.Tone, Cues: job.phrase.Cues}
+			if attempt != nil {
+				intent = coherentIntent(intent, &attempt.ticket.Reservation)
+			}
 			validated := ValidatePerformance(intent, job.phrase.Text)
 			if continuous && rendercontract.NaturalPerformance(intent.Version) {
 				validated.Motion = &rendercontract.MotionTiming{Version: rendercontract.ConversationalMotionVersion, ReplyID: id, Offset: clock / 1000}
 			}
-			direction := resolvePerformance(validated, audio.Audio, audio.Duration/1000, acoustic, clock/1000, audio.Words...)
+			direction := validated
+			// A quiet streaming opening retains its already-admitted direction.
+			// Whole-recording acoustic accents cannot be scheduled retroactively.
+			if attempt == nil || !attempt.streamed {
+				direction = resolvePerformance(validated, audio.Audio, audio.Duration/1000, acoustic, clock/1000, audio.Words...)
+			}
 			direction = s.filterCapabilities(direction)
 			direction = budget.admit(direction, clock/1000)
 			var payload map[string]any
@@ -246,7 +254,12 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 				emit("error", "Reply prefix could not be committed.", nil)
 				return
 			}
-			emit("speech_part", part.Text, part)
+			if attempt != nil && attempt.streamed {
+				part.Final = true
+				emit("speech_prefix", part.Text, part)
+			} else {
+				emit("speech_part", part.Text, part)
+			}
 			if attempt != nil {
 				approvedReservation := attempt.ticket.Reservation
 				activationErr := attempt.activation(ctx)

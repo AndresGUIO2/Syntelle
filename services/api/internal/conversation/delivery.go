@@ -24,13 +24,33 @@ type DirectedSpeech interface {
 	PrepareDirected(context.Context, string, string, string, string, rendercontract.VoiceDelivery) (any, error)
 }
 
+type progressiveDirectedSpeech interface {
+	PrepareDirectedProgressive(context.Context, string, string, string, string, rendercontract.VoiceDelivery, func(any) error) (any, error)
+}
+
 type phraseAttempt struct {
-	ticket *DeliveryTicket
-	audio  any
-	ctx    context.Context
-	cancel context.CancelFunc
-	notice chan rendercontract.DeliveryNotice
-	done   chan struct{}
+	streamed bool
+	ticket   *DeliveryTicket
+	audio    any
+	ctx      context.Context
+	cancel   context.CancelFunc
+	notice   chan rendercontract.DeliveryNotice
+	done     chan struct{}
+}
+
+// Facial cues and contextual amusement cannot override the emotion that was
+// approved for this exact phrase. The original proposal remains in reservation evidence.
+func coherentIntent(intent PerformanceIntent, reservation *rendercontract.DeliveryReservation) PerformanceIntent {
+	if !reservation.Valid() {
+		return intent
+	}
+	effective := reservation.Effective
+	intent.Emotion = &effective
+	switch effective.State {
+	case "fearful", "sad", "angry", "disgusted":
+		intent.Tone = "serious"
+	}
+	return intent
 }
 
 func (a *phraseAttempt) close() { a.cancel(); <-a.done; a.ticket.Close() }
@@ -50,7 +70,7 @@ func (a *phraseAttempt) activation(ctx context.Context) error {
 	}
 }
 
-func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, language string, p PerformancePhrase, index int) (*phraseAttempt, error) {
+func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, language string, p PerformancePhrase, index int, progress ...func(any, *rendercontract.DeliveryReservation) error) (*phraseAttempt, error) {
 	provider, ok := s.Speech.(DirectedSpeech)
 	if s.Delivery == nil || !ok {
 		return nil, errors.New("coordinated speech is unavailable")
@@ -81,6 +101,20 @@ func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, lan
 		case <-work.Done():
 			return
 		case n := <-ticket.Updates:
+			// Early PCM needs an activation receipt immediately for echo checks,
+			// even while the native provider is still completing this recording.
+			if n.Status == "activated" && len(progress) > 0 && progress[0] != nil {
+				receiptCtx, stop := context.WithTimeout(context.WithoutCancel(work), 3*time.Second)
+				receipt, e := s.Store.Reserve(receiptCtx, "delivery-activation", ticket.Reservation.Token, rendercontract.DeliveryVersion, cid, id, map[string]any{"index": index, "text": p.Text, "token": ticket.Reservation.Token, "provider_pending": true}, false)
+				if e == nil {
+					e = s.Store.Finish(receiptCtx, receipt.ID, "received", ticket.Reservation, nil, map[string]string{"source": "authenticated-post-send-activation"}, nil)
+				}
+				stop()
+				if e != nil {
+					n.Status = "failed"
+					n.Reason = "activation_archive_failed"
+				}
+			}
 			if n.Status != "activated" {
 				cancel()
 			}
@@ -89,7 +123,21 @@ func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, lan
 	}()
 	key := id + "-" + ticket.Reservation.Token
 	phraseContext := context.WithValue(work, phraseSpeechKey{}, key)
-	prepared, err := provider.PrepareDirected(phraseContext, p.Text, language, voice, id, delivery)
+	var prepared any
+	if streaming, ok := provider.(progressiveDirectedSpeech); ok && len(progress) > 0 && progress[0] != nil {
+		prepared, err = streaming.PrepareDirectedProgressive(phraseContext, p.Text, language, voice, id, delivery, func(value any) error {
+			if e := work.Err(); e != nil {
+				return e
+			}
+			if e := progress[0](value, &ticket.Reservation); e != nil {
+				return e
+			}
+			a.streamed = true
+			return nil
+		})
+	} else {
+		prepared, err = provider.PrepareDirected(phraseContext, p.Text, language, voice, id, delivery)
+	}
 	if err != nil {
 		if work.Err() != nil && ctx.Err() == nil {
 			select {

@@ -37,6 +37,9 @@ func (s *session) invalidateDeliveryLocked(reason string) {
 	}
 	s.queue = kept
 	s.nextIndex = min(s.nextIndex, r.Request.PhraseIndex)
+	if s.stream != nil && s.stream.delivery != nil && s.stream.delivery.Token == r.Token && s.playing != s.stream {
+		s.stream = nil
+	}
 	s.delivery = nil
 	if s.host != nil {
 		s.host.emit(event("performance_notice", s.id, r.Request.TurnID, rendercontract.DeliveryNotice{RequestID: r.Request.RequestID, Token: r.Token, Status: "invalidated", Reason: reason}))

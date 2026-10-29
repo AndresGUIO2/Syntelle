@@ -61,6 +61,7 @@ type scene struct {
 	animationSession         uint64
 	mediaTime, animationTime time.Duration
 	clipPrepared             *nativeanimation.PreparedSpeech
+	streamTurn               string
 	speech                   *nativeanimation.Speech
 }
 
@@ -246,6 +247,7 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 		s.animationSession++
 		s.speech = nil
 		s.clipPrepared = nil
+		s.streamTurn = ""
 	}
 	delta := input.MediaTime - s.mediaTime
 	if !input.Paused {
@@ -257,11 +259,23 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 		return nativerender.FrameState{}, errors.New("native scene speech analysis is not ready")
 	}
 	if clip.Prepared != nil && clip.Prepared != s.clipPrepared {
-		performance := s.engine.AdmitPerformance(clip.Prepared.Performance, clip.Text, float64(input.MediaTime)/float64(time.Millisecond))
+		continuation := clip.Streaming && s.streamTurn == clip.TurnID && s.speech != nil
+		var performance *nativeanimation.Performance
+		if continuation {
+			performance = s.speech.Plan.Performance
+		} else {
+			performance = s.engine.AdmitPerformance(clip.Prepared.Performance, clip.Text, float64(input.MediaTime)/float64(time.Millisecond))
+		}
 		s.speech = nativeanimation.BindSpeech(clip.Prepared, performance)
 		s.clipPrepared = clip.Prepared
 		s.manualLaughter = clip.Preview
-		s.animationSession++
+		if !continuation {
+			s.animationSession++
+		}
+		s.streamTurn = ""
+		if clip.Streaming {
+			s.streamTurn = clip.TurnID
+		}
 	}
 	position := clip.Position.Seconds()
 	if !clip.Active && s.speech != nil {

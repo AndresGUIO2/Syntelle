@@ -597,7 +597,7 @@ func (s *Service) conversationEvent(session *streamSession, event conversation.E
 	}
 	// Private renderer receives the original prepared speech. The public socket
 	// receives only a small allowlisted status representation for audio events.
-	if event.Type == "speech_part" || event.Type == "prepared_speech" || event.Type == "speech_complete" {
+	if event.Type == "speech_prefix" || event.Type == "speech_part" || event.Type == "prepared_speech" || event.Type == "speech_complete" {
 		s.toWorker(envelope("conversation", session.id, event))
 		if event.Type != "speech_complete" {
 			return

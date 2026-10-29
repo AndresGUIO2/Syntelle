@@ -176,7 +176,7 @@ func (e *speechFailure) Error() string { return e.message }
 func (service *Service) synthesize(ctx context.Context, input Input) (Result, error) {
 	return service.synthesizeBounded(ctx, input, 500, 20*time.Second)
 }
-func (service *Service) synthesizeBounded(ctx context.Context, input Input, limit int, timeout time.Duration) (Result, error) {
+func (service *Service) synthesizeBounded(ctx context.Context, input Input, limit int, timeout time.Duration, progress ...func(Result) error) (Result, error) {
 	if p, ok := service.provider.(interface{ RequiresVoiceQualification() bool }); ok && p.RequiresVoiceQualification() && (input.Voice == rendercontract.DefaultVoice || input.Voice == "en-US-Serena:DragonHDLatestNeural") && (service.capabilities == nil || service.capabilities.Voice != input.Voice) {
 		return Result{}, errors.New("Selected voice qualification is unavailable; no request was made")
 	}
@@ -206,7 +206,9 @@ func (service *Service) synthesizeBounded(ctx context.Context, input Input, limi
 		return *cached, nil
 	}
 	var result Result
-	if queued, ok := service.provider.(queuedProvider); ok {
+	if progressive, ok := service.provider.(progressiveProvider); ok && len(progress) > 0 {
+		result, err = progressive.SynthesizeProgressive(ctx, input, timeout, progress[0])
+	} else if queued, ok := service.provider.(queuedProvider); ok {
 		result, err = queued.SynthesizeQueued(ctx, input, timeout)
 	} else {
 		providerContext, cancel := context.WithTimeout(ctx, timeout)

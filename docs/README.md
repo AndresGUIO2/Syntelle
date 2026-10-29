@@ -50,6 +50,7 @@ Start with [repository structure](development/repository-structure.md) for code 
 
 - [Microphone-only conversation](development/voice-conversation.md): current voice controls, transcript, interruption and bounded browser verification.
 - [Recognition turn grouping](development/recognition-turns.md): combine nearby SDK speech fragments into one conversation message, with cancellable settling and preserved original evidence.
+- [Faster conversational replies](development/conversation-latency.md): PCM-aware quiet deadlines, continuation protection and private progressive first-audio delivery, with bounded offline/browser evidence.
 - [Conversation workspace refresh](development/conversation-workspace.md): aligned panels and mobile layout, including the historical typing interface.
 
 - [Protected local demo builds](development/protected-demo.md): separate baseline/protected builds, runtime-only manifests, conservative engine obfuscation and offline review without geometry streaming.

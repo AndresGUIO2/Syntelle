@@ -20,6 +20,7 @@ type Viseme = rendercontract.Viseme
 
 // Samples and Visemes are immutable for the lifetime of the callback.
 type SpeechState struct {
+	Streaming    bool
 	LaughterSpan *rendercontract.LaughterSpan `json:"laughter_span,omitempty"`
 	Preview      bool
 	Active       bool
