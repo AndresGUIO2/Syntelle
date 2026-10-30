@@ -44,3 +44,9 @@ Use exact frozen phase107 runtime source, package and Emma profile as the baseli
 ## Phase113: remove the stationary skin island
 
 Start from the frozen phase112 source closure and preserve its head/idle/audio/laughter behavior. Reproduce the two full-oral-crop clamps that freeze excess below-lip skin. Replace them with optional speech-jaw/2 protection derived from actual cached lip/support contours and a smooth transition outside its sampling/triangle guard. Version the validation precisely rather than weakening rectangle checks globally. Test central/lateral displacement continuity, actual lip/enamel pixel identity (not surrounding skin), fixed lower neck/clothing and original laughter identity; compare cached head-fixed speech before/after and retain112 rollback. Archive complete preparation, rejected results, source closure and review with PostgreSQL restoration. (REQ-8/9/20/22)
+
+## Phase118 approved approach
+
+Use the frozen phase117 runtime closure and a separate package metadata selector; preserve unrelated working-tree work. A video-loop-owned presence coordinator consumes existing immutable acoustic/semantic analysis and uses emitted PCM progress. Hold the actual background pose during gestures, prefit amplitudes, and retain legacy behavior without the selector. Propagate streaming/final/preview state internally without altering samples, visemes, buffers or public messages. Extend focused tests and compare identical cached recordings before installing under stable local names. Archive complete new evidence and restore hashes; finish with a scoped commit and push. (REQ-31–34)
+
+The owner's too-still correction selects normal speaking deadlines2–3s, quiet4–5s, speaking travel650–750ms, and idle travel550–900ms with1–1.7s holds. Existing acoustic opportunities may anticipate the deadline within the minimum spacing. Target differences remain bounded and distinct; this replaces indefinite waiting for cues. (REQ-31)

@@ -182,3 +182,20 @@ The actual frozen107 GPU binary and candidate GPU match exactly for frontal lip/
 T-31 technical browser review and local installation are complete. Fresh isolated EN/ES fixtures pass cached speech with head controls disabled and complete original Playful laughter, with no errors/provider/microphone calls, session cleanup 204 and original A/V tracks/rate 1. Matched frame sheets show coherent lip/dental edges without a new visible skin seam or neck detachment. These are sampled observations; the preserved complete synchronized videos remain available for owner review, and browser alignment is insufficient for exact pixel claims. The installed phase113 route completes three cached previews with the exact `e83c2bc5...` worker image; all 120 files in its labelled native asset volume match package `70bf36a1...` byte-exactly. Both qualified laughter languages remain enabled and phase112 rollback is preserved.
 
 Cold Windows bind reads stalled offline validation and a reused fixture connection failed decoding; those attempts remain preserved. Fresh Docker-local resources and fresh labelled fixtures resolved validation without changing presentation deadlines. No new provider, image, analysis, synthesis or model request is made. `app.audits.finalize_jaw_transition` archives complete source/resource/failure/media bytes and exact binaries; only a successful `.tools/jaw-transition-113-archive.json` receipt confirms PostgreSQL restoration. T-31 remains unticked for final owner naturalness acceptance. No new performance/device/future-character qualification is claimed.
+
+## Phase118 verification — 2026-10-29
+
+**Verdict: PASS for bounded local technical behavior.** Owner naturalness and physical-device acceptance remain open. This verdict covers only REQ-31–34 and does not close earlier unrelated acceptance gates.
+
+| Requirement | Tasks | Evidence |
+| --- | --- | --- |
+| REQ-31 | T-39/T-40 | Exact cached baseline; opportunity/spacing/activity tests; normal idle and speech frame samples. Owner's too-still correction is included. |
+| REQ-32 | T-40/T-41 | Posture-relative gesture/overlap/headroom/energy regressions; original gesture speeds and legacy tests;120 unchanged resource files and shader/PCM source invariants. |
+| REQ-33 | T-40/T-41 | Prefix deduplication and frozen cursor; interruption/phrase/pause/reduced-motion/selector tests; actual decoded prefix before fixture completion and subsequent five-phrase drain. |
+| REQ-34 | T-39/T-41 | Native race suites and production build; matched cached recordings, serial cadence, healthy installed runtime, preserved117 rollback; complete PostgreSQL archive/restore receipt referenced below. |
+
+`worker-build-final.log` passes `go test -p 2 -race -tags nativegpu ./internal/nativeanimation ./internal/nativeadapter ./internal/nativemedia` and the production native codec/GPU builds, exit0. The isolated publication tree also passes the same checks and worker build, exit0 (`.tools/natural-presence-118-git/build-final.log`). Prior failed checks remain preserved. No paid provider calls occurred.
+
+Serial desktop playback measured29.89→29.93fps and49.9→44.3ms p95 gaps; these short samples do not qualify sustained/device performance. The progressive fixture explicitly decodes audio before allowing complete synthesis to return. Actual live-provider latency remains unmeasured.
+
+Evidence/source/package/profile/video copies are in `.tools/natural-presence-118/`; generic PostgreSQL restoration is confirmed by the external `.tools/natural-presence-118-archive.json` receipt. Local runtime identity and rollback are recorded separately. The publication includes only this change; unrelated working edits are preserved.

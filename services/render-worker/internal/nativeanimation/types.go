@@ -100,6 +100,7 @@ type GazeEye struct {
 	Bounds [2][2]float64 `json:"bounds_px"`
 }
 type Config struct {
+	PresenceVersion      string
 	LaughterV2           bool
 	Mandible             *rendercontract.MandibleRig
 	ConversationalMotion bool
@@ -131,12 +132,15 @@ type Config struct {
 func Load(motionJSON, gazeJSON, expressionJSON []byte) (Config, error) {
 	var m struct {
 		Mandible             *rendercontract.MandibleRig `json:"mandible"`
-		ConversationalMotion *struct{ Version string }   `json:"conversational_motion"`
-		Seed                 uint32                      `json:"animation_seed"`
-		Blink                BlinkSettings               `json:"blink"`
-		Behavior             Behavior                    `json:"behavior"`
-		Breathing            *Breathing                  `json:"breathing"`
-		Projection           struct {
+		ConversationalMotion *struct {
+			Version         string
+			PresenceVersion string `json:"presence_version"`
+		} `json:"conversational_motion"`
+		Seed       uint32        `json:"animation_seed"`
+		Blink      BlinkSettings `json:"blink"`
+		Behavior   Behavior      `json:"behavior"`
+		Breathing  *Breathing    `json:"breathing"`
+		Projection struct {
 			Bounds Bounds `json:"bounds"`
 		} `json:"projection"`
 		Anatomy struct {
@@ -192,6 +196,10 @@ func Load(motionJSON, gazeJSON, expressionJSON []byte) (Config, error) {
 		if m.ConversationalMotion.Version != rendercontract.ConversationalMotionVersion {
 			return Config{}, errors.New("invalid conversational motion profile")
 		}
+		if v := m.ConversationalMotion.PresenceVersion; v != "" && v != PresenceVersion {
+			return Config{}, errors.New("invalid conversational presence profile")
+		}
+		c.PresenceVersion = m.ConversationalMotion.PresenceVersion
 		c.ConversationalMotion = true
 	}
 	c.OralRecovery = ex.Reference != nil && ex.Reference.Oral.Transition != nil && ex.Reference.Oral.Transition.Version == "oral-transition/1"

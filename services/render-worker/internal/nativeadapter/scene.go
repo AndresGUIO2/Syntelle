@@ -281,7 +281,7 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 	if !clip.Active && s.speech != nil {
 		position = s.speech.Duration
 	}
-	speech := nativeanimation.SpeechState{Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech, ReplyID: clip.TurnID}
+	speech := nativeanimation.SpeechState{Preview: clip.Preview, Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech, ReplyID: clip.TurnID}
 	settings := nativeanimation.Settings{ManualLaughter: s.config.LaughterV2 && s.manualLaughter, Activity: input.Activity, EmotionControl: input.EmotionControl, EmotionTime: input.EmotionTime, Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused, EmotionBaseline: input.Settings.EmotionBaseline}
 	if clip.Preview && !s.config.LaughterV2 && !settings.ReducedMotion {
 		settings.AutomaticExpressions = true

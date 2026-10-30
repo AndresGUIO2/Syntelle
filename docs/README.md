@@ -108,6 +108,7 @@ Historical records describe the implementation at their recorded stage; the late
 - [ISPC and libyuv trial](development/cpu-simd-trial.md): optional native kernels, exact frame checks, failed conversion compatibility, bounded Linux CPU/memory comparisons and the decision to retain the current default.
 - [libyuv color validation](development/libyuv-color-validation.md): explicit BT.601 tolerance with exact scalar reference preserved, sustained CPU savings, two-decoder fixed-frame checks and remaining quality/memory gates.
 - [Natural speech gestures](experiments/motion/natural-speech-gestures.md): bounded nod/shake timing, brow accents, head tilt and emphasis, cached native playback and rollback evidence.
+- [Natural conversational presence](experiments/motion/conversational-presence.md) — acoustic posture coordination, more visible idle/speaking activity and phase118 verification.
 - [Disgust lip correction](experiments/motion/disgust-lip-correction.md): source-bound nasal/lid calibration, canonical lips, rejected variants and preserved masks/materials.
 - [Conversational parallax](experiments/motion/conversational-parallax.md): shared speech motion, rigid dental recovery, bounded registered side support and Syntelle-only candidate review.
 

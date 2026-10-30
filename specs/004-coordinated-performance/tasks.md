@@ -126,3 +126,9 @@ Owner feedback identifies a remaining frozen middle skin band in phase112. Its w
 - [ ] T-31 - Review/install/archive the focused transition correction. (REQ-8/9/20/22) Depends:T-30. Check: scoped112 source closure, same cached speech/audio/rate, CPU/CUDA, head-fixed before/after inspection, preserved112 rollback and PostgreSQL byte restoration. Owner naturalness remains open.
 
 T-31 technical review and installation are complete: fresh EN/ES cached speech/laughter routes, sampled matched frames and three installed cached previews pass with original tracks/rate and no provider calls. The labelled native runtime volume's 120 package files match byte-exactly. `.tools/jaw-transition-113-archive.json` confirms archival/restoration only when present and successful. Keep final owner naturalness acceptance open.
+
+## Phase118 approved implementation
+
+- [x] T-39 - Freeze117 and record matched cached baseline. (REQ-34) Check: exact source/runtime receipts and microphone-free player capture.
+- [x] T-40 - Implement optional acoustic presence and posture-relative gesture composition. (REQ-31/32/33) Check: deterministic clock/bounds/continuity/prefix/pause tests; legacy tests unchanged.
+- [x] T-41 - Compare/build/install/archive and publish the scoped candidate. (REQ-34) Check: matched playback, bounded cadence, unchanged PCM/oral resources, production build, PostgreSQL restoration, rollback, commit/push.

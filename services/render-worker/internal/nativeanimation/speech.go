@@ -91,6 +91,7 @@ type PreparedSpeech struct {
 	Performance  *Performance
 }
 type SpeechState struct {
+	Preview  bool    `json:"-"`
 	ReplyID  string  `json:"reply_id"`
 	Active   bool    `json:"active"`
 	Waiting  bool    `json:"waiting"`

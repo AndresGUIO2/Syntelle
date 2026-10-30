@@ -69,15 +69,17 @@ func (e *Engine) Sample(animationMS float64, speech SpeechState, settings Settin
 		a = e.attention.sample(ms, speech, c, settings)
 		if settings.Activity == "listening" {
 			a.Glance = [2]float64{}
-			a.Head.Yaw *= .65
-			a.Head.Pitch *= .65
-			a.Head.Roll *= .65
+			if c.PresenceVersion != PresenceVersion {
+				a.Head.Yaw *= .65
+				a.Head.Pitch *= .65
+				a.Head.Roll *= .65
+			}
 		}
 		if settings.Activity == "preparing" {
 			a.Glance[0] *= .35
 			a.Glance[1] *= .35
 		}
-		if c.MotionScale > 1 {
+		if c.MotionScale > 1 && c.PresenceVersion != PresenceVersion {
 			a.Head.Yaw *= c.MotionScale
 			a.Head.Pitch *= c.MotionScale
 			a.Head.Roll *= c.MotionScale
@@ -250,7 +252,7 @@ func (e *Engine) Sample(animationMS float64, speech SpeechState, settings Settin
 				out.Mouth = Mouth{"Rest", "A", opening}
 			}
 		}
-		if moving {
+		if moving && (c.PresenceVersion != PresenceVersion || speech.Preview) {
 			strength := 0.
 			for _, w := range out.Emotion {
 				strength += w

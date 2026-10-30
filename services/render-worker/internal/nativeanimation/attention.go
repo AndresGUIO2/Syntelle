@@ -174,6 +174,7 @@ func (d *speakingDirector) sample(ms float64, speaking bool, idle attention, see
 }
 
 type attentionDirector struct {
+	presence                                         presenceDirector
 	posture                                          briefPosture
 	semanticRelease                                  accentMotion
 	purposeGain, purposeFrom, purposeGoal, purposeAt float64
@@ -194,6 +195,15 @@ func newAttention(seed uint32) attentionDirector {
 	return attentionDirector{purposeGain: 1, purposeFrom: 1, purposeGoal: 1, session: ^uint64(0), idleWeight: 1, idleFrom: 1, speaking: newSpeaking(seed)}
 }
 func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config, presentation ...Settings) attention {
+	if c.PresenceVersion == PresenceVersion && !speech.Preview {
+		settings := Settings{}
+		if len(presentation) > 0 {
+			settings = presentation[0]
+		}
+		head := d.presence.sample(ms, speech, c, settings)
+		a := attention{Head: head, Glance: idleAttention(ms, c.Seed, c.Expressive).Glance}
+		return d.speaking.sample(ms, speech.Active, a, c.Seed, c.Expressive, true)
+	}
 	if speech.Active {
 		d.natural = speech.plan() != nil && speech.plan().natural
 	}
