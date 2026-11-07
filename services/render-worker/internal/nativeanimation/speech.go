@@ -26,6 +26,12 @@ type Gesture struct {
 	Roll     float64 `json:"roll,omitempty"`
 }
 type PerformanceCue struct {
+	ID          string   `json:"id,omitempty"`
+	AnchorStart float64  `json:"anchor_start,omitempty"`
+	AnchorEnd   float64  `json:"anchor_end,omitempty"`
+	Peak        float64  `json:"peak,omitempty"`
+	Timing      string   `json:"timing,omitempty"`
+	Confidence  float64  `json:"confidence,omitempty"`
 	Kind        string   `json:"kind"`
 	Time        float64  `json:"time"`
 	Duration    float64  `json:"duration"`
@@ -48,12 +54,13 @@ type PerformanceIntent struct {
 	Cues    []PerformanceAnchor           `json:"cues"`
 }
 type Performance struct {
-	Motion   *rendercontract.MotionTiming `json:"motion,omitempty"`
-	Intent   *PerformanceIntent           `json:"intent,omitempty"`
-	Omitted  []string                     `json:"omitted,omitempty"`
-	Timing   string                       `json:"timing,omitempty"`
-	Resolved []PerformanceCue             `json:"resolved"`
-	ReplyID  string                       `json:"reply_id,omitempty"`
+	MotionDirection string                       `json:"motion_direction,omitempty"`
+	Motion          *rendercontract.MotionTiming `json:"motion,omitempty"`
+	Intent          *PerformanceIntent           `json:"intent,omitempty"`
+	Omitted         []string                     `json:"omitted,omitempty"`
+	Timing          string                       `json:"timing,omitempty"`
+	Resolved        []PerformanceCue             `json:"resolved"`
+	ReplyID         string                       `json:"reply_id,omitempty"`
 }
 type Plan struct {
 	natural     bool         // Application-owned trajectory profile; never decoded from JSON.
@@ -68,27 +75,28 @@ type TimelineEvent struct {
 	Pose string  `json:"pose"`
 }
 type Speech struct {
-	laughter     *preparedLaughter
-	articulation *preparedArticulation
 	Plan         *Plan           `json:"plan"`
 	Timeline     []TimelineEvent `json:"timeline"`
 	Duration     float64         `json:"duration"`
 	energy       []float64
+	NativeEvents []NativeViseme `json:"-"`
+	contextual   bool
 }
 
 // PreparedSpeech is immutable after preparation. It contains no retained PCM;
 // optional performance has not spent the session engine's admission allowance.
 type PreparedSpeech struct {
-	laughter     *preparedLaughter
-	articulation *preparedArticulation
 	plan         Plan
 	timeline     []TimelineEvent
 	duration     float64
 	directed     bool
 	continuous   bool
+	intentional  bool
 	bounds       Bounds
 	energy       []float64
 	Performance  *Performance
+	nativeEvents []NativeViseme
+	contextual   bool
 }
 type SpeechState struct {
 	Preview  bool    `json:"-"`
@@ -392,14 +400,7 @@ func PrepareSpeech(ctx context.Context, samples []float32, sampleRate int, visem
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var articulation *preparedArticulation
-	if config.Mandible != nil {
-		articulation, err = prepareArticulation(ctx, samples, sampleRate, visemes, timeline, energy, config, len(nonverbal) > 0 && nonverbal[0])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return &PreparedSpeech{articulation: articulation, plan: Plan{Version: "speech-context/1", Duration: duration, Cues: cues, Gestures: gestures}, timeline: timeline, duration: duration, directed: config.Directed, continuous: config.ConversationalMotion, bounds: config.Bounds, energy: energy}, nil
+	return &PreparedSpeech{nativeEvents: append([]NativeViseme(nil), visemes...), contextual: config.ContextualArticulation, intentional: config.PresenceVersion == IntentionalPresenceVersion, plan: Plan{Version: "speech-context/1", Duration: duration, Cues: cues, Gestures: gestures}, timeline: timeline, duration: duration, directed: config.Directed, continuous: config.ConversationalMotion, bounds: config.Bounds, energy: energy}, nil
 }
 
 // BindSpeech attaches only already-admitted performance. It shares immutable
@@ -416,7 +417,11 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 					continue
 				}
 				if plan.natural {
-					plan.Gestures = append(plan.Gestures, naturalGestures(cue, prepared.bounds, SpeechSeed(performance.Intent.Text), len(plan.Gestures))...)
+					ordinal := len(plan.Gestures)
+					if prepared.intentional {
+						ordinal = int(SpeechSeed(cue.ID))
+					}
+					plan.Gestures = append(plan.Gestures, naturalGestures(cue, prepared.bounds, SpeechSeed(performance.Intent.Text), ordinal)...)
 					continue
 				}
 				pitch, yaw, roll := -1.05, 0.0, 0.
@@ -474,7 +479,7 @@ func BindSpeech(prepared *PreparedSpeech, performance *Performance) *Speech {
 			}
 		}
 	}
-	return &Speech{laughter: prepared.laughter, articulation: prepared.articulation, Plan: &plan, Timeline: prepared.timeline, Duration: prepared.duration, energy: prepared.energy}
+	return &Speech{NativeEvents: prepared.nativeEvents, contextual: prepared.contextual, Plan: &plan, Timeline: prepared.timeline, Duration: prepared.duration, energy: prepared.energy}
 }
 func gestureAt(plan *Plan, position float64) Head {
 	result := Head{}

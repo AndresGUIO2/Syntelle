@@ -51,8 +51,6 @@ type gpuParams struct {
 	Precision           int32
 	ViewDims            [4]int32
 	ViewWeights         [4]float64
-	LaughterDims        [8]int32
-	LaughterValues      [6]float64
 }
 
 type cudaRenderer struct {
@@ -105,7 +103,7 @@ type gpuSkinParams struct {
 }
 type gpuReferenceParams struct {
 	Dims   [16]int32
-	Values [149]float64
+	Values [144]float64
 }
 
 type gpuAtlasIdentity struct {
@@ -229,11 +227,6 @@ func (g *cudaRenderer) initialize(r *Renderer) error {
 	g.offsets = make([]int32, len(g.bins)+1)
 	if !g.hostPipeline {
 		if err := g.initializePatches(r); err != nil {
-			return err
-		}
-	}
-	if r.assets.ReferenceField != nil {
-		if err := g.texture(25, r.assets.ReferenceField); err != nil {
 			return err
 		}
 	}
@@ -385,18 +378,6 @@ func (g *cudaRenderer) renderAll(ctx context.Context, r *Renderer, s FrameState,
 	}
 	p := gpuParams{Dims: [16]int32{int32(r.body.Width), int32(r.body.Height), int32(r.subjectTexture.Width), int32(r.subjectTexture.Height), int32(w), int32(h), int32(g.tilesX), int32(len(g.triangles)),
 		int32(r.assets.Expression.Crop.X), int32(r.assets.Expression.Crop.Y), int32(r.assets.Expression.Crop.Width), int32(r.assets.Expression.Crop.Height)}, Smile: s.Smile, Brows: s.Brows, Units: r.assets.Expression.Units}
-	if companion := r.assets.Expression.ReferenceLaughter; companion != nil && companion.Presentation != nil {
-		c := companion.Presentation.Crop
-		o := r.mouthPatch.Rect
-		p.LaughterDims = [8]int32{int32(c.X), int32(c.Y), int32(c.Width), int32(c.Height), int32(o.X), int32(o.Y), int32(o.Width), int32(o.Height)}
-		p.LaughterValues = [6]float64{s.Laugh, companion.Presentation.Units, 0, float64(companion.Presentation.Iterations), companion.Presentation.Feather}
-		if !s.RestingSmile {
-			p.LaughterValues[5] = 1
-		}
-		if s.LaughSpeech {
-			p.LaughterValues[2] = 1
-		}
-	}
 	p.MaskMode = g.maskMode
 	p.Precision = g.precision
 	if views := r.assets.Motion.Projection.MultiView; views != nil {
@@ -632,9 +613,7 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 	skin := len(r.assets.SkinFrames) == 25 && (!g.hasState || math.Round(clamp(r.jointSmile(g.lastState), 0, 1)*120)/120 != smile || math.Round(clamp(g.lastState.Laugh, 0, 1)*120)/120 != laugh)
 	sw := r.subjectTexture.Width
 	resetReference := !r.referenceActive(s) && g.hasState && r.referenceActive(g.lastState)
-	refreshReference := r.referenceActive(s) && r.assets.Expression.ReferenceLaughter.Presentation != nil
-	skin = skin || refreshReference
-	if resetReference || refreshReference {
+	if resetReference {
 		p := r.referenceParams(s, g.referenceCavityIndex)
 		p.Dims[15] = 1
 		if err := g.update(4, unsafe.Pointer(&p), sw); err != nil {
@@ -653,13 +632,13 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			return err
 		}
 	}
-	r.configureArticulation(s)
-	if resetReference || skin || !g.hasState || s.JawOpen != g.lastState.JawOpen || s.LipOpening != g.lastState.LipOpening || s.LipTension != g.lastState.LipTension || s.From != g.lastState.From || s.To != g.lastState.To || s.Amount != g.lastState.Amount || s.Emotion != g.lastState.Emotion {
+	if resetReference || skin || !g.hasState || s.From != g.lastState.From || s.To != g.lastState.To || s.Amount != g.lastState.Amount || s.Emotion != g.lastState.Emotion || s.LipResidual != g.lastState.LipResidual {
 		g.oralTriangles = g.oralTriangles[:0]
 		var params gpuOralParams
+		r.oral.residual = s.LipResidual
 		r.oral.laugh = legacyLaugh
 		r.oral.emotion = s.Emotion
-		_, err := r.oral.drawExpression(s.From, s.To, s.Amount, r.oralSmile(s), func(mesh *oralMesh, ids [3]int, points [3][2]float64, state *oralShadeState) {
+		_, err := r.oral.drawExpression(s.From, s.To, s.Amount, smile, func(mesh *oralMesh, ids [3]int, points [3][2]float64, state *oralShadeState) {
 			area := patchEdge(points[0], points[1], points[2])
 			if math.Abs(area) < 1e-10 {
 				return
@@ -687,15 +666,12 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			rect := r.mouthPatch.Rect
 			params.Dims = [16]int32{int32(mesh.Width), int32(mesh.Height), int32(rect.X), int32(rect.Y), f[0], f[1], f[2], to[0], to[1], to[2], 0, 1}
 			params.Dims[15] = g.laughLipIndex
-			params.Values[14] = legacyLaugh
+			params.Values[14] = s.Laugh
 			if state.joint {
 				params.Dims[12] = 1
 			}
 			if state.deformedCoverage {
 				params.Dims[12] |= 2
-			}
-			if r.oral.withoutTeeth {
-				params.Dims[12] |= 4
 			}
 			if state.semantic {
 				params.Dims[13] = 1
@@ -705,7 +681,7 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			if v := l.Visible; v != nil {
 				params.Values[56], params.Values[57], params.Values[58], params.Values[59] = v.ReferenceGap, v.Minimum, v.FullRatio, v.ContactWidth
 			}
-			params.Values[14] = legacyLaugh
+			params.Values[14] = s.Laugh
 			for i, v := range state.inner {
 				params.Values[16+i*2] = v[0]
 				params.Values[17+i*2] = v[1]
@@ -725,7 +701,7 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 			return err
 		}
 	}
-	if resetReference || skin || !g.hasState || s.Closure != g.lastState.Closure || s.Gaze != g.lastState.Gaze || s.Laugh != g.lastState.Laugh || s.Emotion != g.lastState.Emotion {
+	if resetReference || skin || !g.hasState || s.Closure != g.lastState.Closure || s.Gaze != g.lastState.Gaze || s.Laugh != g.lastState.Laugh || s.Emotion != g.lastState.Emotion || s.LipResidual != g.lastState.LipResidual {
 		e := r.eyes
 		rect := r.eyePatch.Rect
 		p := gpuEyeParams{Dims: [12]int32{int32(e.opened.Width), int32(e.opened.Height), int32(rect.X), int32(rect.Y)}, Values: [8]float64{float64(float32(clamp(s.Closure, 0, 1))), e.eyeSplit, e.lashBand}}
@@ -744,15 +720,6 @@ func (g *cudaRenderer) updatePatches(r *Renderer, s FrameState) error {
 		}
 	}
 	if r.referenceActive(s) {
-		f := r.referenceState(s)
-		if f.mappingInvalid {
-			return errors.New("laughter material correspondence has no valid shared triangulation")
-		}
-		if len(f.triangles) > 0 {
-			if err := g.upload(26, unsafe.Pointer(&f.triangles[0]), len(f.triangles)*int(unsafe.Sizeof(laughterOralTriangle{}))); err != nil {
-				return err
-			}
-		}
 		p := r.referenceParams(s, g.referenceCavityIndex)
 		if err := g.update(4, unsafe.Pointer(&p), sw); err != nil {
 			return err
@@ -765,19 +732,7 @@ func (r *Renderer) referenceParams(s FrameState, cavity int32) gpuReferenceParam
 	p := r.assets.Expression.ReferenceLaughter
 	f := r.referenceState(s)
 	rect, eye, oral := p.Crop, p.Eyes.Crop, r.mouthPatch.Rect
-	v := gpuReferenceParams{Dims: [16]int32{int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height), int32(f.low), int32(f.high), int32(eye.X), int32(eye.Y), int32(eye.Width), int32(eye.Height), int32(oral.X), int32(oral.Y), int32(oral.Width), int32(oral.Height), cavity}, Values: [149]float64{f.weight, s.Laugh, f.jaw, r.referenceChin(), clamp(s.Closure, 0, 1), r.eyes.eyeSplit, r.eyes.lashBand, f.upper[0], f.upper[1], f.lower[0], f.lower[1], s.Gaze[0][0], s.Gaze[0][1], s.Gaze[1][0], s.Gaze[1][1], f.offsets[0][0], f.offsets[0][1], f.offsets[1][0], f.offsets[1][1]}}
-	if p.Presentation != nil {
-		v.Values[19] = laughterOralWeight(s)
-		v.Values[148] = float64(len(f.triangles))
-		v.Values[144] = 1
-		v.Values[146] = p.Presentation.Feather
-		baseline := s
-		baseline.Laugh = 0
-		v.Values[147] = r.laughSquint(baseline)
-		if s.LaughSpeech {
-			v.Values[145] = 1
-		}
-	}
+	v := gpuReferenceParams{Dims: [16]int32{int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height), int32(f.low), int32(f.high), int32(eye.X), int32(eye.Y), int32(eye.Width), int32(eye.Height), int32(oral.X), int32(oral.Y), int32(oral.Width), int32(oral.Height), cavity}, Values: [144]float64{f.weight, s.Laugh, f.jaw, r.assets.Motion.Anatomy.ChinY, clamp(s.Closure, 0, 1), r.eyes.eyeSplit, r.eyes.lashBand, f.upper[0], f.upper[1], f.lower[0], f.lower[1], s.Gaze[0][0], s.Gaze[0][1], s.Gaze[1][0], s.Gaze[1][1], f.offsets[0][0], f.offsets[0][1], f.offsets[1][0], f.offsets[1][1]}}
 	if f.localContact {
 		v.Values[103] = 1
 		for i := range 20 {

@@ -191,7 +191,13 @@ func (s *Service) deliverCreate(session *streamSession) bool {
 	if httpapi.Cloud() {
 		width, height = 1080, 720
 	}
-	return s.toWorker(envelope("create", session.id, map[string]any{"settings": session.settings, "emotion_policy_revision": session.emotionPolicyRevision, "package_hash": s.config.PackageHash, "width": width, "height": height, "fps": 30}))
+	s.mu.Lock()
+	settings, revision, mood := session.settings, session.emotionPolicyRevision, session.moodCheckpoint
+	if mood != nil && mood.Revision != revision {
+		mood = nil
+	}
+	s.mu.Unlock()
+	return s.toWorker(envelope("create", session.id, map[string]any{"settings": settings, "emotion_policy_revision": revision, "mood_checkpoint": mood, "package_hash": s.sessionPackageHash(session), "width": width, "height": height, "fps": 30}))
 }
 func (s *Service) bootSession(parent context.Context, session *streamSession) {
 	defer s.wg.Done()

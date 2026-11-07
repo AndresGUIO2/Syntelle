@@ -11,6 +11,12 @@ import (
 // admission. Laughter requires the prepared companion; voice/cooldown policy is
 // applied before media delivery. The caller supplies a monotonic elapsed clock.
 func (e *Engine) AdmitPerformance(value *Performance, text string, nowMS float64) *Performance {
+	if e.config.PresenceVersion == IntentionalPresenceVersion && value != nil && value.Motion.Valid() {
+		return e.admitIntentional(value, text, nowMS, -1)
+	}
+	return e.admitPerformanceLegacy(value, text, nowMS)
+}
+func (e *Engine) admitPerformanceLegacy(value *Performance, text string, nowMS float64) *Performance {
 	if value == nil || value.Intent == nil || (value.Intent.Version != "performance-intent/1" && !rendercontract.DirectedPerformance(value.Intent.Version)) || value.Intent.Text != text || value.Intent.Cues == nil || value.Resolved == nil {
 		return nil
 	}

@@ -92,5 +92,13 @@ type VoiceDelivery struct {
 }
 
 func (d VoiceDelivery) Valid() bool {
-	return d.Version == DeliveryVersion && ValidPurpose(d.Purpose) && d.Emotion.Valid() && d.CapabilityRevision != "" && (d.Style == "" || d.Style == "reassuring" || d.Style == "curious" || d.Style == "amused")
+	return d.Version == DeliveryVersion && ValidPurpose(d.Purpose) && d.Emotion.Valid() && d.CapabilityRevision != "" && ValidDeliveryStyle(d.Style)
+}
+
+func ValidDeliveryStyle(style string) bool {
+	switch style {
+	case "", "reassuring", "curious", "amused", "fearful", "sad", "angry":
+		return true
+	}
+	return false
 }

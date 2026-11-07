@@ -24,6 +24,47 @@ type Mailer interface {
 	SendCode(ctx context.Context, email, code, challengeID string) (deliveryID string, err error)
 }
 
+// PurposeMailer sends a distinct administrative message without changing the
+// existing sign-in mail contract used by account fixtures and providers.
+type PurposeMailer interface {
+	SendPurposeCode(ctx context.Context, email, code, challengeID, purpose string) (deliveryID string, err error)
+}
+
+func (m *ResendMailer) SendPurposeCode(ctx context.Context, email, code, challengeID, purpose string) (string, error) {
+	subject := "Your Syntelle administration code"
+	if purpose == "ownership_transfer" {
+		subject = "Your Syntelle ownership code"
+	}
+	message := "Your Syntelle verification code is " + code + ". It expires in 10 minutes."
+	body, err := json.Marshal(map[string]any{"from": m.From, "to": []string{email}, "subject": subject, "text": message, "html": "<p>Your Syntelle verification code:</p><p><strong>" + code + "</strong></p><p>It expires in 10 minutes.</p>"})
+	if err != nil {
+		return "", errors.New("email could not be prepared")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(body))
+	if err != nil {
+		return "", errors.New("email delivery request is invalid")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+m.Key)
+	req.Header.Set("Idempotency-Key", "syntelle-privileged/"+challengeID)
+	res, err := m.Client.Do(req)
+	if err != nil {
+		return "", errors.New("email delivery outcome is uncertain")
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 16<<10))
+		return "", errors.New("email provider rejected delivery")
+	}
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err = json.NewDecoder(io.LimitReader(res.Body, 16<<10)).Decode(&result); err != nil || result.ID == "" || len(result.ID) > 200 {
+		return "", errors.New("email delivery response is invalid")
+	}
+	return result.ID, nil
+}
+
 type ResendMailer struct {
 	Key, From string
 	Client    *http.Client

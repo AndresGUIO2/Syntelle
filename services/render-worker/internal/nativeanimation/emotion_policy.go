@@ -56,6 +56,10 @@ type emotionPolicyKey struct {
 // EmotionController has one session owner. Value copies stage complete audio
 // blocks transactionally; failed sends cannot spend budgets or confirmations.
 type EmotionController struct {
+	// Persistent is enabled only by a qualified optional character companion.
+	Persistent         bool
+	lastActivity       float64
+	sustained          rendercontract.EmotionTarget
 	Motion             EmotionSnapshot
 	Revision, Sequence uint64
 	key                emotionPolicyKey
@@ -69,6 +73,17 @@ type EmotionController struct {
 	releasing          bool
 	SuppressedTurn     string
 	lastTurn           string
+}
+
+func (c *EmotionController) Activity(ms float64) {
+	if !c.Persistent {
+		return
+	}
+	c.lastActivity = math.Max(c.lastActivity, ms)
+	if c.Motion.Phase == "recovery" {
+		c.move(ms, c.sustained, 500, "holding", false)
+	}
+	c.releasing = false
 }
 
 func baseTarget(b rendercontract.EmotionBaseline) rendercontract.EmotionTarget {
@@ -100,6 +115,8 @@ func (c *EmotionController) Configure(ms float64, settings rendercontract.Settin
 		c.Motion.EnergyTo = .5
 	}
 	c.move(ms, baseTarget(k.Base), duration, "baseline", false)
+	c.sustained = baseTarget(k.Base)
+	c.lastActivity = ms
 	c.initialized = true
 	return true
 }
@@ -110,6 +127,14 @@ func (c *EmotionController) End(ms float64, interrupted bool) {
 	if interrupted {
 		c.confirmation = ""
 	}
+	if c.Persistent {
+		// Lifecycle notifications are not dialogue. Only accepted input and
+		// committed PCM renew activity; an idle interrupt must retain mood age.
+		if c.Motion.Phase != "baseline" && c.Motion.Phase != "recovery" {
+			c.Motion.Phase = "holding"
+		}
+		return
+	}
 	if c.Motion.Phase != "baseline" && !c.releasing {
 		c.releaseAt = ms + 2000
 		c.Motion.Phase = "holding"
@@ -118,6 +143,10 @@ func (c *EmotionController) End(ms float64, interrupted bool) {
 }
 func (c *EmotionController) Advance(ms float64, busy bool) bool {
 	changed := false
+	if c.Persistent && c.Motion.Phase != "baseline" && c.Motion.Phase != "recovery" && ms >= c.lastActivity+180000 {
+		c.move(c.lastActivity+180000, baseTarget(c.key.Base), 60000, "recovery", false)
+		changed = true
+	}
 
 	if c.releasing && ms >= c.releaseAt && c.Motion.Phase != "recovery" {
 		c.move(c.releaseAt, baseTarget(c.key.Base), c.key.Regulation.Profile().RecoveryMS, "recovery", false)
@@ -125,6 +154,7 @@ func (c *EmotionController) Advance(ms float64, busy bool) bool {
 	}
 	if c.Motion.Phase == "recovery" && ms >= c.Motion.Start+c.Motion.Duration {
 		c.move(ms, baseTarget(c.key.Base), 0, "baseline", false)
+		c.sustained = baseTarget(c.key.Base)
 		c.releasing = false
 		changed = true
 	}
@@ -159,7 +189,17 @@ func (c *EmotionController) Propose(ms float64, proposed *rendercontract.Emotion
 		return c.Evidence(proposed, "suppressed", turn, phrase, generation)
 	}
 	target := *proposed
-	target.Intensity = math.Min(target.Intensity, rendercontract.EmotionCeiling(target.State)) * c.key.Regulation.Profile().Multiplier
+	if c.Persistent {
+		if target.State == "neutral" {
+			target.Intensity = 0
+		} else if target.Intensity == 0 {
+			return c.Evidence(proposed, "below_threshold", turn, phrase, generation)
+		} else {
+			target.Intensity = math.Max(.4, math.Min(1, target.Intensity*c.key.Regulation.Profile().Multiplier))
+		}
+	} else {
+		target.Intensity = math.Min(target.Intensity, rendercontract.EmotionCeiling(target.State)) * c.key.Regulation.Profile().Multiplier
+	}
 	target.Energy = math.Max(.35, math.Min(.65, target.Energy))
 	if target.State != "neutral" && target.Intensity < .10 {
 		c.confirmation = ""
@@ -193,6 +233,7 @@ func (c *EmotionController) Propose(ms float64, proposed *rendercontract.Emotion
 		sample, _ := c.Motion.Sample(ms)
 		duration := math.Max(500, 1.875*math.Abs(target.Intensity-sample[rendercontract.EmotionIndex(target.State)])/.15*1000)
 		c.move(ms, target, duration, "reaction", false)
+		c.sustained = target
 		c.releasing = false
 		return c.Evidence(proposed, "intensity_limited", turn, phrase, generation)
 	}
@@ -234,6 +275,7 @@ func (c *EmotionController) Propose(ms float64, proposed *rendercontract.Emotion
 		duration, phase = 1000, "bridge"
 	}
 	c.move(ms, target, duration, phase, bridge)
+	c.sustained = target
 	return c.Evidence(proposed, "accepted", turn, phrase, generation)
 }
 

@@ -16,6 +16,28 @@ type Channel struct {
 }
 
 func (s *Service) OpenChannel(parent context.Context, emit func(Event)) (*Channel, error) {
+	return s.openChannel(parent, s, emit)
+}
+
+// OpenCharacterChannel borrows providers but isolates the prepared capability
+// profile. A new portrait cannot inherit another character's identity/laughter.
+// Lifecycle accounting remains with the owning service (no detached service).
+func (s *Service) OpenCharacterChannel(parent context.Context, basic bool, packageHash, character, name string, emit func(Event)) (*Channel, error) {
+	if !basic {
+		return s.OpenChannel(parent, emit)
+	}
+	runner := New(s.Store, s.Model, s.Speech, s.Recognition)
+	runner.Delivery = s.Delivery
+	runner.endpointVersion = s.endpointVersion
+	runner.Performance = &PerformanceProfile{Version: "character-performance/1", PackageHash: packageHash, Voice: s.RuntimeVoice(), Capabilities: []string{"nod", "double_nod", "shake", "emphasis", "tilt", "brows", "smile"}}
+	runner.Performance.Identity = &CharacterIdentity{Version: "character-identity/1", CharacterID: character, Name: name}
+	if err := runner.Performance.Identity.validate(); err != nil {
+		return nil, err
+	}
+	return s.openChannel(parent, runner, emit)
+}
+
+func (s *Service) openChannel(parent context.Context, runner *Service, emit func(Event)) (*Channel, error) {
 	ctx, cancel := context.WithCancel(parent)
 	c := &Channel{incoming: make(chan Event, 16), done: make(chan struct{}), cancel: cancel}
 	s.mu.Lock()
@@ -34,7 +56,7 @@ func (s *Service) OpenChannel(parent context.Context, emit func(Event)) (*Channe
 		defer close(c.done)
 		defer cancel()
 		defer func() { s.mu.Lock(); delete(s.channels, c); s.mu.Unlock(); s.workers.Done() }()
-		s.runSession(ctx, c.incoming, func(producer context.Context, event Event) {
+		runner.runSession(ctx, c.incoming, func(producer context.Context, event Event) {
 			if producer.Err() == nil && ctx.Err() == nil {
 				emit(event)
 			}

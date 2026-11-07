@@ -1,6 +1,11 @@
 package nativemedia
 
-import "syntelle/render-contract"
+import (
+	"log/slog"
+	"time"
+
+	"syntelle/render-contract"
+)
 
 // Commit only the state staged for PCM that was actually sent. Configuration
 // changes and cancellation invalidate an in-flight copy without touching audio.
@@ -24,6 +29,7 @@ func (s *session) commitEmotions(block audioBlock, sent bool) []rendercontract.E
 	s.emotionClock = block.clock
 	if block.delivery != nil {
 		r := block.delivery.reservation
+		slog.Info("First phrase PCM sent", "code", "phrase_pcm_sent", "turn_id", r.Request.TurnID, "index", r.Request.PhraseIndex, "sent_unix_ms", time.Now().UnixMilli())
 		s.delivery = nil
 		copy := s.settings
 		s.host.emit(event("performance_notice", s.id, r.Request.TurnID, rendercontract.DeliveryNotice{RequestID: r.Request.RequestID, Token: r.Token, Status: "activated", Reservation: &r, Applied: &copy}))

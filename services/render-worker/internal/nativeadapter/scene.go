@@ -43,14 +43,16 @@ func (s *scene) RenderMetrics() map[string]any {
 	return nil
 }
 
-func (s *scene) UnifiedLaughterAvailable() bool { return s.config.LaughterV2 }
-func (s *scene) EmotionsAvailable() bool        { return s.config.Emotions }
+func (s *scene) PersistentEmotionsAvailable() bool { return s.persistentEmotions }
+
+func (s *scene) EmotionsAvailable() bool { return s.config.Emotions }
 
 // Animation/renderer state has one owner: nativemedia's video loop. The
 // preparation lane reads only immutable Config and publishes immutable clips.
 type scene struct {
+	lastLipResidual          [2]float64
+	persistentEmotions       bool
 	speechJawRig             *rendercontract.SpeechJawRig
-	manualLaughter           bool
 	previewSequence          uint64
 	previewStart             time.Duration
 	config                   nativeanimation.Config
@@ -62,6 +64,7 @@ type scene struct {
 	mediaTime, animationTime time.Duration
 	clipPrepared             *nativeanimation.PreparedSpeech
 	streamTurn               string
+	streamPhrase             int
 	speech                   *nativeanimation.Speech
 }
 
@@ -112,7 +115,7 @@ func LoadAssetsSized(assets *nativerender.Assets, width, height int) (nativemedi
 		if err != nil {
 			return nil, fmt.Errorf("prepare native scene renderer: %w", err)
 		}
-		return &scene{config: config, engine: nativeanimation.NewEngine(config), renderer: r, speechJawRig: assets.Motion.SpeechJaw}, nil
+		return &scene{persistentEmotions: assets.Motion.EmotionalPresence != nil, config: config, engine: nativeanimation.NewEngine(config), renderer: r, speechJawRig: assets.Motion.SpeechJaw}, nil
 	}
 	return factory, packageHash, nil
 }
@@ -178,42 +181,8 @@ func (s *scene) PrepareSpeech(ctx context.Context, clip nativemedia.SpeechState)
 	}
 	var performance *nativeanimation.Performance
 	_ = json.Unmarshal(clip.Performance, &performance)
-	if err := nativeanimation.ValidateLaughterSpan(clip.LaughterSpan, clip.Samples, clip.SampleRate); err != nil {
-		return nil, err
-	}
 	nonverbal := false
-	if s.config.LaughterV2 && performance != nil {
-		for _, cue := range performance.Resolved {
-			if cue.Kind == "laugh" && clip.LaughterSpan == nil {
-				return nil, errors.New("complete laughter requires a bound PCM span")
-			}
-		}
-	}
-	if span := clip.LaughterSpan; span != nil {
-		found := false
-		if performance != nil {
-			for _, cue := range performance.Resolved {
-				if cue.Kind == "laugh" && cue.Amount != nil && *cue.Amount > 0 && math.Abs(cue.Time*float64(clip.SampleRate)-float64(span.Offset)) <= 1 && math.Abs(cue.Duration*float64(clip.SampleRate)-float64(span.Count)) <= 1 {
-					found = true
-				}
-			}
-		}
-		if found {
-			admitted := nativeanimation.NewEngine(s.config).AdmitPerformance(performance, clip.Text, 0)
-			found = false
-			if admitted != nil {
-				for _, cue := range admitted.Resolved {
-					if cue.Kind == "laugh" {
-						found = true
-					}
-				}
-			}
-		}
-		if !found {
-			return nil, errors.New("laughter span has no matching admitted direction")
-		}
-		nonverbal = span.Offset == 0 && span.Count == len(samples)
-	} else if performance != nil && len(performance.Resolved) == 1 {
+	if performance != nil && len(performance.Resolved) == 1 {
 		cue := performance.Resolved[0]
 		duration := float64(len(samples)) / float64(clip.SampleRate)
 		nonverbal = cue.Kind == "laugh" && cue.Time == 0 && duration <= 2.5 && math.Abs(cue.Duration-duration) < .002 && cue.Amount != nil && *cue.Amount > 0 && *cue.Amount <= 1
@@ -221,9 +190,6 @@ func (s *scene) PrepareSpeech(ctx context.Context, clip nativemedia.SpeechState)
 	prepared, err := nativeanimation.PrepareSpeech(ctx, samples, clip.SampleRate, visemes, nativeanimation.SpeechSeed(clip.Text), s.config, nonverbal)
 	if err != nil {
 		return nil, fmt.Errorf("prepare native scene speech: %w", err)
-	}
-	if err = nativeanimation.AttachLaughterSpan(ctx, prepared, samples, clip.SampleRate, clip.LaughterSpan, s.config); err != nil {
-		return nil, err
 	}
 	// Invalid optional performance does not prevent original PCM replay.
 	if len(clip.Performance) > 0 {
@@ -259,22 +225,22 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 		return nativerender.FrameState{}, errors.New("native scene speech analysis is not ready")
 	}
 	if clip.Prepared != nil && clip.Prepared != s.clipPrepared {
-		continuation := clip.Streaming && s.streamTurn == clip.TurnID && s.speech != nil
+		continuation := clip.Streaming && s.streamTurn == clip.TurnID && s.streamPhrase == clip.PhraseIndex && s.speech != nil
 		var performance *nativeanimation.Performance
 		if continuation {
-			performance = s.speech.Plan.Performance
+			performance = s.engine.AdmitPerformanceUpdate(clip.Prepared.Performance, clip.Text, float64(input.MediaTime)/float64(time.Millisecond), clip.Position.Seconds())
 		} else {
 			performance = s.engine.AdmitPerformance(clip.Prepared.Performance, clip.Text, float64(input.MediaTime)/float64(time.Millisecond))
 		}
 		s.speech = nativeanimation.BindSpeech(clip.Prepared, performance)
 		s.clipPrepared = clip.Prepared
-		s.manualLaughter = clip.Preview
 		if !continuation {
 			s.animationSession++
 		}
 		s.streamTurn = ""
 		if clip.Streaming {
 			s.streamTurn = clip.TurnID
+			s.streamPhrase = clip.PhraseIndex
 		}
 	}
 	position := clip.Position.Seconds()
@@ -282,14 +248,11 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 		position = s.speech.Duration
 	}
 	speech := nativeanimation.SpeechState{Preview: clip.Preview, Active: clip.Active, Waiting: clip.Waiting, Position: position, Session: s.animationSession, Speech: s.speech, ReplyID: clip.TurnID}
-	settings := nativeanimation.Settings{ManualLaughter: s.config.LaughterV2 && s.manualLaughter, Activity: input.Activity, EmotionControl: input.EmotionControl, EmotionTime: input.EmotionTime, Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused, EmotionBaseline: input.Settings.EmotionBaseline}
-	if clip.Preview && !s.config.LaughterV2 && !settings.ReducedMotion {
+	settings := nativeanimation.Settings{Activity: input.Activity, EmotionControl: input.EmotionControl, EmotionTime: input.EmotionTime, Movement: input.Settings.Movement, Blinking: input.Settings.Blinking, AutomaticExpressions: input.Settings.AutomaticExpressions, Smile: input.Settings.Smile, Brows: input.Settings.Brows, ReducedMotion: input.Settings.ReducedMotion, Paused: input.Paused, EmotionBaseline: input.Settings.EmotionBaseline}
+	if clip.Preview && !settings.ReducedMotion {
 		settings.AutomaticExpressions = true
 	}
 	f := s.engine.Sample(float64(s.animationTime)/float64(time.Millisecond), speech, settings)
-	if !clip.Active && !s.engine.LaughterPresenting() {
-		s.manualLaughter = false
-	}
 	if input.PreviewSequence != s.previewSequence {
 		s.previewSequence = input.PreviewSequence
 		s.previewStart = s.animationTime
@@ -301,14 +264,16 @@ func (s *scene) sample(input nativemedia.FrameInput) (nativerender.FrameState, e
 	// Waiting for audio retains the original resting mouth and manual smile.
 	// Articulation starts only when PCM playback becomes active.
 	restingSmile := f.Emotion == (rendercontract.EmotionWeights{}) && !clip.Active && (!clip.Waiting || s.config.SpeakingSmile) && f.Laugh == 0
-	if s.config.LaughterV2 && f.Laugh > 0 && !f.LaughSpeech && f.Emotion == (rendercontract.EmotionWeights{}) {
+	if s.config.ReferenceLaugh && clip.Preview && f.Laugh < 1./240 {
 		restingSmile = true
 	}
-	if s.config.ReferenceLaugh && !s.config.LaughterV2 && clip.Preview && f.Laugh < 1./240 {
-		restingSmile = true
-	}
-	return nativerender.FrameState{SpeechJaw: speechJawAt(speech, s.speechJawRig, clip.Preview, input.Settings.ReducedMotion, f.Laugh), LaughSpeech: f.LaughSpeech, JawOpen: f.JawOpen, LipOpening: f.LipOpening, LipTension: f.LipTension, Emotion: f.Emotion, Head: [3]float64{f.Head.Yaw, f.Head.Pitch, f.Head.Roll}, Breath: f.Breath, From: f.Mouth.From, To: f.Mouth.To, Amount: f.Mouth.Amount, Closure: f.EyeClosure, Gaze: f.Gaze, Smile: f.Smile, Brows: f.Brows, Laugh: f.Laugh, RestingSmile: restingSmile, Background: input.Settings.Background, Blur: input.Settings.Blur}, nil
+	return nativerender.FrameState{LipResidual: s.sampleLipResidual(position, clip.Active && f.Laugh == 0 && !clip.Preview, input.Paused), SpeechJaw: speechJawAt(speech, s.speechJawRig, clip.Preview, input.Settings.ReducedMotion, f.Laugh), Emotion: f.Emotion, Head: [3]float64{f.Head.Yaw, f.Head.Pitch, f.Head.Roll}, Breath: f.Breath, From: f.Mouth.From, To: f.Mouth.To, Amount: f.Mouth.Amount, Closure: f.EyeClosure, Gaze: f.Gaze, Smile: f.Smile, Brows: f.Brows, Laugh: f.Laugh, RestingSmile: restingSmile, Background: input.Settings.Background, Blur: input.Settings.Blur}, nil
 }
 
-// Called only on the video owner while its frame lock is held.
-func (s *scene) LaughterPresenting() bool { return s.engine.LaughterPresenting() }
+// Video-loop owned; pause retains the actual last rendered residual.
+func (s *scene) sampleLipResidual(position float64, enabled, paused bool) [2]float64 {
+	if !paused {
+		s.lastLipResidual = s.speech.ResidualAt(position, enabled)
+	}
+	return s.lastLipResidual
+}

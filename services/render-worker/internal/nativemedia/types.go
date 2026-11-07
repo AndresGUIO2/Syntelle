@@ -20,21 +20,21 @@ type Viseme = rendercontract.Viseme
 
 // Samples and Visemes are immutable for the lifetime of the callback.
 type SpeechState struct {
-	Streaming    bool
-	LaughterSpan *rendercontract.LaughterSpan `json:"laughter_span,omitempty"`
-	Preview      bool
-	Active       bool
-	Waiting      bool
-	Revision     uint64
-	TurnID       string
-	Position     time.Duration
-	Duration     time.Duration
-	Samples      []int16
-	SampleRate   int
-	Visemes      []Viseme
-	Text         string
-	Performance  json.RawMessage
-	Prepared     *nativeanimation.PreparedSpeech
+	PhraseIndex int
+	Streaming   bool
+	Preview     bool
+	Active      bool
+	Waiting     bool
+	Revision    uint64
+	TurnID      string
+	Position    time.Duration
+	Duration    time.Duration
+	Samples     []int16
+	SampleRate  int
+	Visemes     []Viseme
+	Text        string
+	Performance json.RawMessage
+	Prepared    *nativeanimation.PreparedSpeech
 }
 
 type FrameInput struct {
@@ -80,6 +80,9 @@ type Config struct {
 	Height      int
 	FPS         int
 	PackageHash string
+	// ResolvePackage is an operator-owned private registry. The authenticated API
+	// supplies only a ready, account-authorized hash; the browser supplies none.
+	ResolvePackage func(string) (SceneFactory, error)
 	// NetworkSettings is immutable worker configuration, never a client command.
 	// Nil preserves direct container-network ICE used by offline comparisons.
 	NetworkSettings *webrtc.SettingEngine

@@ -16,17 +16,16 @@ import (
 
 // FrameState contains presentation state, never wall-clock callback arrival.
 type FrameState struct {
-	SpeechJaw                       float64
-	LaughSpeech                     bool
-	JawOpen, LipOpening, LipTension float64
-	Emotion                         rendercontract.EmotionWeights `json:"emotion,omitempty"`
-	Head                            [3]float64                    `json:"head"`
-	Breath                          float64                       `json:"breath"`
-	From, To                        string
-	Amount, Closure                 float64
-	Gaze                            [2][2]float64
-	Smile, Brows                    float64
-	Laugh                           float64
+	SpeechJaw       float64
+	LipResidual     [2]float64
+	Emotion         rendercontract.EmotionWeights `json:"emotion,omitempty"`
+	Head            [3]float64                    `json:"head"`
+	Breath          float64                       `json:"breath"`
+	From, To        string
+	Amount, Closure float64
+	Gaze            [2][2]float64
+	Smile, Brows    float64
+	Laugh           float64
 	// RestingSmile preserves the registered, closed-mouth manual expression.
 	RestingSmile bool
 	Background   string
@@ -69,10 +68,9 @@ type Renderer struct {
 	fringe             []fringeTriangle
 	lastSort           string
 	lastMouth          struct {
-		Emotion                         rendercontract.EmotionWeights
-		From, To                        string
-		Amount                          float64
-		JawOpen, LipOpening, LipTension float64
+		Emotion  rendercontract.EmotionWeights
+		From, To string
+		Amount   float64
 	}
 	lastEye struct {
 		Emotion rendercontract.EmotionWeights
@@ -263,33 +261,24 @@ func (r *Renderer) Render(ctx context.Context, state FrameState, dst *image.RGBA
 		}
 		r.initialized = false
 	}
-	if r.referenceActive(state) && r.assets.Expression.ReferenceLaughter.Presentation != nil {
-		rect := r.assets.Expression.ReferenceLaughter.Crop
-		for y := 0; y < rect.Height; y++ {
-			start := ((y+rect.Y)*r.subjectTexture.Width + rect.X) * 4
-			copy(r.subjectTexture.Pixels[start:start+rect.Width*4], r.assets.Foreground.Pixels[start:start+rect.Width*4])
-		}
-		r.initialized = false
-	}
-	r.configureArticulation(state)
 	jointSmile := r.jointSmile(state)
 	legacyLaugh := state.Laugh
 	if r.referenceActive(state) {
 		legacyLaugh = 0
 	}
 	r.skinChanged = r.prepareSkin(jointSmile, legacyLaugh)
-	mouthChanged := r.skinChanged || !r.initialized || r.lastMouth.From != state.From || r.lastMouth.To != state.To || r.lastMouth.Amount != state.Amount || r.lastMouth.Emotion != state.Emotion || r.lastMouth.JawOpen != state.JawOpen || r.lastMouth.LipOpening != state.LipOpening || r.lastMouth.LipTension != state.LipTension
+	mouthChanged := r.skinChanged || !r.initialized || r.lastMouth.From != state.From || r.lastMouth.To != state.To || r.lastMouth.Amount != state.Amount || r.lastMouth.Emotion != state.Emotion || r.oral.residual != state.LipResidual
 	if mouthChanged {
+		r.oral.residual = state.LipResidual
 		r.oral.laugh = legacyLaugh
 		r.oral.emotion = state.Emotion
-		oral, err := r.oral.DrawExpression(state.From, state.To, state.Amount, r.oralSmile(state))
+		oral, err := r.oral.DrawExpression(state.From, state.To, state.Amount, jointSmile)
 		if err != nil {
 			return err
 		}
 		r.patchOver(r.mouthPatch, oral)
 		r.lastMouth.From, r.lastMouth.To, r.lastMouth.Amount = state.From, state.To, state.Amount
 		r.lastMouth.Emotion = state.Emotion
-		r.lastMouth.JawOpen, r.lastMouth.LipOpening, r.lastMouth.LipTension = state.JawOpen, state.LipOpening, state.LipTension
 	}
 	eyesChanged := r.skinChanged || !r.initialized || r.lastEye.Closure != state.Closure || r.lastEye.Gaze != state.Gaze || r.lastEye.Laugh != state.Laugh || r.lastEye.Emotion != state.Emotion
 	if eyesChanged {
@@ -297,9 +286,7 @@ func (r *Renderer) Render(ctx context.Context, state FrameState, dst *image.RGBA
 		r.lastEye.Closure, r.lastEye.Gaze, r.lastEye.Laugh = state.Closure, state.Gaze, state.Laugh
 		r.lastEye.Emotion = state.Emotion
 	}
-	if err := r.prepareReference(state); err != nil {
-		return err
-	}
+	r.prepareReference(state)
 	r.lastReference = state.Laugh
 	r.initialized = true
 	backgroundChanged := dst.Rect.Dx() == 720 && (r.background == nil || r.backgroundID != state.Background || r.backgroundBlur != state.Blur)
@@ -430,21 +417,13 @@ func (r *Renderer) prepareBody(s FrameState) bool {
 	yaw, pitch, roll := clamp(s.Head[0], -p.Bounds.Yaw*scale, p.Bounds.Yaw*scale)*math.Pi/180, clamp(s.Head[1], -p.Bounds.Pitch*scale, p.Bounds.Pitch*scale)*math.Pi/180, clamp(s.Head[2], -p.Bounds.Roll*scale, p.Bounds.Roll*scale)*math.Pi/180
 	cy, sy, cp, sp, cr, sr := math.Cos(yaw), math.Sin(yaw), math.Cos(pitch), math.Sin(pitch), math.Cos(roll), math.Sin(roll)
 	headReference := yaw == 0 && pitch == 0 && roll == 0
-	reference := headReference && (r.assets.Motion.Mandible == nil || s.JawOpen == 0) && !r.speechJawActive(s)
+	reference := headReference && !r.speechJawActive(s)
 	w, h := float64(r.assets.Motion.Canvas.Width), float64(r.assets.Motion.Canvas.Height)
 	for i, v := range r.assets.vertices {
 		sourceQ := c.Distance - v.Z
 		ox, oy := v.X*w, v.Y*h
 		world := vector3{(ox - c.Center[0]) * sourceQ / c.Focal, (oy - c.Center[1]) * sourceQ / c.Focal, v.Z}
 		world = r.applySpeechJaw(world, i, s)
-		if rig := r.assets.Motion.Mandible; rig != nil && s.JawOpen > 0 && rig.Weights[i] > 0 {
-			angle := -rig.MaximumAngle * clamp(s.JawOpen, 0, 1)
-			co, si := math.Cos(angle), math.Sin(angle)
-			jy, jz := world[1]-rig.Hinge[1], world[2]-rig.Hinge[2]
-			weight := rig.Weights[i]
-			world[1] += weight * (co*jy - si*jz - jy)
-			world[2] += weight * (si*jy + co*jz - jz)
-		}
 		x, y, z := world[0]-p.Pivot[0], world[1]-p.Pivot[1], world[2]-p.Pivot[2]
 		ax, az := cy*x+sy*z, -sy*x+cy*z
 		by, bz := cp*y-sp*az, sp*y+cp*az
@@ -453,7 +432,7 @@ func (r *Renderer) prepareBody(s FrameState) bool {
 		world[2] += v.Head * (bz - z)
 		q := c.Distance - world[2]
 		px, py := world[0]*c.Focal/q+c.Center[0], world[1]*c.Focal/q+c.Center[1]
-		if reference || (headReference && !r.speechJawVertexActive(s, i) && (r.assets.Motion.Mandible == nil || s.JawOpen == 0 || r.assets.Motion.Mandible.Weights[i] == 0)) || (v.Head == 0 && (r.assets.Motion.Mandible == nil || r.assets.Motion.Mandible.Weights[i] == 0 || s.JawOpen == 0)) {
+		if reference || (headReference && !r.speechJawVertexActive(s, i)) || v.Head == 0 {
 			px, py = ox, oy
 		}
 		py += v.Torso * s.Breath
@@ -574,9 +553,6 @@ func (r *Renderer) triangle(ia, ib, ic uint16, boundary, reference bool, s *Fram
 }
 
 func (r *Renderer) fragment(u, v float64, s *FrameState) Color {
-	if r.referenceActive(*s) && r.assets.Expression.ReferenceLaughter.Presentation != nil {
-		return r.fragmentLaughter(u, v, s)
-	}
 	if r.referenceActive(*s) {
 		copy := *s
 		copy.Smile = r.referenceSmile(*s)

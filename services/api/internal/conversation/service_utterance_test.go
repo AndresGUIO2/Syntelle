@@ -40,7 +40,7 @@ func TestRecognitionSegmentsProduceOneTurnAfterContinuationFinishes(t *testing.T
 	model := &inputModelFixture{input: make(chan string, 2)}
 	voice := &speechFixture{}
 	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 16)}
-	f := openSocketFixture(t, New(store, model, voice, r), "utterance-session-01")
+	f := openSocketFixture(t, legacyEndpointService(store, model, voice, r), "utterance-session-01")
 	f.send(Event{Type: "mic_start", ConversationID: "utterance-session-01", TurnID: "utterance-microphone-01"})
 	readUtteranceEvent(t, f, "listening")
 	first := RecognitionEvent{Type: "final", ID: "native-phrase-0001", Text: "What did you do?"}
@@ -101,7 +101,7 @@ func TestConfirmedFollowUpSurvivesUnresolvedInterimRecognition(t *testing.T) {
 	model := &inputModelFixture{input: make(chan string, 2)}
 	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 8)}
 	cid := "followup-session-01"
-	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f := openSocketFixture(t, legacyEndpointService(store, model, &speechFixture{}, r), cid)
 	f.send(Event{Type: "mic_start", ConversationID: cid, TurnID: "followup-microphone-01"})
 	readUtteranceEvent(t, f, "listening")
 	r.events <- RecognitionEvent{Type: "final", ID: "followup-first-01", Text: "Hi, how are you?"}
@@ -138,7 +138,7 @@ func TestFollowUpAfterPlaybackIsNotDiscardedByEarlierAudioWindow(t *testing.T) {
 	model := &inputModelFixture{input: make(chan string, 2)}
 	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 4)}
 	cid := "playback-followup-session-01"
-	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f := openSocketFixture(t, legacyEndpointService(store, model, &speechFixture{}, r), cid)
 	f.send(Event{Type: "submit", ConversationID: cid, TurnID: "playback-first-turn-01", Text: "Say hello."})
 	readUtteranceEvent(t, f, "accepted")
 	readUtteranceEvent(t, f, "prepared_speech")
@@ -170,7 +170,7 @@ func TestPendingRecognitionIsDiscardedOnStopOrFailure(t *testing.T) {
 			store := isolatedStore(t)
 			model := &modelFixture{}
 			r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 8)}
-			service := New(store, model, &speechFixture{}, r)
+			service := legacyEndpointService(store, model, &speechFixture{}, r)
 			f := openSocketFixture(t, service, "discard-session-01")
 			f.send(Event{Type: "mic_start", ConversationID: "discard-session-01", TurnID: "discard-microphone-01"})
 			readUtteranceEvent(t, f, "listening")
@@ -200,7 +200,7 @@ func TestNoMatchReleasesOnlyPreviouslyConfirmedSpeech(t *testing.T) {
 	store := isolatedStore(t)
 	model := &inputModelFixture{input: make(chan string, 1)}
 	r := controlledRecognitionFixture{events: make(chan RecognitionEvent, 8)}
-	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), "nomatch-session-01")
+	f := openSocketFixture(t, legacyEndpointService(store, model, &speechFixture{}, r), "nomatch-session-01")
 	f.send(Event{Type: "mic_start", ConversationID: "nomatch-session-01", TurnID: "nomatch-microphone-01"})
 	readUtteranceEvent(t, f, "listening")
 	r.events <- RecognitionEvent{Type: "final", ID: "nomatch-phrase-01", Text: "A confirmed question."}

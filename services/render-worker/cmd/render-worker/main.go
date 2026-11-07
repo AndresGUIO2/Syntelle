@@ -35,6 +35,7 @@ func run(ctx context.Context) (runErr error) {
 		return errors.New("configure a render capacity between one and 64")
 	}
 	assets := flag.String("assets", os.Getenv("SYNTELLE_NATIVE_ASSETS"), "private prepared native asset directory")
+	packages := flag.String("packages", os.Getenv("SYNTELLE_NATIVE_PACKAGES"), "private content-addressed prepared character directory")
 	endpoint := flag.String("api", env("SYNTELLE_RENDER_API_URL", "http://127.0.0.1:8080"), "local owner API URL")
 	limit := flag.Int("capacity", capacity, "bounded native media capacity")
 	videoHeight := flag.Int("video-height", 960, "packed video height: 960 or 720")
@@ -86,9 +87,13 @@ func run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return fmt.Errorf("load private native character: %w", err)
 	}
+	registry, err := privatePackages(*packages, *videoHeight*3/4, *videoHeight)
+	if err != nil {
+		return err
+	}
 	backoff := time.Second
 	for ctx.Err() == nil {
-		err = connection(ctx, address.String(), token, nativemedia.Config{Capacity: *limit, Width: *videoHeight * 3 / 2, Height: *videoHeight, FPS: 30, PackageHash: hash, SceneFactory: factory, NetworkSettings: network})
+		err = connection(ctx, address.String(), token, nativemedia.Config{Capacity: *limit, Width: *videoHeight * 3 / 2, Height: *videoHeight, FPS: 30, PackageHash: hash, SceneFactory: factory, ResolvePackage: registry, NetworkSettings: network})
 		if cloud {
 			return err
 		}

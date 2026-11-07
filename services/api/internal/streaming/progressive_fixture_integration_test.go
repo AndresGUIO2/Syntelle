@@ -26,8 +26,9 @@ func (v *cachedVoiceFixture) PrepareDirectedProgressive(ctx context.Context, tex
 	}
 	var full map[string]any
 	var native struct {
-		Audio   []byte                  `json:"audio_base64"`
-		Visemes []rendercontract.Viseme `json:"visemes"`
+		Audio   []byte                        `json:"audio_base64"`
+		Visemes []rendercontract.Viseme       `json:"visemes"`
+		Words   []rendercontract.WordBoundary `json:"word_boundaries"`
 	}
 	if json.Unmarshal(b, &full) != nil || json.Unmarshal(b, &native) != nil {
 		return nil, errors.New("invalid cached prefix fixture")
@@ -44,9 +45,12 @@ func (v *cachedVoiceFixture) PrepareDirectedProgressive(ctx context.Context, tex
 		}
 		at = end + size%2
 	}
-	n := 3 * 48000
+	// Publish the actual 600 ms application prefix. Native playback keeps
+	// its existing 200 ms event lookahead; no event or sample is invented.
+	const prefixMS = 600
+	n := prefixMS * 48
 	if len(pcm) < n {
-		return nil, errors.New("cached fixture must contain three seconds")
+		return nil, errors.New("cached fixture must contain six hundred milliseconds")
 	}
 	wav := make([]byte, 44+n)
 	copy(wav, "RIFF")
@@ -67,14 +71,21 @@ func (v *cachedVoiceFixture) PrepareDirectedProgressive(ctx context.Context, tex
 		prefix[k] = v
 	}
 	prefix["audio_base64"] = wav
-	prefix["duration_ms"] = 3000
+	prefix["duration_ms"] = prefixMS
 	visemes := []rendercontract.Viseme{}
 	for _, v := range native.Visemes {
-		if v.OffsetMS <= 3000 {
+		if v.OffsetMS <= prefixMS {
 			visemes = append(visemes, v)
 		}
 	}
 	prefix["visemes"] = visemes
+	words := []rendercontract.WordBoundary{}
+	for _, w := range native.Words {
+		if w.OffsetMS+w.DurationMS <= prefixMS {
+			words = append(words, w)
+		}
+	}
+	prefix["word_boundaries"] = words
 	if err = publish(prefix); err != nil {
 		return nil, err
 	}

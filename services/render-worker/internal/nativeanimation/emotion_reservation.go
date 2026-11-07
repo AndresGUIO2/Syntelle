@@ -19,8 +19,17 @@ func (c EmotionController) ReserveEmotion(ms float64, settings rendercontract.Se
 		c.SuppressedTurn = request.TurnID
 	}
 	var decision rendercontract.EmotionDecision
-	if !settings.EmotionRegulation.Normalized().Enabled && !c.Controlled(request.TurnID) && settings.AutomaticExpressions && !settings.ReducedMotion && request.Emotion != nil && request.Emotion.Valid() {
-		c.move(ms, *request.Emotion, 500, "reaction", false)
+	if !settings.EmotionRegulation.Normalized().Enabled && !c.Controlled(request.TurnID) && settings.AutomaticExpressions && !settings.ReducedMotion && request.Emotion != nil && request.Emotion.Valid() && (!c.Persistent || request.Emotion.State == "neutral" || request.Emotion.Intensity > 0) {
+		target := *request.Emotion
+		if c.Persistent {
+			if target.State == "neutral" {
+				target.Intensity = 0
+			} else {
+				target.Intensity = max(.4, target.Intensity)
+			}
+		}
+		c.move(ms, target, 500, "reaction", false)
+		c.sustained = target
 		c.lastTurn = request.TurnID
 		decision = c.Evidence(request.Emotion, "accepted", request.TurnID, request.PhraseIndex, generation)
 	} else {

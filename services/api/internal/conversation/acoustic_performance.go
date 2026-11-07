@@ -7,9 +7,10 @@ import (
 )
 
 type acousticSchedule struct {
-	seed       uint32
-	next       float64
-	continuous bool
+	semanticOnly bool
+	seed         uint32
+	next         float64
+	continuous   bool
 }
 
 func newAcousticSchedule(identity string, continuous ...bool) *acousticSchedule {
@@ -32,6 +33,9 @@ func (a *acousticSchedule) gap() float64 {
 }
 
 func (a *acousticSchedule) supplement(v PerformanceValidation, boundaries, energy []float64, peak, duration, offset float64) PerformanceValidation {
+	if a == nil || a.semanticOnly {
+		return v
+	}
 	for a.next < offset {
 		a.next += a.gap()
 	}
@@ -75,4 +79,10 @@ func (a *acousticSchedule) supplement(v PerformanceValidation, boundaries, energ
 	}
 	sort.SliceStable(v.Resolved, func(i, j int) bool { return v.Resolved[i].Time < v.Resolved[j].Time })
 	return v
+}
+
+func (s *Service) newPerformanceAcousticSchedule(identity string, continuous bool) *acousticSchedule {
+	a := newAcousticSchedule(identity, continuous)
+	a.semanticOnly = s != nil && s.Performance != nil && s.Performance.MotionDirection == SemanticMotionDirection
+	return a
 }

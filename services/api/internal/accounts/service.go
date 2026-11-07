@@ -33,9 +33,11 @@ var migrations embed.FS
 const sessionCookie = "syntelle_session"
 
 type Service struct {
-	Pool      *pgxpool.Pool
-	cfg       Config
-	OnRevoked func(kind, id string)
+	characterUploads   chan struct{}
+	Pool               *pgxpool.Pool
+	cfg                Config
+	OnRevoked          func(kind, id string)
+	OnCharacterDeleted func(accountID, characterID string)
 }
 
 func Open(ctx context.Context, pool *pgxpool.Pool, cfg Config) (*Service, error) {
@@ -55,7 +57,10 @@ func Open(ctx context.Context, pool *pgxpool.Pool, cfg Config) (*Service, error)
 	if cfg.Mailer == nil && cfg.ResendAPIKey != "" && cfg.ResendFrom != "" {
 		cfg.Mailer = &ResendMailer{Key: cfg.ResendAPIKey, From: cfg.ResendFrom, Client: cfg.HTTPClient}
 	}
-	s := &Service{Pool: pool, cfg: cfg}
+	if cfg.ProcessorURL == "" {
+		cfg.ProcessorURL = "http://127.0.0.1:8000"
+	}
+	s := &Service{Pool: pool, cfg: cfg, characterUploads: make(chan struct{}, 4)}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin account migration: %w", err)
@@ -96,6 +101,9 @@ func Open(ctx context.Context, pool *pgxpool.Pool, cfg Config) (*Service, error)
 	}
 	if _, err = tx.Exec(ctx, "DELETE FROM syntelle_accounts.configurations WHERE expires_at <= $1", cfg.Now()); err != nil {
 		return nil, fmt.Errorf("expire guest configurations: %w", err)
+	}
+	if _, err = tx.Exec(ctx, expireCharacterSources, cfg.Now()); err != nil {
+		return nil, fmt.Errorf("expire temporary character portraits: %w", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit account migrations: %w", err)
@@ -210,7 +218,8 @@ func (s *Service) cookie(w http.ResponseWriter, token string, expires time.Time)
 func (s *Service) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if !strings.HasPrefix(path, "/api/v1/auth/") && path != "/api/v1/configurations" && !strings.HasPrefix(path, "/api/v1/configurations/") && path != "/api/v1/keys" && !strings.HasPrefix(path, "/api/v1/keys/") {
+		characterRoute := path == "/api/v1/characters" || strings.HasPrefix(path, "/api/v1/characters/")
+		if !characterRoute && !strings.HasPrefix(path, "/api/v1/auth/") && path != "/api/v1/configurations" && !strings.HasPrefix(path, "/api/v1/configurations/") && path != "/api/v1/keys" && !strings.HasPrefix(path, "/api/v1/keys/") && path != "/api/v1/workspaces" && !strings.HasPrefix(path, "/api/v1/workspaces/") && path != "/api/v1/admin" && !strings.HasPrefix(path, "/api/v1/admin/") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -220,6 +229,12 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		switch {
+		case characterRoute:
+			s.characters(w, r)
+		case path == "/api/v1/workspaces" || strings.HasPrefix(path, "/api/v1/workspaces/"):
+			s.workspace(w, r)
+		case path == "/api/v1/admin" || strings.HasPrefix(path, "/api/v1/admin/"):
+			s.admin(w, r)
 		case path == "/api/v1/auth/status" && r.Method == http.MethodGet:
 			s.status(w)
 		case path == "/api/v1/auth/me" && r.Method == http.MethodGet:

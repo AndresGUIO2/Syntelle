@@ -25,7 +25,10 @@ import {
   type StreamSettings,
 } from './types'
 import type { ConversationTurn } from '../conversation/types'
+import { isCharacterID } from '../characters/api'
+import { useSelectedCharacter } from '../characters/useSelectedCharacter'
 
+const props = withDefaults(defineProps<{ characterId?: string }>(), { characterId: 'syntelle' })
 const locale = useLocaleStore()
 const { t } = locale
 const settings = shallowRef<StreamSettings>(defaultSettings())
@@ -79,12 +82,25 @@ settings.value = {
   reduced_motion: reducedMotion.matches,
 }
 const auth = useAccount()
+const invalidCharacter = props.characterId !== 'syntelle' && !isCharacterID(props.characterId)
+if (isCharacterID(props.characterId))
+  settings.value = {
+    ...defaultSettings(),
+    character: props.characterId,
+    language: locale.speechLanguage,
+    reduced_motion: reducedMotion.matches,
+    emotion_regulation: { enabled: false, temperament: 'calm' },
+  }
+const selectedCharacter = useSelectedCharacter(() => settings.value.character)
 watch(auth.account, (account) => emit('accountChange', Boolean(account)), { immediate: true })
 const remote = useRemoteStream(() => settings.value)
 const microphoneStartupPending = shallowRef(false)
 const queuedPreview = shallowRef<{ kind: string; amount: number; repetitions: number } | null>(null)
-const canStartMicrophone = computed(() =>
-  ['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value),
+const canStartMicrophone = computed(
+  () =>
+    !invalidCharacter &&
+    selectedCharacter.ready.value &&
+    ['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value),
 )
 watch(remote.ready, (ready) => {
   if (!ready || !microphoneStartupPending.value) return
@@ -109,6 +125,8 @@ const controlsLocked = computed(
 )
 const previewDisabled = computed(
   () =>
+    !selectedCharacter.ready.value ||
+    invalidCharacter ||
     Boolean(queuedPreview.value) ||
     remote.pending.value ||
     remote.speaking.value ||
@@ -195,14 +213,17 @@ async function beforeLogin() {
   await remote.stop()
 }
 async function reconnect() {
+  if (invalidCharacter) return
   if (remote.state.value === 'ended') remote.turns.value = []
   await auth.refresh()
+  if (!(await selectedCharacter.refresh())) return
   await remote.connect()
 }
 async function signedIn() {
   microphoneStartupPending.value = false
   await remote.stop()
   await auth.refresh()
+  await selectedCharacter.refresh()
   accountOpen.value = false
   if (auth.account.value) historyOpen.value = true
 }
@@ -224,6 +245,7 @@ async function continueHistory(
   await nextTick()
   await remote.stop()
   remote.turns.value = turns
+  if (!(await selectedCharacter.refresh())) return
   await remote.connect(false, item.id)
 }
 async function load(configuration: SavedConfiguration) {
@@ -249,6 +271,7 @@ async function previewExpression(kind: string, amount = 1, repetitions = 1) {
   if (!remote.connecting.value) await reconnect()
 }
 async function microphone() {
+  if (invalidCharacter || !selectedCharacter.ready.value) return
   await player.value?.enableAudio()
   if (remote.microphone.value || remote.startingMicrophone.value) {
     await remote.toggleMicrophone()
@@ -322,6 +345,8 @@ onScopeDispose(() => {
           :background="settings.background"
           :blur="settings.blur"
           :controls-target="mediaControls"
+          :poster="invalidCharacter ? null : selectedCharacter.poster.value"
+          :character-name="selectedCharacter.name.value"
         />
         <div
           v-if="!remote.ready.value"
@@ -334,6 +359,23 @@ onScopeDispose(() => {
             'connection-paused': remote.state.value === 'paused',
           }"
         >
+          <p
+            v-if="invalidCharacter || selectedCharacter.error.value"
+            class="connection-status character-error"
+            role="alert"
+          >
+            {{
+              t(
+                invalidCharacter
+                  ? 'This character is unavailable. Open a ready character from your collection.'
+                  : selectedCharacter.error.value,
+              )
+            }}
+            <a href="/characters/new">{{ t('Characters') }}</a>
+          </p>
+          <p v-else-if="selectedCharacter.loading.value" class="connection-status" role="status">
+            {{ t('Loading your character…') }}
+          </p>
           <p v-if="remote.state.value !== 'not-started'" class="connection-status" role="status">
             {{ t(remote.status.value) }}
           </p>
@@ -344,6 +386,7 @@ onScopeDispose(() => {
             "
             type="button"
             class="entry-action"
+            :disabled="invalidCharacter || !selectedCharacter.ready.value"
             @click="entryAction"
           >
             <svg
@@ -392,7 +435,7 @@ onScopeDispose(() => {
         class="conversation-panel"
         :turns="remote.turns.value"
         :partial="remote.partial.value"
-        character="Syntelle"
+        :character="selectedCharacter.name.value"
         :configured="remote.configured.value"
         :can-start-microphone="canStartMicrophone"
         :not-started="remote.state.value === 'not-started'"
@@ -479,7 +522,7 @@ onScopeDispose(() => {
     >
       <header class="customize-header">
         <h2 id="stream-customize-title" ref="customizeHeading" tabindex="-1">
-          {{ t('Customize Syntelle') }}
+          {{ selectedCharacter.custom.value ? t('Customize character') : t('Customize Syntelle') }}
         </h2>
         <button
           class="quiet-action icon-action"
@@ -498,6 +541,7 @@ onScopeDispose(() => {
         :preview-disabled="previewDisabled"
         :laughter-busy="remote.laughterBusy.value"
         :laughter-available="remote.laughterAvailable.value"
+        :emotions-available="!selectedCharacter.custom.value && remote.emotionsAvailable.value"
         @preview="previewExpression"
       />
     </dialog>
@@ -600,6 +644,12 @@ onScopeDispose(() => {
 }
 .connection-state .entry-action {
   pointer-events: auto;
+}
+.character-error {
+  pointer-events: auto;
+}
+.character-error a {
+  color: #cbb8fa;
 }
 .connection-state.connection-entry {
   inset: 0;
@@ -833,6 +883,15 @@ onScopeDispose(() => {
   }
   .stage-column .connection-entry .connection-status {
     display: none;
+  }
+  .stage-column .connection-entry .character-error {
+    display: block;
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    transform: none;
+    font-size: 12px;
   }
   .stage-column .connection-entry .entry-action {
     min-height: 48px;

@@ -79,7 +79,9 @@ test('arrival shows a static portrait and opens no rendering session until Start
   await expect(page.getByText('Select Start conversation', { exact: false })).toHaveCount(0)
   await expect(page.getByText('Ready when you are.', { exact: true })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Syntelle portrait' })).toBeVisible()
-  await expect(page.locator('video.remote-source')).toBeHidden()
+  // The shared A/V element stays mounted for decoding; CSS hides its pixels.
+  await expect(page.locator('video.remote-source')).toHaveCSS('opacity', '0')
+  await expect(page.locator('video.remote-source')).toHaveAttribute('aria-hidden', 'true')
   await expect(
     page.getByRole('button', { name: 'Start with microphone', exact: true }),
   ).toBeEnabled()
@@ -470,6 +472,87 @@ test('inline composition preserves native audio/video tracks without recapture o
     }
   })
   expect(state).toEqual({ audio: true, rate: 1, muted: false, captures: 0 })
+})
+
+test('private portrait switches atomically to its first composed frame without changing the A/V element', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Windows WebKit does not provide actual canvas capture.')
+  const remote = await fixture(page, false, true)
+  const character = `char_${'c'.repeat(32)}`
+  await page.route(`**/api/v1/characters/${character}`, (route) =>
+    route.fulfill({
+      json: {
+        id: character,
+        name: 'Private portrait',
+        status: 'ready',
+        portrait_available: true,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/characters/${character}/portrait`, (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l8sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  )
+  let releaseBackground: (() => void) | undefined
+  await page.route(/\/natural-space\.webp$/, async (route) => {
+    await new Promise<void>((resolve) => {
+      releaseBackground = resolve
+    })
+    await route.continue()
+  })
+  await page.goto(`/?character=${character}`)
+  await expect(page.locator('.remote-poster')).toBeVisible()
+  await page.evaluate(() => {
+    const original = document.querySelector('video.remote-source')
+    const arrivals: boolean[] = []
+    Object.assign(window, { privateArrivalCheck: { original, arrivals } })
+    new MutationObserver(() => {
+      const stage = document.querySelector('.remote-stage')
+      if (
+        stage?.getAttribute('aria-busy') === 'false' &&
+        document.querySelector('canvas.remote-video')?.getAttribute('aria-hidden') === 'false'
+      )
+        arrivals.push(document.querySelector('.remote-poster') === null)
+    }).observe(document.querySelector('.remote-stage')!, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+  })
+  await page.getByRole('button', { name: 'Start conversation', exact: true }).click()
+  await expect.poll(() => Boolean(releaseBackground)).toBe(true)
+  await expect(page.locator('.remote-poster')).toHaveCSS('opacity', '1')
+  releaseBackground!()
+  await expect(page.locator('canvas.remote-video')).toHaveAttribute('aria-hidden', 'false')
+  await expect(page.locator('.remote-poster')).toHaveCount(0)
+  await expect(page.locator('.remote-backdrop')).toHaveCount(0)
+  const arrival = await page.evaluate(() => {
+    const check = (
+      window as unknown as { privateArrivalCheck: { original: Element; arrivals: boolean[] } }
+    ).privateArrivalCheck
+    const element = document.querySelector<HTMLVideoElement>('video.remote-source')!
+    return {
+      sameElement: element === check.original,
+      arrivals: check.arrivals,
+      rate: element.playbackRate,
+      videoTracks: (element.srcObject as MediaStream).getVideoTracks().length,
+      audioTracks: (element.srcObject as MediaStream).getAudioTracks().length,
+    }
+  })
+  expect(arrival.sameElement).toBe(true)
+  expect(arrival.arrivals.length).toBeGreaterThan(0)
+  expect(arrival.arrivals.every(Boolean)).toBe(true)
+  expect(arrival.rate).toBe(1)
+  expect(arrival.videoTracks).toBe(1)
+  expect(arrival.audioTracks).toBe(1)
+  expect(remote.sessionRequests).toHaveLength(1)
 })
 
 async function fixture(page: Page, unavailable = false, pixels = false) {

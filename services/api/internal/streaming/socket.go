@@ -173,12 +173,20 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 			s.worker = nil
 		}
 		ids := []string{}
+		recovering := []*streamSession{}
 		for id, session := range s.sessions {
 			if !httpapi.Cloud() || session.workerID == allocationID {
-				ids = append(ids, id)
+				if s.retainWorkerMood(session, time.Now()) {
+					recovering = append(recovering, session)
+				} else {
+					ids = append(ids, id)
+				}
 			}
 		}
 		s.mu.Unlock()
+		for _, session := range recovering {
+			s.cancelReplacedOutput(session)
+		}
 		for _, id := range ids {
 			s.closeSession(id, "private renderer disconnected")
 		}
@@ -193,6 +201,22 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		maximum = cloudWorkerCapacity
 	}
 	p.send(envelope("registered", "", map[string]int{"maximum_sessions": maximum}))
+	s.mu.Lock()
+	restored := []*streamSession{}
+	if !httpapi.Cloud() {
+		for _, session := range s.sessions {
+			if !session.workerLostAt.IsZero() {
+				session.workerLostAt = time.Time{}
+				restored = append(restored, session)
+			}
+		}
+	}
+	s.mu.Unlock()
+	for _, session := range restored {
+		if !s.deliverCreate(session) {
+			s.closeSession(session.id, "replacement worker unavailable")
+		}
+	}
 	for {
 		var event Envelope
 		kind, b, err := c.Read(p.ctx)
@@ -233,6 +257,15 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 		case "signal":
 			s.toPlayer(session, event)
 		case "ready":
+			if session.basicCharacter {
+				var ready struct {
+					PackageHash string `json:"package_hash"`
+				}
+				if json.Unmarshal(event.Data, &ready) != nil || ready.PackageHash != session.packageHash {
+					s.closeSession(session.id, "renderer character mismatch")
+					continue
+				}
+			}
 			s.setState(session, "idle", "")
 			s.toPlayer(session, event)
 		case "playback":
@@ -279,6 +312,16 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 				stop()
 			}
 			s.toPlayer(session, event)
+		case "mood_checkpoint":
+			var checkpoint rendercontract.MoodCheckpoint
+			if json.Unmarshal(event.Data, &checkpoint) != nil {
+				continue
+			}
+			s.mu.Lock()
+			if checkpoint.Version == "mood-checkpoint/1" && checkpoint.SessionID == session.id && checkpoint.PackageHash == s.sessionPackageHash(session) && checkpoint.Revision == session.emotionPolicyRevision && checkpoint.Instance == session.emotionInstance && len(checkpoint.State) <= 16384 && json.Valid(checkpoint.State) && (session.moodCheckpoint == nil || checkpoint.Instance != session.moodCheckpoint.Instance || checkpoint.Sequence > session.moodCheckpoint.Sequence) {
+				session.moodCheckpoint = &checkpoint
+			}
+			s.mu.Unlock()
 		case "emotion_decision":
 			var decision rendercontract.EmotionDecision
 			if json.Unmarshal(event.Data, &decision) != nil {
@@ -588,7 +631,7 @@ func (s *Service) conversationEvent(session *streamSession, event conversation.E
 		activity = "idle"
 	}
 	if activity != "" {
-		s.toWorker(envelope("activity", session.id, map[string]string{"state": activity}))
+		s.toWorker(envelope("activity", session.id, map[string]any{"state": activity, "dialogue": event.Type == "accepted"}))
 	}
 	if event.Type == "accepted" {
 		s.setState(session, "preparing", "")

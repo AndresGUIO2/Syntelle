@@ -29,6 +29,7 @@ import (
 )
 
 type Service struct {
+	characterMu   sync.Mutex // serialize admitted custom creation against committed deletion
 	bootMu        sync.Mutex
 	workerStarted time.Time
 	mu            sync.Mutex
@@ -193,7 +194,7 @@ func (s *Service) response(session *streamSession, ticket string) SessionRespons
 	if httpapi.Cloud() {
 		startupTimeout = 95000
 	}
-	return SessionResponse{LaughterAvailable: s.conversation.HasLaughter(session.settings.Voice, session.settings.Language), StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
+	return SessionResponse{EmotionsAvailable: !session.basicCharacter, LaughterAvailable: !session.basicCharacter && s.conversation.HasLaughter(session.settings.Voice, session.settings.Language), StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
 }
 func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
 	input := struct {
@@ -238,6 +239,25 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		writeError(w, 400, err.Error())
 		return
 	}
+	if input.Settings.Character != accounts.Defaults().Character {
+		s.characterMu.Lock()
+		defer s.characterMu.Unlock()
+	}
+	packageHash, err := s.resolvePackage(r.Context(), principal, input.Settings.Character)
+	if err != nil {
+		writeError(w, 404, "Prepared character not found.")
+		return
+	}
+	basic := input.Settings.Character != accounts.Defaults().Character
+	characterName := ""
+	if basic {
+		normalizeBasicSettings(&input.Settings)
+		characterName, err = s.store.characterName(r.Context(), principal.AccountID, input.Settings.Character, packageHash)
+		if err != nil {
+			writeError(w, 404, "Prepared character not found.")
+			return
+		}
+	}
 	id, err := randomID("stream_")
 	if err != nil {
 		writeError(w, 500, "Stream identity could not be created.")
@@ -271,10 +291,14 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 			writeError(w, 409, "Start a new chat to change language after a pause.")
 			return
 		}
+		if err := s.store.matchesPausedCharacter(r.Context(), input.ResumeFrom, principal.ID, input.Settings.Character, packageHash); err != nil {
+			writeError(w, 409, "Start a new chat to change character after a pause.")
+			return
+		}
 		id = input.ResumeFrom
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	session := &streamSession{emotionPolicyRevision: 1, id: id, cid: cid, principal: principal, settings: input.Settings, state: "starting", created: time.Now(), lastSeen: time.Now(), cancel: cancel, commandMu: make(chan struct{}, 1)}
+	session := &streamSession{packageHash: packageHash, basicCharacter: basic, emotionalPresence: !basic && !httpapi.Cloud() && s.conversation != nil && s.conversation.Performance != nil && s.conversation.Performance.EmotionalPresence != nil, emotionPolicyRevision: 1, id: id, cid: cid, principal: principal, settings: input.Settings, state: "starting", created: time.Now(), lastSeen: time.Now(), cancel: cancel, commandMu: make(chan struct{}, 1)}
 	if hadMessages {
 		session.lastMessage = session.created
 	}
@@ -295,9 +319,9 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	}
 	var deadline time.Time
 	if s.config.DisableTimeLimits {
-		err = s.store.allocateUnmetered(r.Context(), session, s.config.PackageHash, input.ResumeFrom != "")
+		err = s.store.allocateUnmetered(r.Context(), session, packageHash, input.ResumeFrom != "")
 	} else {
-		deadline, err = s.store.allocate(r.Context(), session, s.config.PackageHash, input.ResumeFrom != "")
+		deadline, err = s.store.allocate(r.Context(), session, packageHash, input.ResumeFrom != "")
 	}
 	if err != nil {
 		s.mu.Lock()
@@ -319,7 +343,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		s.mu.Unlock()
 		ctx = leaseCtx
 	}
-	channel, err := s.conversation.OpenChannel(ctx, func(event conversation.Event) { s.conversationEvent(session, event) })
+	channel, err := s.conversation.OpenCharacterChannel(ctx, basic, packageHash, input.Settings.Character, characterName, func(event conversation.Event) { s.conversationEvent(session, event) })
 	if err != nil {
 		s.closeSession(id, "conversation unavailable")
 		writeError(w, 503, "Conversation service is unavailable.")
@@ -329,7 +353,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	session.channel = channel
 	s.mu.Unlock()
 	helloID, _ := randomID("hello_")
-	err = channel.Send(ctx, conversation.Event{Type: "hello", ConversationID: cid, TurnID: helloID, Character: "syntelle", Language: input.Settings.Language, Voice: input.Settings.Voice, Instructions: input.Settings.Instructions})
+	err = channel.Send(ctx, conversation.Event{Type: "hello", ConversationID: cid, TurnID: helloID, Character: input.Settings.Character, Language: input.Settings.Language, Voice: input.Settings.Voice, Instructions: input.Settings.Instructions})
 	if err != nil {
 		s.closeSession(id, "conversation unavailable")
 		writeError(w, 503, "Conversation service is unavailable.")
@@ -360,6 +384,9 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 	if c.Settings != nil {
 		next := *c.Settings
 		next.Voice = s.conversation.RuntimeVoice()
+		if session.basicCharacter {
+			normalizeBasicSettings(&next)
+		}
 		c.Settings = &next
 	}
 	result := commandResult{ID: c.ID}
@@ -410,7 +437,13 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 		return result, errors.New("Wait until the reply ends before previewing.")
 	}
 	modelChange := c.Settings != nil && (settings.Instructions != c.Settings.Instructions || settings.Voice != c.Settings.Voice)
+	if c.Type == "preview" && session.basicCharacter && c.Text == "laugh" {
+		return result, errors.New("Laughter is unavailable for this character.")
+	}
 	if c.Type == "configure" {
+		if settings.Character != c.Settings.Character {
+			return result, errors.New("Start a new stream to change character.")
+		}
 		if settings.Language != c.Settings.Language {
 			return result, errors.New("Start a new stream to change recognition language.")
 		}

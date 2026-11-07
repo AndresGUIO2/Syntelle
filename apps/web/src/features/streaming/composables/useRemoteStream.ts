@@ -17,7 +17,11 @@ export function useRemoteStream(settings: () => StreamSettings) {
   const laughterBusy = shallowRef(false)
   let laughterTurn = ''
   const laughterLanguages = shallowRef<Record<string, boolean>>({})
-  const laughterAvailable = computed(() => laughterLanguages.value[settings().language] === true)
+  const laughterAvailable = computed(
+    () =>
+      settings().character === 'syntelle' && laughterLanguages.value[settings().language] === true,
+  )
+  const emotionsAvailable = shallowRef(settings().character === 'syntelle')
   const timeLimitsEnabled = shallowRef<boolean | null>(null)
   const pending = shallowRef(false)
   const speaking = shallowRef(false)
@@ -50,6 +54,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
     speech_configured?: boolean
     recognition: boolean
     laughter_available?: boolean
+    emotions_available?: boolean
     time_limits_enabled?: boolean
   }
 
@@ -75,13 +80,13 @@ export function useRemoteStream(settings: () => StreamSettings) {
         : state.value === 'exhausted'
           ? 'Your 15-minute demo allowance has been used.'
           : state.value === 'paused'
-            ? 'Syntelle is paused due to inactivity'
+            ? characterMessage('Syntelle is paused due to inactivity', 'Paused due to inactivity')
             : !ready.value
               ? connecting.value
                 ? retry
-                  ? 'Reconnecting to Syntelle…'
-                  : 'Connecting to Syntelle…'
-                : 'Syntelle is disconnected'
+                  ? characterMessage('Reconnecting to Syntelle…', 'Reconnecting to your character…')
+                  : characterMessage('Connecting to Syntelle…', 'Connecting to your character…')
+                : characterMessage('Syntelle is disconnected', 'Your character is disconnected')
               : speaking.value
                 ? 'Speaking'
                 : pending.value
@@ -90,6 +95,9 @@ export function useRemoteStream(settings: () => StreamSettings) {
                     ? 'Listening'
                     : 'Ready',
   )
+  function characterMessage(sample: string, personal: string) {
+    return settings().character === 'syntelle' ? sample : personal
+  }
 
   function connected() {
     ready.value = true
@@ -109,7 +117,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
     if (retry >= 3) {
       connecting.value = false
       state.value = 'disconnected'
-      error.value = 'Syntelle is temporarily unavailable. Select Reconnect to try again.'
+      error.value = characterMessage(
+        'Syntelle is temporarily unavailable. Select Reconnect to try again.',
+        'Your character is temporarily unavailable. Select Reconnect to try again.',
+      )
       return
     }
     const delay = [500, 1500, 3000][retry++]!
@@ -376,6 +387,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       configured.value = result.configured
       speechConfigured.value = result.speech_configured ?? result.configured
       recognition.value = result.recognition
+      emotionsAvailable.value = result.emotions_available ?? settings().character === 'syntelle'
       laughterLanguages.value = {
         ...laughterLanguages.value,
         [settings().language]: result.laughter_available === true,
@@ -562,6 +574,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
     speechConfigured,
     recognition,
     laughterAvailable,
+    emotionsAvailable,
     laughterBusy,
     timeLimitsEnabled,
     loadPolicy,

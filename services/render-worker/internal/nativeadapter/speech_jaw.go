@@ -35,5 +35,7 @@ func speechJawAt(speech nativeanimation.SpeechState, rig *rendercontract.SpeechJ
 		mouth := nativeanimation.MouthAt(jawTimeline, seconds)
 		return rig.PoseOpening[mouth.From]*(1-mouth.Amount) + rig.PoseOpening[mouth.To]*mouth.Amount
 	}
-	return .25*value(speech.Position-.02) + .5*value(speech.Position) + .25*value(speech.Position+.02)
+	jaw := .25*value(speech.Position-.02) + .5*value(speech.Position) + .25*value(speech.Position+.02)
+	residual := speech.Speech.ResidualAt(speech.Position, true)
+	return max(0, min(1, jaw-residual[1]*.5))
 }

@@ -16,11 +16,20 @@ type phraseDirector interface {
 	CompleteWithPhrases(context.Context, string, []Message, func(PerformancePhrase) error) (ModelResult, error)
 }
 type phraseJob struct {
-	phrase PerformancePhrase
-	index  int
-	ready  chan struct{}
-	audio  any
-	err    error
+	phrase      PerformancePhrase
+	index       int
+	ready       chan struct{}
+	audio       any
+	err         error
+	attempts    chan phrasePreparation
+	retry       chan struct{}
+	offsetReady chan struct{}
+	offsetMS    float64
+}
+type phrasePreparation struct {
+	attempt     *phraseAttempt
+	progressive *progressivePhraseState
+	err         error
 }
 type phraseModelResult struct {
 	value ModelResult
@@ -33,6 +42,16 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
+	// Only unconsumed attempts own a ticket and recording. A long reply
+	// releases each completed phrase as soon as the ordered consumer drains it.
+	live := make(map[*phraseAttempt]struct{})
+	var liveMu sync.Mutex
+	releaseAttempt := func(a *phraseAttempt) {
+		a.close()
+		liveMu.Lock()
+		delete(live, a)
+		liveMu.Unlock()
+	}
 	output, status := "", "failed"
 	emit := func(kind, text string, data any) {
 		if ctx.Err() == nil {
@@ -43,6 +62,9 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 		wasCanceled := parent.Err() != nil
 		cancel()
 		workers.Wait()
+		for a := range live {
+			a.close()
+		}
 		if status == "ready" {
 			return
 		}
@@ -71,7 +93,72 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 		emit("error", "Model request could not be committed.", nil)
 		return
 	}
-	jobs, ordered := make(chan *phraseJob, 2), make(chan *phraseJob, 2)
+	clock := 0.
+	s.beginPerformance(cid, id)
+	budget := newReplyGestures()
+	var budgetMu sync.Mutex
+	continuous := s.Performance != nil && s.Performance.MotionPolicy == rendercontract.ConversationalMotionVersion
+	acoustic := s.newPerformanceAcousticSchedule(id, continuous)
+	jobs, ordered, directed := make(chan *phraseJob, 2), make(chan *phraseJob, 2), make(chan *phraseJob, 2)
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for {
+			var job *phraseJob
+			select {
+			case <-ctx.Done():
+				return
+			case next, ok := <-directed:
+				if !ok {
+					return
+				}
+				job = next
+			}
+			close(job.ready)
+			for {
+				state := &progressivePhraseState{ready: job.offsetReady, offset: func() float64 { return job.offsetMS }, budget: budget, mu: &budgetMu, acoustic: acoustic}
+				// A cancellation belonging to this preparation must also release a
+				// publisher waiting for the preceding recording's final length.
+				progressCtx, stopProgress := context.WithCancel(ctx)
+				a, e := s.beginDirectedPhrase(ctx, cid, id, voice, language, job.phrase, job.index, s.openingPublisher(progressCtx, cid, id, job.phrase, job.index, emit, state))
+				if a != nil {
+					stopOnCancel := context.AfterFunc(a.ctx, stopProgress)
+					a.progressCleanup = func() { stopOnCancel(); stopProgress() }
+					liveMu.Lock()
+					live[a] = struct{}{}
+					liveMu.Unlock()
+				}
+				select {
+				case <-ctx.Done():
+					stopProgress()
+					return
+				case job.attempts <- phrasePreparation{a, state, e}:
+				}
+				if e != nil {
+					stopProgress()
+					return
+				}
+				activationErr := a.activation(ctx)
+				if activationErr == nil {
+					break
+				}
+				stopProgress()
+				if !errors.Is(activationErr, ErrDeliverySuperseded) {
+					return
+				}
+				if a.preparation(ctx) != nil && ctx.Err() != nil {
+					return
+				}
+				// The ordered consumer restores unplayed cue accounting before
+				// authorizing a new user-requested settings revision.
+				select {
+				case <-ctx.Done():
+					return
+				case <-job.retry:
+				}
+			}
+		}
+	}()
 	for range 2 {
 		workers.Add(1)
 		go func() {
@@ -98,6 +185,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 	go func() {
 		defer workers.Done()
 		defer close(jobs)
+		defer close(directed)
 		defer close(ordered)
 		index := 0
 		result, modelErr := model.CompleteWithPhrases(ctx, instructions, messages, func(phrase PerformancePhrase) error {
@@ -106,12 +194,16 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 				prefix = " "
 			}
 			emit("reply_delta", prefix+phrase.Text, nil)
-			job := &phraseJob{phrase: phrase, index: index, ready: make(chan struct{})}
+			job := &phraseJob{phrase: phrase, index: index, ready: make(chan struct{}), attempts: make(chan phrasePreparation, 1), retry: make(chan struct{}), offsetReady: make(chan struct{})}
 			index++
+			queue := jobs
+			if phrase.Version == rendercontract.CoordinatedPerformanceVersion {
+				queue = directed
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case jobs <- job:
+			case queue <- job:
 			}
 			select {
 			case <-ctx.Done():
@@ -131,11 +223,6 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 		}
 		modelDone <- phraseModelResult{result, modelErr}
 	}()
-	clock := 0.
-	s.beginPerformance(cid, id)
-	budget := newReplyGestures()
-	continuous := s.Performance != nil && s.Performance.MotionPolicy == rendercontract.ConversationalMotionVersion
-	acoustic := newAcousticSchedule(id, continuous)
 	count := 0
 	for {
 		var job *phraseJob
@@ -158,13 +245,44 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			return
 		case <-job.ready:
 		}
+		firstAttempt := true
 		for {
+			budgetMu.Lock()
+			beforeBudget, beforeAcoustic := budget.clone(), *acoustic
+			budgetMu.Unlock()
+			if firstAttempt {
+				job.offsetMS = clock
+				close(job.offsetReady)
+				firstAttempt = false
+			} else {
+				select {
+				case <-ctx.Done():
+					return
+				case job.retry <- struct{}{}:
+				}
+			}
 			audioValue := job.audio
 			var attempt *phraseAttempt
+			var progressive *progressivePhraseState
 			if job.phrase.Version == rendercontract.CoordinatedPerformanceVersion {
-				var prepareErr error
-				attempt, prepareErr = s.prepareDirectedPhrase(ctx, cid, id, voice, language, job.phrase, count, s.openingPublisher(ctx, cid, id, job.phrase, count, emit))
+				var prepared phrasePreparation
+				select {
+				case <-ctx.Done():
+					return
+				case prepared = <-job.attempts:
+				}
+				attempt, progressive = prepared.attempt, prepared.progressive
+				prepareErr := prepared.err
+				if prepareErr == nil {
+					prepareErr = attempt.preparation(ctx)
+				}
 				if errors.Is(prepareErr, ErrDeliverySuperseded) {
+					if attempt != nil {
+						releaseAttempt(attempt)
+					}
+					budgetMu.Lock()
+					*budget, *acoustic = beforeBudget, beforeAcoustic
+					budgetMu.Unlock()
 					continue
 				}
 				if prepareErr != nil {
@@ -173,10 +291,7 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 					return
 				}
 				audioValue = attempt.audio
-				// Turn cancellation joins any outstanding reservation watcher on all exits.
-				defer func(a *phraseAttempt) { a.cancel(); <-a.done; a.ticket.Close() }(attempt)
 			}
-			beforeBudget, beforeAcoustic := *budget, *acoustic
 			if job.err != nil {
 				status = "speech_failed"
 				emit("error", "Speech preparation failed; no retry was made.", nil)
@@ -204,14 +319,18 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			if continuous && rendercontract.NaturalPerformance(intent.Version) {
 				validated.Motion = &rendercontract.MotionTiming{Version: rendercontract.ConversationalMotionVersion, ReplyID: id, Offset: clock / 1000}
 			}
+			budgetMu.Lock()
 			direction := validated
-			// A quiet streaming opening retains its already-admitted direction.
-			// Whole-recording acoustic accents cannot be scheduled retroactively.
-			if attempt == nil || !attempt.streamed {
+			if attempt == nil || !attempt.streamed || acoustic.semanticOnly || len(job.phrase.Cues) > 0 {
 				direction = resolvePerformance(validated, audio.Audio, audio.Duration/1000, acoustic, clock/1000, audio.Words...)
 			}
+			AssignMotionCueIDs(&direction, count)
 			direction = s.filterCapabilities(direction)
 			direction = budget.admit(direction, clock/1000)
+			if progressive != nil {
+				direction.Resolved = retainResolved(progressive.resolved, direction.Resolved)
+			}
+			budgetMu.Unlock()
 			var payload map[string]any
 			if json.Unmarshal(raw, &payload) != nil {
 				emit("error", "Invalid speech payload.", nil)
@@ -263,11 +382,13 @@ func (s *Service) runPhraseTurn(ctx context.Context, model phraseDirector, cid, 
 			if attempt != nil {
 				approvedReservation := attempt.ticket.Reservation
 				activationErr := attempt.activation(ctx)
-				attempt.close()
+				releaseAttempt(attempt)
 				attempt = nil
 				if errors.Is(activationErr, ErrDeliverySuperseded) {
+					budgetMu.Lock()
 					*budget = beforeBudget
 					*acoustic = beforeAcoustic
+					budgetMu.Unlock()
 					invalidated, recordErr := s.Store.Reserve(ctx, "delivery-superseded", deliveryKey+"-superseded", rendercontract.DeliveryVersion, cid, id, map[string]any{"delivery_operation_id": delivery.ID, "reason": "superseded_by_settings"}, false)
 					if recordErr == nil {
 						recordErr = s.Store.Finish(ctx, invalidated.ID, "received", map[string]string{"played": "false"}, nil, nil, nil)
@@ -333,12 +454,36 @@ type replyGestures struct {
 	heads     int
 	last, end float64
 	laughed   bool
+	decisions map[string]bool
 }
 
-func newReplyGestures() *replyGestures { return &replyGestures{last: -3, end: -3} }
+func newReplyGestures() *replyGestures {
+	return &replyGestures{last: -3, end: -3, decisions: make(map[string]bool)}
+}
+func (b *replyGestures) clone() replyGestures {
+	v := *b
+	v.decisions = make(map[string]bool, len(b.decisions))
+	for id, decision := range b.decisions {
+		v.decisions[id] = decision
+	}
+	// GestureWindow.Admit replaces its internal slice, so copied snapshots are immutable.
+	return v
+}
 func (b *replyGestures) admit(v PerformanceValidation, offset float64) PerformanceValidation {
+	if b.decisions == nil {
+		b.decisions = make(map[string]bool)
+	}
 	kept := make([]ResolvedCue, 0, len(v.Resolved))
 	for _, cue := range v.Resolved {
+		if cue.ID != "" {
+			if allowed, exists := b.decisions[cue.ID]; exists {
+				if allowed {
+					kept = append(kept, cue)
+				}
+				continue
+			}
+			b.decisions[cue.ID] = false
+		}
 		at := offset + cue.Time
 		if headCue(cue.Kind) {
 			repeats := rendercontract.GestureRepetitions(cue.Kind, cue.Repetitions)
@@ -364,6 +509,9 @@ func (b *replyGestures) admit(v PerformanceValidation, offset float64) Performan
 			b.laughed = true
 		}
 		kept = append(kept, cue)
+		if cue.ID != "" {
+			b.decisions[cue.ID] = true
+		}
 	}
 	v.Resolved = kept
 	return v

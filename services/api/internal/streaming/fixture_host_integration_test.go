@@ -209,7 +209,14 @@ func TestStreamingFixtureHost(t *testing.T) {
 	mailer := &capturedFixtureMail{}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
-	accountsService, err := accounts.Open(ctx, store.Pool, accounts.Config{Secret: "syntelle-fixture-auth-secret-only-20261021", Origin: "http://127.0.0.1:5173", Mailer: mailer, PackageHash: manifest.Hash})
+	origin := os.Getenv("SYNTELLE_STREAMING_FIXTURE_ORIGIN")
+	if origin == "" {
+		origin = "http://127.0.0.1:5173"
+	}
+	if origin != "http://127.0.0.1:5173" && origin != "http://127.0.0.1:5174" {
+		t.Fatal("fixture origin must be the canonical or isolated loopback player")
+	}
+	accountsService, err := accounts.Open(ctx, store.Pool, accounts.Config{Secret: "syntelle-fixture-auth-secret-only-20261021", Origin: origin, Mailer: mailer, ProcessorURL: os.Getenv("SYNTELLE_STREAMING_FIXTURE_PROCESSOR_URL"), PackageHash: manifest.Hash})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,11 +256,12 @@ func TestStreamingFixtureHost(t *testing.T) {
 		voice.expectedText = ""
 		conversations.Model = &recordedPerformanceDirectorFixture{streamModelFixture: model}
 	}
-	service, err := Open(ctx, store.Pool, conversations, accountsService.Resolve, Config{WorkerToken: fixtureWorkerToken, MaximumSessions: 2, PackageHash: manifest.Hash, ValidatePrincipal: accountsService.ValidatePrincipal})
+	service, err := Open(ctx, store.Pool, conversations, accountsService.Resolve, Config{WorkerToken: fixtureWorkerToken, MaximumSessions: 2, PackageHash: manifest.Hash, ValidatePrincipal: accountsService.ValidatePrincipal, ResolveCharacter: accountsService.ResolveCharacter})
 	if err != nil {
 		t.Fatal(err)
 	}
 	accountsService.OnRevoked = service.Revoke
+	accountsService.OnCharacterDeleted = service.CharacterDeleted
 	stop := make(chan struct{})
 	var stopOnce sync.Once
 	control := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -339,7 +347,7 @@ func TestStreamingFixtureHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &http.Server{Handler: accountsService.Handler(service.Handler(control)), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: accountsService.Handler(fixtureStreamOrigin(origin, service.Handler(control))), ReadHeaderTimeout: 5 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()
 	t.Log("OFFLINE FIXTURE READY http://127.0.0.1:8083; captured email and cached native audio only; zero real provider calls")
@@ -361,4 +369,26 @@ func TestStreamingFixtureHost(t *testing.T) {
 	if err = <-finished; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		t.Error(err)
 	}
+}
+
+// The isolated browser uses 5174 while the production allowlist remains 5173.
+// Account handlers see the real origin above this integration-only adapter.
+// Clone only the exact configured fixture origin so the existing HTTP/WebSocket
+// streaming guards exercise their canonical checks without accepting outsiders.
+func fixtureStreamOrigin(origin string, next http.Handler) http.Handler {
+	if origin == "http://127.0.0.1:5173" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		incoming := r.Header.Get("Origin")
+		if origin != "http://127.0.0.1:5174" || (incoming != "" && incoming != origin) {
+			http.Error(w, "Isolated fixture origin required.", http.StatusForbidden)
+			return
+		}
+		if incoming == origin {
+			r = r.Clone(r.Context())
+			r.Header.Set("Origin", "http://127.0.0.1:5173")
+		}
+		next.ServeHTTP(w, r)
+	})
 }

@@ -34,7 +34,7 @@ func TestQuietMicrophoneFinalStartsWithoutSecondLongSilence(t *testing.T) {
 	model := &inputModelFixture{input: make(chan string, 1)}
 	r := quietRecognitionFixture{make(chan RecognitionEvent, 8)}
 	cid, mic := "quiet-latency-session", "quiet-latency-microphone"
-	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f := openSocketFixture(t, legacyEndpointService(store, model, &speechFixture{}, r), cid)
 	f.send(Event{Type: "mic_start", ConversationID: cid, TurnID: mic})
 	readUtteranceEvent(t, f, "listening")
 	quietFrames(f, cid, mic, 2000, 25)
@@ -62,7 +62,7 @@ func TestQuietMicrophoneContinuationOutlivesWatchdogWithoutSDKCallbacks(t *testi
 	model := &inputModelFixture{input: make(chan string, 1)}
 	r := quietRecognitionFixture{make(chan RecognitionEvent, 8)}
 	cid, mic := "quiet-continuation-session", "quiet-continuation-microphone"
-	f := openSocketFixture(t, New(store, model, &speechFixture{}, r), cid)
+	f := openSocketFixture(t, legacyEndpointService(store, model, &speechFixture{}, r), cid)
 	f.send(Event{Type: "mic_start", ConversationID: cid, TurnID: mic})
 	readUtteranceEvent(t, f, "listening")
 	quietFrames(f, cid, mic, 2000, 25)

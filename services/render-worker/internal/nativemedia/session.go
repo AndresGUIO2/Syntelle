@@ -22,6 +22,9 @@ import (
 )
 
 type session struct {
+	packageHash       string
+	lastMoodClock     float64
+	moodSequence      uint64
 	activity          string
 	coordinated       bool
 	delivery          *pendingDelivery
@@ -35,8 +38,6 @@ type session struct {
 	policyRevision    uint64
 
 	emotionSuppressedTurn string
-	previewEnd            string
-	previewTurn           string
 	previewKind           string
 	previewAmount         float64
 	previewRepetitions    int
@@ -70,6 +71,9 @@ type session struct {
 	complete              bool
 	playing               *clip
 	stream                *clip
+	streams               map[int]*clip
+	completedSourceMS     float64
+	completedPhraseIndex  int
 	position              int
 	started               bool
 	mediaTime             time.Duration
@@ -83,6 +87,7 @@ type session struct {
 	frame                 *image.RGBA
 	video                 VideoEncoder
 	audio                 AudioEncoder
+	reportClock           mediaEpochReports
 	peerMu                sync.Mutex
 	offerMu               sync.Mutex
 	peer                  *webrtc.PeerConnection
@@ -105,10 +110,23 @@ type session struct {
 }
 
 func (h *Host) newSession(id string, settings rendercontract.Settings) (*session, error) {
+	return h.newPackageSession(id, settings, h.config.PackageHash, h.config.SceneFactory)
+}
+
+func (h *Host) newPackageSession(id string, settings rendercontract.Settings, packageHash string, factory SceneFactory) (*session, error) {
 	ctx, cancel := context.WithCancel(h.ctx)
 	s := &session{emotionInstance: rand.Text(), id: id, host: h, ctx: ctx, cancel: cancel, done: make(chan struct{}), settings: settings, ignored: map[string]bool{}, preparationWake: make(chan struct{}, 1), created: time.Now(), createdRaw: nativeclock.Now(), frame: image.NewRGBA(image.Rect(0, 0, h.config.Width, h.config.Height))}
 	var err error
-	s.scene, err = h.config.SceneFactory(settings)
+	s.packageHash = packageHash
+	s.scene, err = factory(settings)
+	if err == nil {
+		if capability, ok := s.scene.(interface{ PersistentEmotionsAvailable() bool }); ok {
+			s.emotionController.Persistent = capability.PersistentEmotionsAvailable()
+		}
+		if s.emotionController.Persistent {
+			s.emotionController.Configure(0, settings, "")
+		}
+	}
 	if err == nil {
 		s.video, err = h.config.Encoders.Video(h.config.Width, h.config.Height, h.config.FPS, 2500000)
 	}
@@ -157,11 +175,11 @@ func (s *session) interrupt() {
 	defer s.sendMu.Unlock()
 	s.mu.Lock()
 	s.invalidateDeliveryLocked("interrupted")
-	s.emotionController.End(s.emotionClock, true)
+	if !s.emotionController.Persistent || s.started || s.presentation.Active {
+		s.emotionController.End(s.emotionClock, true)
+	}
 	s.emotionEpoch++
 	s.rememberTurn()
-	s.previewEnd = ""
-	s.previewTurn = ""
 	s.previewKind = ""
 	s.waiting = false
 	s.generation++
@@ -169,6 +187,9 @@ func (s *session) interrupt() {
 	s.turn = ""
 	s.queue = nil
 	s.stream = nil
+	s.streams = nil
+	s.completedSourceMS = 0
+	s.completedPhraseIndex = 0
 	// An interrupted in-flight analysis keeps its PCM reservation until it has
 	// observed cancellation and released its temporary conversion buffer.
 	s.queuedBytes = s.cancelPreparationLocked()
@@ -203,6 +224,9 @@ func (s *session) configure(data json.RawMessage) error {
 	}
 	if err := next.Validate(); err != nil {
 		return err
+	}
+	if next.Character != s.settings.Character {
+		return errors.New("native character cannot change within a session")
 	}
 	var optional struct {
 		Paused *bool `json:"paused"`
@@ -319,6 +343,11 @@ func (s *session) conversation(raw json.RawMessage) error {
 		if complete.Parts != nil && (*complete.Parts < 1 || *complete.Parts != s.nextIndex) {
 			return errors.New("speech completion does not match received parts")
 		}
+		for _, stream := range s.streams {
+			if !stream.streamFinal {
+				return errors.New("phrase stream has no final recording")
+			}
+		}
 		if s.stream != nil && !s.stream.streamFinal {
 			return errors.New("opening stream has no final recording")
 		}
@@ -384,6 +413,9 @@ func (s *session) conversation(raw json.RawMessage) error {
 		return errors.New("speech queue capacity or ordering exceeded")
 	}
 	decoded.phraseIndex = index
+	if offset, known := s.prefixOffsetLocked(index); known {
+		decoded.replyOffsetMS = offset
+	}
 	_, decoded.needsPreparation = s.scene.(SpeechPreparer)
 	s.queue = append(s.queue, decoded)
 	s.queuedBytes += len(decoded.samples) * 2
@@ -416,11 +448,7 @@ func (s *session) frameInput() FrameInput {
 		clock += float64(s.tickElapsedLocked()) / float64(time.Millisecond)
 	}
 	capability, available := s.scene.(interface{ EmotionsAvailable() bool })
-	unified := false
-	if value, ok := s.scene.(interface{ UnifiedLaughterAvailable() bool }); ok {
-		unified = value.UnifiedLaughterAvailable()
-	}
-	if available && capability.EmotionsAvailable() && (!state.Preview || unified) && (s.coordinated || s.settings.EmotionRegulation.Normalized().Enabled || s.emotionController.Controlled(state.TurnID)) {
+	if available && capability.EmotionsAvailable() && !state.Preview && (s.coordinated || s.settings.EmotionRegulation.Normalized().Enabled || s.emotionController.Controlled(state.TurnID)) {
 		copyController := s.emotionController
 		copyController.Configure(clock, s.settings, state.TurnID)
 		value := copyController.Motion
@@ -486,10 +514,6 @@ func (s *session) videoLoop() {
 				start, end := s.calibration()
 				timingMarker(s.frame, input.MediaTime, start, end)
 			}
-			presenting := false
-			if owner, ok := s.scene.(interface{ LaughterPresenting() bool }); ok {
-				presenting = owner.LaughterPresenting()
-			}
 			s.frameMu.Unlock()
 			s.renderNS.Add(uint64((nativeclock.Now() - start)))
 			if err != nil {
@@ -538,7 +562,6 @@ func (s *session) videoLoop() {
 				s.keyframe.Store(true)
 				continue
 			}
-			s.finishPreviewPresentation(input.Generation, presenting)
 			s.encoded.Add(1)
 			if hasLastPTS && input.MediaTime <= lastPTS {
 				s.repeatedVideoPTS.Add(1)
@@ -594,10 +617,8 @@ func (s *session) audioLoop() {
 		for _, decision := range decisions {
 			s.host.emit(event("emotion_decision", s.id, decision.TurnID, decision))
 		}
+		s.publishMood(len(decisions) > 0)
 		for _, notification := range block.events {
-			if s.deferPreviewEnd(notification, block.generation) {
-				continue
-			}
 			s.host.emit(event("playback", s.id, notification.turn, map[string]string{"event": notification.kind, "turn_id": notification.turn}))
 		}
 		for _, activation := range block.activations {
@@ -789,14 +810,18 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 			s.waiting = false
 		}
 		count := copy(pcm[filled:], s.playing.samples[s.position:available])
+		if count > 0 && !s.playing.preview {
+			block.controller.Activity(block.clock)
+		}
 		s.position += count
 		filled += count
 		if s.position == len(s.playing.samples) && (!s.playing.streaming || s.playing.streamFinal) {
 			s.queuedBytes -= len(s.playing.samples) * 2
-			if s.stream == s.playing {
-				s.stream = nil
-			}
+			s.completedSourceMS = s.playing.replyOffsetMS + float64(s.playing.duration)/float64(time.Millisecond)
+			s.completedPhraseIndex = s.playing.phraseIndex + 1
+			delete(s.streams, s.playing.phraseIndex)
 			s.playing = nil
+			s.refreshStreamAliasLocked()
 			s.position = 0
 			s.revision++
 		}
@@ -805,7 +830,7 @@ func (s *session) nextAudioBlock(now time.Time, pcm []int16) (block audioBlock) 
 }
 
 func (s *session) clipState(value *clip, position int) SpeechState {
-	return SpeechState{Streaming: value.streaming, LaughterSpan: value.laughterSpan, Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
+	return SpeechState{PhraseIndex: value.phraseIndex, Streaming: value.streaming, Preview: value.preview, Active: true, Revision: s.revision, TurnID: s.turn, Position: time.Duration(position) * time.Second / sampleRate, Duration: value.duration, Samples: value.samples, SampleRate: sampleRate, Visemes: value.visemes, Text: value.text, Performance: value.performance, Prepared: value.prepared}
 }
 func (s *session) rememberTurn() {
 	if s.turn == "" {
@@ -852,11 +877,6 @@ func (s *session) preview(raw json.RawMessage) error {
 		s.previewKind = ""
 		s.generation++
 		s.turn = p.TurnID
-		s.previewEnd = ""
-		s.previewTurn = ""
-		if value, ok := s.scene.(interface{ UnifiedLaughterAvailable() bool }); ok && value.UnifiedLaughterAvailable() {
-			s.previewTurn = p.TurnID
-		}
 		s.queue = []*clip{decoded}
 		s.queuedBytes = len(decoded.samples) * 2
 		s.nextIndex = 1
@@ -883,29 +903,4 @@ func (s *session) preview(raw json.RawMessage) error {
 	s.previewSequence++
 	s.revision++
 	return nil
-}
-
-// PCM completion and visual completion share the existing notification contract.
-// A preview's final notification belongs to the first successfully sent settled frame.
-func (s *session) deferPreviewEnd(n playbackNotification, generation uint64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if n.kind != "playback_ended" || n.turn != s.previewTurn || generation != s.generation {
-		return false
-	}
-	s.previewEnd = n.turn
-	return true
-}
-func (s *session) finishPreviewPresentation(generation uint64, presenting bool) {
-	s.mu.Lock()
-	turn := ""
-	if !s.paused && !presenting && generation == s.generation && s.previewEnd != "" {
-		turn = s.previewEnd
-		s.previewEnd = ""
-		s.previewTurn = ""
-	}
-	s.mu.Unlock()
-	if turn != "" {
-		s.host.emit(event("playback", s.id, turn, map[string]string{"event": "playback_ended", "turn_id": turn}))
-	}
 }

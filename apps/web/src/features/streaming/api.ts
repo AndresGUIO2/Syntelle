@@ -7,7 +7,12 @@ export class RequestError extends Error {
   }
 }
 
-export async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+export async function request<T>(
+  path: string,
+  method = 'GET',
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(path, {
     method,
     credentials: 'same-origin',
@@ -16,6 +21,7 @@ export async function request<T>(path: string, method = 'GET', body?: unknown): 
       ...(method === 'GET'
         ? {}
         : { 'Content-Type': 'application/json', 'X-Syntelle-Request': '1' }),
+      ...extraHeaders,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })

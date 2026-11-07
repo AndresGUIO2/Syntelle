@@ -13,8 +13,18 @@ const props = defineProps<{
   background: StreamSettings['background']
   blur: number
   controlsTarget: HTMLElement | null
+  poster?: string | null
+  characterName?: string
 }>()
-const posterImage = computed(() => `/characters/posters/syntelle-${props.background}-portrait.webp`)
+const posterImage = computed(() =>
+  props.poster === undefined
+    ? `/characters/posters/syntelle-${props.background}-portrait.webp`
+    : props.poster,
+)
+const portraitFailed = shallowRef(false)
+watch(posterImage, () => {
+  portraitFailed.value = false
+})
 const video = useTemplateRef<HTMLVideoElement>('video')
 const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
 const pipVideo = useTemplateRef<HTMLVideoElement>('pipVideo')
@@ -130,7 +140,10 @@ watch(
           (failure instanceof DOMException && failure.name === 'AbortError')
         )
           return
-        audioError.value = 'Select Unmute sound to hear Syntelle.'
+        audioError.value =
+          props.poster === undefined
+            ? 'Select Unmute sound to hear Syntelle.'
+            : 'Select Unmute sound to hear your character.'
       })
   },
   { flush: 'post' },
@@ -199,26 +212,35 @@ defineExpose({ enableAudio })
   <section
     class="remote-stage"
     :class="{ 'remote-stage-still': still }"
-    :aria-label="t(showVideo ? 'Syntelle live video' : 'Syntelle portrait')"
+    :aria-label="
+      props.poster === undefined
+        ? t(showVideo ? 'Syntelle live video' : 'Syntelle portrait')
+        : props.characterName
+    "
     :aria-busy="Boolean(media) && !showVideo"
   >
     <div class="remote-media">
       <div
+        v-if="props.poster === undefined || !showVideo"
         class="remote-backdrop"
-        :style="{ '--stage-background': `url(${posterImage})` }"
+        :style="
+          posterImage && !portraitFailed ? { '--stage-background': `url(${posterImage})` } : {}
+        "
         aria-hidden="true"
       />
       <picture
+        v-if="posterImage && !portraitFailed && (props.poster === undefined || !showVideo)"
         class="remote-poster"
         :class="{ 'remote-poster-live': showVideo }"
         :aria-hidden="showVideo"
       >
         <img
           :src="posterImage"
-          :alt="t('Syntelle portrait')"
+          :alt="props.poster === undefined ? t('Syntelle portrait') : props.characterName"
           width="720"
           height="960"
           fetchpriority="high"
+          @error="portraitFailed = true"
         />
       </picture>
       <canvas
@@ -226,7 +248,11 @@ defineExpose({ enableAudio })
         class="remote-video"
         :aria-hidden="!showVideo"
         role="img"
-        :aria-label="t('Animated Syntelle with synchronized speech')"
+        :aria-label="
+          props.poster === undefined
+            ? t('Animated Syntelle with synchronized speech')
+            : props.characterName
+        "
       />
       <video
         ref="video"
@@ -274,7 +300,15 @@ defineExpose({ enableAudio })
           :disabled="pipPending"
           :aria-pressed="pipActive"
           :aria-label="t(pipActive ? 'Return to tab' : 'Picture in picture')"
-          :title="t(pipActive ? 'Return video to tab' : 'Keep Syntelle in a floating window')"
+          :title="
+            t(
+              pipActive
+                ? 'Return video to tab'
+                : props.poster === undefined
+                  ? 'Keep Syntelle in a floating window'
+                  : 'Keep your character in a floating window',
+            )
+          "
           @click="changePictureInPicture()"
         >
           <AppIcon name="pip" />

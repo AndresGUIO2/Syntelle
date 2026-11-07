@@ -17,13 +17,14 @@ const maxQueuedParts = 32
 const maxQueuedPCMBytes = 32 << 20
 
 type preparedSpeech struct {
-	LaughterSpan *rendercontract.LaughterSpan        `json:"laughter_span,omitempty"`
-	Delivery     *rendercontract.DeliveryReservation `json:"delivery,omitempty"`
-	Preview      bool                                `json:"preview_only"`
-	Audio        []byte                              `json:"audio_base64"`
-	DurationMS   float64                             `json:"duration_ms"`
-	Visemes      []Viseme                            `json:"visemes"`
-	Performance  json.RawMessage                     `json:"performance"`
+	Voice       string                              `json:"voice,omitempty"`
+	Language    string                              `json:"language,omitempty"`
+	Delivery    *rendercontract.DeliveryReservation `json:"delivery,omitempty"`
+	Preview     bool                                `json:"preview_only"`
+	Audio       []byte                              `json:"audio_base64"`
+	DurationMS  float64                             `json:"duration_ms"`
+	Visemes     []Viseme                            `json:"visemes"`
+	Performance json.RawMessage                     `json:"performance"`
 }
 
 type speechPart struct {
@@ -35,8 +36,8 @@ type speechPart struct {
 }
 
 type clip struct {
+	replyOffsetMS          float64
 	streaming, streamFinal bool
-	laughterSpan           *rendercontract.LaughterSpan
 	delivery               *rendercontract.DeliveryReservation
 	phraseIndex            int
 	preview                bool
@@ -52,6 +53,9 @@ type clip struct {
 }
 
 func decodeClip(prepared preparedSpeech, text string) (*clip, error) {
+	if r := prepared.Delivery; r != nil && ((prepared.Voice != "" && prepared.Voice != r.Request.Voice) || (prepared.Language != "" && prepared.Language != r.Request.Language)) {
+		return nil, errors.New("recording voice or language differs from its reservation")
+	}
 	samples, err := decodeWAV(prepared.Audio)
 	if err != nil {
 		return nil, err
@@ -70,10 +74,7 @@ func decodeClip(prepared preparedSpeech, text string) (*clip, error) {
 	if len(prepared.Visemes) < 2 {
 		return nil, errors.New("missing native viseme timeline")
 	}
-	if err := nativeanimation.ValidateLaughterSpan(prepared.LaughterSpan, samples, sampleRate); err != nil {
-		return nil, err
-	}
-	return &clip{laughterSpan: prepared.LaughterSpan, delivery: prepared.Delivery, preview: prepared.Preview, samples: samples, visemes: prepared.Visemes, duration: duration, text: text, performance: prepared.Performance}, nil
+	return &clip{delivery: prepared.Delivery, preview: prepared.Preview, samples: samples, visemes: prepared.Visemes, duration: duration, text: text, performance: prepared.Performance}, nil
 }
 
 func decodeWAV(data []byte) ([]int16, error) {

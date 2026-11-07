@@ -25,7 +25,7 @@ export interface EmotionRegulation {
 export interface StreamSettings {
   emotion_regulation?: EmotionRegulation
   emotion_baseline: EmotionBaseline
-  character: 'syntelle'
+  character: 'syntelle' | `char_${string}`
   instructions: string
   language: 'en-US' | 'es-CO'
   voice: string

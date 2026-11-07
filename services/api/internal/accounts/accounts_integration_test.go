@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -35,12 +36,13 @@ func (m *capturedMail) SendCode(_ context.Context, email, code, id string) (stri
 func (m *capturedMail) code(id string) string { m.mu.Lock(); defer m.mu.Unlock(); return m.codes[id] }
 
 type accountFixture struct {
-	s       *Service
-	pool    *pgxpool.Pool
-	mail    *capturedMail
-	now     time.Time
-	t       *testing.T
-	handler http.Handler
+	s          *Service
+	pool       *pgxpool.Pool
+	mail       *capturedMail
+	remoteAddr string
+	now        time.Time
+	t          *testing.T
+	handler    http.Handler
 }
 
 func newAccountFixture(t *testing.T) *accountFixture {
@@ -61,7 +63,8 @@ func newAccountFixture(t *testing.T) *accountFixture {
 		t.Fatal("fixture database unavailable")
 	}
 	t.Cleanup(pool.Close)
-	f := &accountFixture{pool: pool, mail: &capturedMail{codes: map[string]string{}}, now: time.Now().UTC(), t: t}
+	addressID := randomID()
+	f := &accountFixture{pool: pool, mail: &capturedMail{codes: map[string]string{}}, remoteAddr: "198.18." + strconv.Itoa(int(addressID[0])) + "." + strconv.Itoa(int(addressID[1])) + ":12345", now: time.Now().UTC(), t: t}
 	s, err := Open(context.Background(), pool, Config{Secret: strings.Repeat("fixture-only-key-", 3), Origin: "http://127.0.0.1:5173", Mailer: f.mail, PackageHash: strings.Repeat("a", 64), Now: func() time.Time { return f.now }})
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +77,7 @@ func (f *accountFixture) request(method, path string, body any, cookie *http.Coo
 	f.t.Helper()
 	b, _ := json.Marshal(body)
 	r := httptest.NewRequest(method, "http://127.0.0.1:5173"+path, strings.NewReader(string(b)))
-	r.RemoteAddr = "127.0.0.1:12345"
+	r.RemoteAddr = f.remoteAddr
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Origin", "http://127.0.0.1:5173")
 	r.Header.Set("X-Syntelle-Request", "1")

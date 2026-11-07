@@ -73,7 +73,7 @@ def load_inputs(path):
     return spec, base, images, points, provenance
 
 
-def analyze(manifest, output, poses, request=False, correction=False, provider=None):
+def analyze(manifest, output, poses, request=False, correction=False, provider=None, *, allow_correction=True):
     spec, _, images, _, provenance = load_inputs(manifest)
     template = (ROOT/'docs/prompts/oral-semantics-v1.txt').read_text(encoding='utf-8')
     output.mkdir(parents=True, exist_ok=True)
@@ -130,6 +130,8 @@ def analyze(manifest, output, poses, request=False, correction=False, provider=N
                                                 'contours_sha256': digest(stage_dir/'contours.json') if (stage_dir/'contours.json').exists() else None, 'version': VERSION})
         print(json.dumps({'pose': pose, 'stage': stage, 'validation': result, 'usage': record.get('usage')}))
         if not result['valid']:
+            if not allow_correction:
+                raise PreparationError(f'{pose}: oral contours failed validation. No correction authorized.')
             if not use_correction:
                 analyze(manifest,output,[pose],request=request,correction=True,provider=provider)
             else:

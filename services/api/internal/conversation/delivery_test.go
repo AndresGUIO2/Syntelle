@@ -12,6 +12,18 @@ import (
 	"time"
 )
 
+func TestDeliveryActivationIsBroadcastToPreparationAndOrderedDelivery(t *testing.T) {
+	a := &phraseAttempt{activated: make(chan struct{})}
+	close(a.activated)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	for range 3 {
+		if err := a.activation(ctx); err != nil {
+			t.Fatal("activation was consumed by another waiter", err)
+		}
+	}
+}
+
 type coordinatedModel struct{ count int }
 
 func (coordinatedModel) Settings() any                       { return "offline-fixture" }

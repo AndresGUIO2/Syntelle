@@ -1,25 +1,40 @@
 <script setup lang="ts">
 import { useLocaleStore } from './stores/locale'
-import { defineAsyncComponent, onMounted, shallowRef, useTemplateRef, watchEffect } from 'vue'
+import {
+  defineAsyncComponent,
+  onMounted,
+  shallowRef,
+  useTemplateRef,
+  watch,
+  watchEffect,
+} from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import PricingPage from './features/pricing/PricingPage.vue'
 import CreateCharacterPage from './features/characters/CreateCharacterPage.vue'
+import WorkspacePanel from './features/workspaces/WorkspacePanel.vue'
+import StaffPanel from './features/workspaces/StaffPanel.vue'
 import { request } from './features/streaming/api'
 import { usePageNavigation } from './composables/usePageNavigation'
 const { t } = useLocaleStore()
 const accountWorkspace = useTemplateRef<{ openAccount: () => void }>('accountWorkspace')
 const signedIn = shallowRef(false)
+const staffEligible = shallowRef(false)
 const navigation = usePageNavigation()
 const characterSessionChecked = shallowRef(!navigation.characterCreation.value)
 const streamWorkspace = defineAsyncComponent(
   () => import('./features/streaming/StreamWorkspace.vue'),
 )
 function openAccount() {
-  if (navigation.pricing.value || navigation.characterCreation.value) navigation.visit('/?auth')
+  if (
+    navigation.pricing.value ||
+    navigation.characterCreation.value ||
+    navigation.workspaces.value ||
+    navigation.admin.value
+  )
+    navigation.visit('/?auth')
   else accountWorkspace.value?.openAccount()
 }
 onMounted(async () => {
-  if (!navigation.characterCreation.value) return
   try {
     const session = await request<{ account: unknown | null }>('/api/v1/auth/me')
     signedIn.value = Boolean(session.account)
@@ -28,16 +43,44 @@ onMounted(async () => {
   } finally {
     characterSessionChecked.value = true
   }
-  if (!signedIn.value && navigation.characterCreation.value) {
-    navigation.visit('/?auth')
+})
+watch(
+  [
+    characterSessionChecked,
+    signedIn,
+    navigation.characterCreation,
+    navigation.returningToCharacters,
+  ],
+  ([checked, authenticated, characters, returning]) => {
+    if (!checked) return
+    if (!authenticated && characters) navigation.visit('/?auth&return=characters', true)
+    else if (authenticated && returning) navigation.visit('/characters/new', true)
+  },
+)
+watch(signedIn, async (value, _, onCleanup) => {
+  staffEligible.value = false
+  if (!value) return
+  let current = true
+  onCleanup(() => {
+    current = false
+  })
+  try {
+    await request('/api/v1/admin/eligibility')
+    if (current) staffEligible.value = true
+  } catch {
+    if (current) staffEligible.value = false
   }
 })
 watchEffect(() => {
   document.title = navigation.pricing.value
     ? `${t('Pricing')} · Syntelle`
     : navigation.characterCreation.value
-      ? `${t('Create a character')} · Syntelle`
-      : 'Syntelle'
+      ? `${t('Characters')} · Syntelle`
+      : navigation.admin.value
+        ? `${t('Administration')} · Syntelle`
+        : navigation.workspaces.value
+          ? `${t('Workspaces')} · Syntelle`
+          : 'Syntelle'
 })
 </script>
 
@@ -52,6 +95,10 @@ watchEffect(() => {
       :signed-in="signedIn"
       :pricing-active="navigation.pricing.value"
       :character-creation-active="navigation.characterCreation.value"
+      :chat-active="navigation.chat.value"
+      :workspaces-active="navigation.workspaces.value"
+      :admin-active="navigation.admin.value"
+      :staff-eligible="staffEligible"
       @account="openAccount"
       @navigate="navigation.follow"
     />
@@ -68,11 +115,18 @@ watchEffect(() => {
       >
         {{ t('Checking your account…') }}
       </div>
+      <WorkspacePanel v-else-if="navigation.workspaces.value && signedIn" />
+      <StaffPanel v-else-if="navigation.admin.value && signedIn" />
+      <p v-else-if="navigation.workspaces.value || navigation.admin.value">
+        {{ t('Sign in to continue.') }}
+      </p>
       <template v-else>
         <h1 class="visually-hidden">{{ t('Syntelle workspace') }}</h1>
         <component
           :is="streamWorkspace"
+          :key="navigation.selectedCharacter.value"
           ref="accountWorkspace"
+          :character-id="navigation.selectedCharacter.value"
           @account-change="signedIn = $event"
         />
       </template>

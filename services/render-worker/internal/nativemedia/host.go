@@ -102,13 +102,17 @@ func (h *Host) Dispatch(ctx context.Context, command Envelope) error {
 	switch command.Type {
 	case "activity":
 		var activity struct {
-			State string `json:"state"`
+			State    string `json:"state"`
+			Dialogue bool   `json:"dialogue"`
 		}
 		if json.Unmarshal(command.Data, &activity) != nil || (activity.State != "listening" && activity.State != "preparing" && activity.State != "speaking" && activity.State != "idle") {
 			return errors.New("invalid performance activity")
 		}
 		s.mu.Lock()
 		s.activity = activity.State
+		if activity.Dialogue {
+			s.emotionController.Activity(s.emotionClock)
+		}
 		s.mu.Unlock()
 		return nil
 	case "performance_preflight":
@@ -153,9 +157,10 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 		return errors.New("native media capacity is unavailable")
 	}
 	input := struct {
-		Settings       rendercontract.Settings `json:"settings"`
-		PackageHash    string                  `json:"package_hash"`
-		PolicyRevision uint64                  `json:"emotion_policy_revision"`
+		Settings       rendercontract.Settings        `json:"settings"`
+		PackageHash    string                         `json:"package_hash"`
+		PolicyRevision uint64                         `json:"emotion_policy_revision"`
+		Mood           *rendercontract.MoodCheckpoint `json:"mood_checkpoint"`
 	}{Settings: rendercontract.Defaults()}
 	if err := json.Unmarshal(command.Data, &input); err != nil {
 		return errors.New("invalid native media settings")
@@ -163,16 +168,36 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 	if err := input.Settings.Validate(); err != nil {
 		return fmt.Errorf("native media settings: %w", err)
 	}
-	if input.PackageHash != "" && input.PackageHash != h.config.PackageHash {
-		return errors.New("native character package mismatch")
+	factory, packageHash, err := h.resolveScene(input.Settings, input.PackageHash)
+	if err != nil {
+		return err
 	}
-	s, err := h.newSession(command.SessionID, input.Settings)
+	s, err := h.newPackageSession(command.SessionID, input.Settings, packageHash, factory)
 	if err != nil {
 		return err
 	}
 	s.policyRevision = input.PolicyRevision
 	if s.policyRevision == 0 {
 		s.policyRevision = 1
+	}
+	if input.Mood != nil && s.emotionController.Persistent {
+		m := input.Mood
+		if m.Version != "mood-checkpoint/1" || m.SessionID != s.id || m.PackageHash != s.packageHash || m.Revision != s.policyRevision {
+			s.cancel()
+			s.release()
+			return errors.New("stale mood checkpoint")
+		}
+		if err := s.emotionController.RestoreMood(m.State); err != nil {
+			s.cancel()
+			s.release()
+			return err
+		}
+	}
+	if s.emotionController.Persistent {
+		decision := s.emotionController.Evidence(nil, "configuration", "", -1, s.generation)
+		decision.Instance = s.emotionInstance
+		decision.PolicyRevision = s.policyRevision
+		h.emit(event("emotion_decision", s.id, "", decision))
 	}
 	h.mu.Lock()
 	if h.closing || h.ctx.Err() != nil || ctx.Err() != nil {
@@ -210,7 +235,7 @@ func (h *Host) create(ctx context.Context, command Envelope) error {
 	if h.config.Width != 720 {
 		displayWidth /= 2
 	}
-	h.emit(event("ready", s.id, "", map[string]any{"width": h.config.Width, "height": h.config.Height, "fps": h.config.FPS, "renderer": s.rendererBackend(), "package_hash": h.config.PackageHash, "video_layout": videoLayout(h.config.Width), "display_width": displayWidth, "display_height": h.config.Height}))
+	h.emit(event("ready", s.id, "", map[string]any{"width": h.config.Width, "height": h.config.Height, "fps": h.config.FPS, "renderer": s.rendererBackend(), "package_hash": s.packageHash, "video_layout": videoLayout(h.config.Width), "display_width": displayWidth, "display_height": h.config.Height}))
 	return nil
 }
 

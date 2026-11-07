@@ -5,6 +5,7 @@ package speech
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"sort"
 	"sync"
@@ -91,8 +92,11 @@ func (p *azureSpeechProvider) synthesizeNative(ctx context.Context, input Input,
 		synthesizer.Synthesizing(func(event speech.SpeechSynthesisEventArgs) {
 			defer event.Close()
 			lock.Lock()
+			if len(rawPCM) == 0 && len(event.Result.AudioData) > 0 {
+				slog.Info("First synthesis audio received", "code", "tts_first_chunk", "request_key", input.RequestKey, "received_unix_ms", time.Now().UnixMilli())
+			}
 			if len(rawPCM)+len(event.Result.AudioData) > 8<<20 {
-				streamError = errors.New("native opening exceeded its audio bound")
+				streamError = errors.New("native phrase exceeded its audio bound")
 			} else {
 				rawPCM = append(rawPCM, event.Result.AudioData...)
 			}
@@ -103,8 +107,11 @@ func (p *azureSpeechProvider) synthesizeNative(ctx context.Context, input Input,
 	synthesizer.WordBoundary(func(event speech.SpeechSynthesisWordBoundaryEventArgs) {
 		defer event.Close()
 		lock.Lock()
-		defer lock.Unlock()
 		words = append(words, rendercontract.WordBoundary{Text: event.Text, TextOffset: int(event.TextOffset), Length: int(event.WordLength), OffsetMS: float64(event.AudioOffset) / 10000, DurationMS: float64(event.Duration) / float64(time.Millisecond)})
+		lock.Unlock()
+		if publish != nil {
+			notify()
+		}
 	})
 	synthesizer.VisemeReceived(func(event speech.SpeechSynthesisVisemeEventArgs) {
 		defer event.Close()
@@ -138,24 +145,10 @@ func (p *azureSpeechProvider) synthesizeNative(ctx context.Context, input Input,
 			waiting = false
 		case <-wake:
 			lock.Lock()
-			prefix := result
 			// Keep native viseme lookahead ahead of audible PCM. A provider that
 			// delays visemes simply retains the complete-recording path.
-			n := len(rawPCM) / 2 * 2
-			if len(events) > 1 {
-				n = min(n, int(events[len(events)-1].OffsetMS*48)/2*2)
-			} else {
-				n = 0
-			}
-			ready := n >= 38400 && n-lastBytes >= 19200 && streamError == nil
-			if ready {
-				prefix.Audio = pcmWAV(rawPCM[:n])
-				prefix.DurationMS = float64(n) / 48
-				for _, v := range events {
-					if v.OffsetMS <= prefix.DurationMS {
-						prefix.Visemes = append(prefix.Visemes, v)
-					}
-				}
+			prefix, n, ready := nativePCMPrefix(input, result, rawPCM, events, words, lastBytes)
+			if ready && streamError == nil {
 				lastBytes = n
 			}
 			err = streamError

@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	ProcessorURL       string
 	Secret             string
 	Origin             string
 	ResendAPIKey       string
@@ -29,7 +30,8 @@ func ConfigFromEnv() Config {
 		origin = "http://127.0.0.1:5173"
 	}
 	return Config{
-		Secret: os.Getenv("SYNTELLE_AUTH_SECRET"), Origin: strings.TrimRight(origin, "/"),
+		ProcessorURL: os.Getenv("PROCESSOR_URL"),
+		Secret:       os.Getenv("SYNTELLE_AUTH_SECRET"), Origin: strings.TrimRight(origin, "/"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"), ResendFrom: os.Getenv("RESEND_FROM"),
 		GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"), GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GitHubClientID: os.Getenv("GITHUB_CLIENT_ID"), GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),

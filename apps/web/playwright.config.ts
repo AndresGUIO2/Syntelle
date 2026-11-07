@@ -63,7 +63,7 @@ export default defineConfig({
       ...project,
       // Historical client/laboratory suites remain as evidence. Their browser
       // entry points are retired from the public application.
-      testMatch: '**/backend-player.spec.ts',
+      testMatch: ['**/backend-player.spec.ts', '**/workspaces.spec.ts', '**/characters.spec.ts'],
     })),
     {
       name: 'api',

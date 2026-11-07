@@ -76,6 +76,17 @@ func (d *emotionDirector) sample(ms float64, s SpeechState, settings Settings) r
 	return d.current
 }
 
+func (c Config) emotionalSmile(w rendercontract.EmotionWeights) float64 {
+	if c.EmotionSmileAmounts == nil {
+		return emotionSmile(w)
+	}
+	value := 0.
+	for i, weight := range w {
+		value += weight * c.EmotionSmileAmounts[i]
+	}
+	return unit(value)
+}
+
 func emotionSmile(w rendercontract.EmotionWeights) float64 {
 	factors := [10]float64{0, 1, .85, .55, .12, 0, 0, 0, 0, 0}
 	value := 0.

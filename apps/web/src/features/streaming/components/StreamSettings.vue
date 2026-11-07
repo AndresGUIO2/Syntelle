@@ -12,6 +12,7 @@ const props = defineProps<{
   previewDisabled?: boolean
   laughterBusy?: boolean
   laughterAvailable?: boolean
+  emotionsAvailable?: boolean
 }>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
@@ -55,7 +56,13 @@ function navigate(event: KeyboardEvent, index: number) {
 </script>
 
 <template>
-  <section v-show="active" class="customization" :aria-label="t('Customize Syntelle')">
+  <section
+    v-show="active"
+    class="customization"
+    :aria-label="
+      t(settings.character === 'syntelle' ? 'Customize Syntelle' : 'Customize character')
+    "
+  >
     <div class="customization-tabs" role="tablist" :aria-label="t('Customization sections')">
       <button
         v-for="(tab, index) in tabs"
@@ -87,6 +94,7 @@ function navigate(event: KeyboardEvent, index: number) {
           :preview-disabled="previewDisabled"
           :laughter-busy="laughterBusy"
           :laughter-available="laughterAvailable"
+          :emotions-available="emotionsAvailable"
           @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"
         />
       </div>

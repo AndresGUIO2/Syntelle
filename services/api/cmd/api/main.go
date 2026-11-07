@@ -143,6 +143,7 @@ func main() {
 			MaximumSessions:   maximum,
 			PackageHash:       os.Getenv("SYNTELLE_PACKAGE_HASH"),
 			ValidatePrincipal: productAccounts.ValidatePrincipal,
+			ResolveCharacter:  productAccounts.ResolveCharacter,
 			Admission:         admission,
 			DisableTimeLimits: disableTimeLimits,
 		})
@@ -150,6 +151,7 @@ func main() {
 			log.Fatal("Stream service configuration failed: ", err)
 		}
 		productAccounts.OnRevoked = streams.Revoke
+		productAccounts.OnCharacterDeleted = streams.CharacterDeleted
 		handler = streams.Handler(handler)
 	}
 	if streamMode || accountMode {

@@ -4,6 +4,7 @@ from app.core.paths import PREPARATION_DIR
 import base64
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -74,7 +75,7 @@ def generation(original,image,points,directory,provider,config,request,correctio
     record={'status':'started','binding':binding,'version':VERSION,'started_at':stamp(),'attempts':1,
         'original_sha256':digest(original),'context_box':list(box),'settings':{**NETWORK,'model':config['model'],'response_format':payload['response_format']}}
     write_report(ledger,record)
-    key=dotenv_values(ROOT/'.env').get('GEMINI_API_KEY','')
+    key=os.environ.get('GEMINI_API_KEY') or dotenv_values(ROOT/'.env').get('GEMINI_API_KEY','')
     if not key:raise PreparationError('Configure the existing local Gemini key.')
     try:
         raw,status,_=provider(payload,NETWORK,key,stage)

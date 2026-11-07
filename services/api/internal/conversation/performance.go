@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"sort"
@@ -31,13 +32,20 @@ type PerformanceCue struct {
 	Repetitions *int     `json:"repetitions,omitempty"`
 }
 type PerformanceValidation struct {
-	Motion   *rendercontract.MotionTiming `json:"motion,omitempty"`
-	Intent   PerformanceIntent            `json:"intent"`
-	Omitted  []string                     `json:"omitted"`
-	Resolved []ResolvedCue                `json:"resolved,omitempty"`
-	Timing   string                       `json:"timing,omitempty"`
+	MotionDirection string                       `json:"motion_direction,omitempty"`
+	Motion          *rendercontract.MotionTiming `json:"motion,omitempty"`
+	Intent          PerformanceIntent            `json:"intent"`
+	Omitted         []string                     `json:"omitted"`
+	Resolved        []ResolvedCue                `json:"resolved,omitempty"`
+	Timing          string                       `json:"timing,omitempty"`
 }
 type ResolvedCue struct {
+	ID          string   `json:"id,omitempty"`
+	AnchorStart float64  `json:"anchor_start,omitempty"`
+	AnchorEnd   float64  `json:"anchor_end,omitempty"`
+	Peak        float64  `json:"peak,omitempty"`
+	Timing      string   `json:"timing,omitempty"`
+	Confidence  float64  `json:"confidence,omitempty"`
 	Kind        string   `json:"kind"`
 	Time        float64  `json:"time"`
 	Duration    float64  `json:"duration"`
@@ -66,6 +74,16 @@ func ResolvePerformance(v PerformanceValidation, wav []byte, duration float64) P
 	return resolvePerformance(v, wav, duration, newAcousticSchedule(v.Intent.Text), 0)
 }
 func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64, words ...rendercontract.WordBoundary) PerformanceValidation {
+	return resolvePerformanceWindow(v, wav, duration, acoustic, offset, false, words...)
+}
+func ResolvePartialPerformance(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64, words ...rendercontract.WordBoundary) PerformanceValidation {
+	return resolvePerformanceWindow(v, wav, duration, acoustic, offset, true, words...)
+}
+func resolvePerformanceWindow(v PerformanceValidation, wav []byte, duration float64, acoustic *acousticSchedule, offset float64, partial bool, words ...rendercontract.WordBoundary) PerformanceValidation {
+	intentional := acoustic != nil && acoustic.semanticOnly
+	if intentional {
+		v.MotionDirection = SemanticMotionDirection
+	}
 	v.Timing = "audio-energy/1-approximate-text-spans"
 	if rendercontract.NaturalPerformance(v.Intent.Version) {
 		v.Timing = "audio-energy/2-approximate-gesture-peaks"
@@ -130,6 +148,10 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 	end := -3.
 	heads := 0
 	for _, cue := range cues {
+		if intentional && partial && cue.Kind == "laugh" {
+			v.Omitted = append(v.Omitted, "partial_laughter_deferred")
+			continue
+		}
 		if cue.Kind == "laugh" && v.Intent.Version == "performance-intent/1" {
 			v.Omitted = append(v.Omitted, "laugh_requires_validated_companion")
 			continue
@@ -147,18 +169,26 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 		anchorEnd := duration * float64(utf8.RuneCountInString(v.Intent.Text[:index]+cue.Anchor)) / float64(max(1, utf8.RuneCountInString(v.Intent.Text)))
 		wordTimed := false
 		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion {
-			if start, end, ok := wordAnchor(v.Intent.Text, cue.Anchor, words); ok {
+			if start, end, ok := wordAnchor(v.Intent.Text, cue.Anchor, words); ok && end <= duration {
 				anchorStart, anchorEnd, target, wordTimed = start, end, (start+end)/2, true
 				v.Timing = "native-word-boundaries/1"
 			}
 		}
+		if intentional && partial && (!wordTimed || anchorEnd+.2 > duration) {
+			v.Omitted = append(v.Omitted, "partial_anchor_unavailable")
+			continue
+		}
 		time := target
 		distance := .9
 		found := wordTimed
+		phraseBoundary := false
 		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion {
 			distance = .35
 		}
 		for _, candidate := range boundaries {
+			if intentional && (candidate < anchorStart || candidate > anchorEnd) {
+				continue
+			}
 			if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion && (candidate < anchorStart-.15 || candidate > anchorEnd+.15) {
 				continue
 			}
@@ -168,7 +198,18 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 				found = true
 			}
 		}
-		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion && !found && (cue.Kind == "emphasis" || cue.Kind == "brows") {
+		if intentional && !found && !partial && cue.Anchor == v.Intent.Text && peak > .003 {
+			// The end of the last voiced interval is directly observable even
+			// when this voice supplies no usable word events.
+			for i := len(energy) - 1; i >= 0; i-- {
+				if energy[i] >= math.Max(.003, peak*.12) {
+					time = math.Min(duration, float64(i+1)*.02)
+					found, phraseBoundary = true, true
+					break
+				}
+			}
+		}
+		if v.Intent.Version == rendercontract.CoordinatedPerformanceVersion && !found && (cue.Kind == "emphasis" || cue.Kind == "brows" || intentional && headCue(cue.Kind)) {
 			v.Omitted = append(v.Omitted, "uncertain_accent_anchor")
 			continue
 		}
@@ -208,6 +249,24 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			}
 			lead, minimum = rendercontract.NaturalGestureLead(cue.Kind, length), 0
 		}
+		if intentional {
+			strength := .5
+			if cue.Amount != nil {
+				strength = *cue.Amount
+			}
+			if cue.Kind == "emphasis" {
+				lead = .28 - .10*strength
+				length = lead + .32
+			}
+			if cue.Kind == "tilt" {
+				lead = .42 - .18*strength
+				length = lead + .32
+			}
+		}
+		if intentional && headCue(cue.Kind) && aligned < lead {
+			v.Omitted = append(v.Omitted, "early_semantic_accent")
+			continue
+		}
 		time = math.Max(minimum, math.Min(time-lead, duration-length))
 		continuous := v.Motion.Valid() && rendercontract.NaturalPerformance(v.Intent.Version)
 		if continuous && headCue(cue.Kind) {
@@ -217,14 +276,38 @@ func resolvePerformance(v PerformanceValidation, wav []byte, duration float64, a
 			v.Omitted = append(v.Omitted, "gesture_spacing")
 			continue
 		}
-		v.Resolved = append(v.Resolved, ResolvedCue{Kind: cue.Kind, Time: time, Duration: length, Amount: cue.Amount, Repetitions: cue.Repetitions})
+		resolved := ResolvedCue{Kind: cue.Kind, Time: time, Duration: length, Amount: cue.Amount, Repetitions: cue.Repetitions}
+		if intentional {
+			ordinal := 0
+			for i, original := range v.Intent.Cues {
+				if original.Kind == cue.Kind && original.Anchor == cue.Anchor {
+					ordinal = i
+					break
+				}
+			}
+			resolved.ID = fmt.Sprintf("cue-%d", ordinal)
+			resolved.Source = "semantic"
+			resolved.AnchorStart = anchorStart
+			resolved.AnchorEnd = anchorEnd
+			resolved.Peak = aligned
+			resolved.Timing = "approximate-acoustic-span/1"
+			resolved.Confidence = .7
+			if phraseBoundary {
+				resolved.Timing, resolved.Confidence = "audible-phrase-boundary/1", .8
+			}
+			if wordTimed {
+				resolved.Timing = "native-word-boundaries/1"
+				resolved.Confidence = .95
+			}
+		}
+		v.Resolved = append(v.Resolved, resolved)
 		if headCue(cue.Kind) {
 			last = time
 			end = time + length
 			heads += repeats
 		}
 	}
-	if rendercontract.DirectedPerformance(v.Intent.Version) {
+	if rendercontract.DirectedPerformance(v.Intent.Version) && acoustic != nil {
 		v = acoustic.supplement(v, boundaries, energy, peak, duration, offset)
 	}
 	return v
@@ -240,11 +323,13 @@ func wordAnchor(text, anchor string, words []rendercontract.WordBoundary) (float
 	units := utf16.Encode([]rune(text))
 	first, last := -1., 0.
 	coveredStart, coveredEnd := -1, -1
+	previousText, previousAudio := 0, -1.
 	for _, w := range words {
 		a, b := w.TextOffset, w.TextOffset+w.Length
-		if a < 0 || b > len(units) || b <= a || string(utf16.Decode(units[a:b])) != w.Text || w.OffsetMS < 0 || w.DurationMS <= 0 {
+		if a < previousText || b > len(units) || b <= a || string(utf16.Decode(units[a:b])) != w.Text || math.IsNaN(w.OffsetMS) || math.IsInf(w.OffsetMS, 0) || math.IsNaN(w.DurationMS) || math.IsInf(w.DurationMS, 0) || w.OffsetMS < 0 || w.OffsetMS < previousAudio || w.DurationMS <= 0 {
 			return 0, 0, false
 		}
+		previousText, previousAudio = b, w.OffsetMS
 		if a >= start && b <= end {
 			if first < 0 {
 				first = w.OffsetMS
@@ -381,4 +466,16 @@ func decodedTextField(data string) string {
 		}
 	}
 	return ""
+}
+
+// Stable phrase-relative IDs survive independently prepared PCM prefixes.
+func AssignMotionCueIDs(v *PerformanceValidation, phraseIndex int) {
+	if v == nil || v.MotionDirection != SemanticMotionDirection {
+		return
+	}
+	for i := range v.Resolved {
+		if id := v.Resolved[i].ID; strings.HasPrefix(id, "cue-") {
+			v.Resolved[i].ID = fmt.Sprintf("p%d-%s", phraseIndex, id)
+		}
+	}
 }

@@ -3,7 +3,12 @@ import { useLocaleStore } from '../../../stores/locale'
 import type { StreamSettings } from '../types'
 import ExpressionPreview from './ExpressionPreview.vue'
 const settings = defineModel<StreamSettings>({ required: true })
-defineProps<{ previewDisabled?: boolean; laughterBusy?: boolean; laughterAvailable?: boolean }>()
+defineProps<{
+  previewDisabled?: boolean
+  laughterBusy?: boolean
+  laughterAvailable?: boolean
+  emotionsAvailable?: boolean
+}>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
 function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]) {
@@ -13,7 +18,7 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
 
 <template>
   <div class="customization-section">
-    <div>
+    <div v-if="emotionsAvailable !== false">
       <label class="customization-check"
         ><input
           type="checkbox"

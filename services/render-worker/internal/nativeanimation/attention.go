@@ -195,7 +195,7 @@ func newAttention(seed uint32) attentionDirector {
 	return attentionDirector{purposeGain: 1, purposeFrom: 1, purposeGoal: 1, session: ^uint64(0), idleWeight: 1, idleFrom: 1, speaking: newSpeaking(seed)}
 }
 func (d *attentionDirector) sample(ms float64, speech SpeechState, c Config, presentation ...Settings) attention {
-	if c.PresenceVersion == PresenceVersion && !speech.Preview {
+	if presenceEnabled(c) && !speech.Preview {
 		settings := Settings{}
 		if len(presentation) > 0 {
 			settings = presentation[0]

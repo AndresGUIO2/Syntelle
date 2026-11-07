@@ -3,6 +3,7 @@ import { mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
+import { characterConsumer } from './character-consumer.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const execute = promisify(execFile)
@@ -298,6 +299,7 @@ async function start(rebuild = false) {
     120000,
   )
   await waitFor(async () => (await streamStatus())?.configured, 'Streaming API')
+  const creation = await characterConsumer(root, 'start')
   const apiID = await docker([...compose, 'ps', '-q', 'api'])
   const result = await ensureWorker({
     inspect: () => optionalInspect('container', workerName),
@@ -321,7 +323,7 @@ async function start(rebuild = false) {
   }, 'Web player')
   await clean({ quiet: true })
   console.log(
-    `Syntelle is ready: http://127.0.0.1:5173/ (renderer ${result}). You can close this terminal.`,
+    `Syntelle is ready: http://127.0.0.1:5173/ (renderer ${result}; character creation ${creation}). You can close this terminal.`,
   )
 }
 
@@ -379,6 +381,7 @@ async function main() {
     return
   }
   await locked(async () => {
+    if (action === 'stop') await characterConsumer(root, 'stop')
     await ensureDocker(action === 'start' || action === 'build')
     if (action === 'start') await start(flags.includes('--build'))
     else if (action === 'stop') {
@@ -392,6 +395,7 @@ async function main() {
         JSON.stringify({
           renderer: status?.available ? 'ready' : 'unavailable',
           active_streams: status?.active ?? null,
+          character_creation: await characterConsumer(root, 'status'),
         }),
       )
     } else if (action === 'build') await build()

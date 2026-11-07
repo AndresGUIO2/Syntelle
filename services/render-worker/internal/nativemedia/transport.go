@@ -36,6 +36,7 @@ func (s *session) offer() error {
 	}
 	// No public STUN/TURN server is contacted by this local candidate.
 	registry := &interceptor.Registry{}
+	registry.Add(mediaEpochFactory{clock: &s.reportClock})
 	if err := webrtc.RegisterDefaultInterceptors(engine, registry); err != nil {
 		return err
 	}
@@ -97,6 +98,11 @@ func (s *session) offer() error {
 	}
 	s.videoBase = binary.LittleEndian.Uint32(bases[:4])
 	s.audioBase = binary.LittleEndian.Uint32(bases[4:])
+	s.reportClock.mu.Lock()
+	s.reportClock.epoch = time.Time{}
+	s.reportClock.audio = s.audioBase
+	s.reportClock.video = s.videoBase
+	s.reportClock.mu.Unlock()
 	s.videoPackets = rtp.NewPacketizer(1200, 102, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), 90000)
 	s.audioPackets = rtp.NewPacketizer(1200, 111, 0, &codecs.OpusPayloader{}, rtp.NewRandomSequencer(), 48000)
 	s.connected.Store(false)
@@ -258,6 +264,7 @@ func (s *session) sendEncodedLocked(data []byte, video bool, pts time.Duration, 
 	if track == nil || packetizer == nil {
 		return false, nil
 	}
+	s.reportClock.start(time.Now(), pts)
 	timestamp := base + uint32(uint64(pts/time.Second)*clock+uint64(pts%time.Second)*clock/uint64(time.Second))
 	for _, packet := range packetizer.Packetize(data, 0) {
 		packet.Timestamp = timestamp

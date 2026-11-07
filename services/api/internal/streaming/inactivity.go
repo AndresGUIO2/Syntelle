@@ -6,10 +6,14 @@ const inactivityReason = "user inactivity"
 
 // Caller holds Service.mu. Transport traffic never changes this deadline.
 func (session *streamSession) inactivityDeadline() time.Time {
-	if session.lastMessage.IsZero() {
-		return session.created.Add(2 * time.Minute)
+	duration := 2 * time.Minute
+	if session.emotionalPresence {
+		duration = 6 * time.Minute
 	}
-	return session.lastMessage.Add(2 * time.Minute)
+	if session.lastMessage.IsZero() {
+		return session.created.Add(duration)
+	}
+	return session.lastMessage.Add(duration)
 }
 
 // The final check under the lock prevents an old scan from pausing a new message.
@@ -17,7 +21,9 @@ func (s *Service) expireAt(now time.Time) {
 	s.mu.Lock()
 	var inactive, disconnected, expired []string
 	for _, session := range s.sessions {
-		if !session.deadline.IsZero() && !now.Before(session.deadline) {
+		if !session.workerLostAt.IsZero() && now.Sub(session.workerLostAt) >= 90*time.Second {
+			disconnected = append(disconnected, session.id)
+		} else if !session.deadline.IsZero() && !now.Before(session.deadline) {
 			expired = append(expired, session.id)
 		} else if !now.Before(session.inactivityDeadline()) {
 			inactive = append(inactive, session.id)

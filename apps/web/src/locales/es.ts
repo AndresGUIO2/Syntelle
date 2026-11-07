@@ -1,5 +1,98 @@
 // Interface copy only. User prompts, transcripts and provider records stay verbatim.
 export const spanish: Record<string, string> = {
+  Chat: 'Conversación',
+  Characters: 'Personajes',
+  'Shared settings': 'Configuraciones compartidas',
+  'Your collection': 'Tu colección',
+  'Bring a portrait into the conversation.': 'Dale vida a un retrato en la conversación.',
+  'Start with a clear portrait. We will prepare its face, speech and movement.':
+    'Empieza con un retrato claro. Prepararemos su rostro, habla y movimiento.',
+  'Selected portrait': 'Retrato seleccionado',
+  Portrait: 'Retrato',
+  'One person facing forward, with the full head visible. JPEG, PNG or WebP, up to 5 MB and 4 megapixels. Use a photo you have permission to use.':
+    'Una persona de frente, con toda la cabeza visible. JPEG, PNG o WebP, hasta 5 MB y 4 megapíxeles. Usa una foto que tengas permiso para utilizar.',
+  'Character name': 'Nombre del personaje',
+  'Give your character a name': 'Dale un nombre a tu personaje',
+  'Uploading…': 'Subiendo…',
+  'Create character': 'Crear personaje',
+  'Your current character is still being prepared. You can leave this page and return later.':
+    'Tu personaje todavía se está preparando. Puedes salir de esta página y volver después.',
+  'Your character stays private to your account. The uploaded original is removed after 24 hours.':
+    'Tu personaje es privado de tu cuenta. La imagen original subida se elimina después de 24 horas.',
+  'Your characters': 'Tus personajes',
+  'Preparation continues even when you leave this page.':
+    'La preparación continúa aunque salgas de esta página.',
+  'Your first character starts here': 'Tu primer personaje empieza aquí',
+  'Upload a portrait and give it a name. Once it is ready, open it to start a conversation.':
+    'Sube un retrato y dale un nombre. Cuando esté listo, ábrelo para conversar.',
+  'Waiting to prepare': 'En espera',
+  'Preparing your character': 'Preparando tu personaje',
+  'Ready to talk': 'Listo para conversar',
+  'Needs attention': 'Necesita atención',
+  'Building speech, blinking and head movement, then checking the result.':
+    'Preparando el habla, el parpadeo y los movimientos de cabeza, y verificando el resultado.',
+  'Your portrait is saved. Preparation will start when capacity is available.':
+    'Tu retrato está guardado. La preparación empezará cuando haya capacidad disponible.',
+  'Open character': 'Abrir personaje',
+  'Cancel preparation': 'Cancelar preparación',
+  'Remove this character from your account?': '¿Eliminar este personaje de tu cuenta?',
+  'Keep character': 'Conservar personaje',
+  'Remove character': 'Eliminar personaje',
+  'Choose a JPEG, PNG, or WebP portrait.': 'Elige un retrato JPEG, PNG o WebP.',
+  'Choose a portrait no larger than 5 MB.': 'Elige un retrato de hasta 5 MB.',
+  'The portrait could not be uploaded. Try again.':
+    'No se pudo subir el retrato. Inténtalo de nuevo.',
+  'Your characters could not be loaded.': 'No se pudieron cargar tus personajes.',
+  'The character could not be removed.': 'No se pudo eliminar el personaje.',
+  'New portrait preparation is not enabled yet. Your image was received, but no character was generated.':
+    'La preparación de retratos nuevos aún no está habilitada. Recibimos tu imagen, pero no se generó un personaje.',
+  'Character preparation is temporarily at capacity. Your image has not been generated.':
+    'La preparación de personajes está temporalmente ocupada. Tu imagen aún no se ha generado.',
+  'The image service could not finish preparation. No character was generated. Please try again later.':
+    'El servicio de imágenes no pudo terminar la preparación. No se generó un personaje. Inténtalo más tarde.',
+  'Character preparation is temporarily unavailable. Your portrait is not the cause. Please try again later.':
+    'La preparación de personajes no está disponible temporalmente. Tu retrato no es la causa. Inténtalo más tarde.',
+  'Choose a clear, front-facing portrait with one face and an unobstructed mouth.':
+    'Elige un retrato claro, de frente, con un solo rostro y la boca descubierta.',
+  'Use a standard portrait, landscape or square image with the full head and shoulders visible.':
+    'Usa una imagen de formato vertical, horizontal o cuadrado estándar, con la cabeza y los hombros completos.',
+  'Reduce the image size and upload it again: up to 4 megapixels, with neither side above 4096 pixels.':
+    'Reduce el tamaño de la imagen y vuelve a subirla: hasta 4 megapíxeles y ningún lado superior a 4096 píxeles.',
+  'Preparation did not finish before the upload expired. Upload your portrait again.':
+    'La preparación no terminó antes de que venciera la imagen. Sube el retrato de nuevo.',
+  'Preparation was cancelled.': 'La preparación se canceló.',
+  'This portrait could not be prepared safely. Try a different portrait.':
+    'No se pudo preparar este retrato correctamente. Prueba con otro.',
+  'This character is unavailable. Open a ready character from your collection.':
+    'Este personaje no está disponible. Abre uno que esté listo en tu colección.',
+  'This character is not ready yet. Check its preparation in Characters.':
+    'Este personaje aún no está listo. Revisa su preparación en Personajes.',
+  'This character is unavailable. Sign in to its account and open it from Characters.':
+    'Este personaje no está disponible. Inicia sesión en su cuenta y ábrelo desde Personajes.',
+  'Loading your character…': 'Cargando tu personaje…',
+  'Customize character': 'Personalizar personaje',
+  'Select Unmute sound to hear your character.': 'Activa el sonido para escuchar a tu personaje.',
+  'Keep your character in a floating window': 'Mantener tu personaje en una ventana flotante',
+  'Paused due to inactivity': 'En pausa por inactividad',
+  'Reconnecting to your character…': 'Reconectando con tu personaje…',
+  'Connecting to your character…': 'Conectando con tu personaje…',
+  'Your character is disconnected': 'Tu personaje está desconectado',
+  'Your character is temporarily unavailable. Select Reconnect to try again.':
+    'Tu personaje no está disponible temporalmente. Pulsa Reconectar para intentarlo de nuevo.',
+  'Your character': 'Tu personaje',
+  'This character supports speech, blinking, head movement, smiles and brows. Emotional expressions and laughter are not available yet.':
+    'Este personaje puede hablar, parpadear, mover la cabeza, sonreír y mover las cejas. Las expresiones emocionales y las carcajadas aún no están disponibles.',
+  'You can finish one new character every 24 hours.':
+    'Puedes completar un personaje nuevo cada 24 horas.',
+  'You already have a character being prepared.': 'Ya tienes un personaje en preparación.',
+  'Portrait preparation is busy. Try again later.':
+    'La preparación de retratos está ocupada. Inténtalo más tarde.',
+  'Portrait preparation is busy. Try again shortly.':
+    'La preparación de retratos está ocupada. Inténtalo en un momento.',
+  'Portrait validation is temporarily unavailable.':
+    'La validación del retrato no está disponible temporalmente.',
+  'Choose an intact portrait with supported dimensions.':
+    'Elige un retrato válido con dimensiones admitidas.',
   Menu: 'Menú',
   Behavior: 'Comportamiento',
   Appearance: 'Apariencia',
@@ -177,7 +270,6 @@ export const spanish: Record<string, string> = {
   'Character preview': 'Vista previa del personaje',
   'From portrait to character': 'Del retrato al personaje',
   Preview: 'Vista previa',
-  Portrait: 'Retrato',
   Character: 'Personaje',
   Conversation: 'Conversación',
   'Pricing is on its way.': 'Pronto conocerás nuestros precios.',
@@ -383,4 +475,87 @@ export const spanish: Record<string, string> = {
   'Confirm delete': 'Confirmar eliminación',
   'Saved chats expire 90 days after the last message.':
     'Las conversaciones guardadas caducan 90 días después del último mensaje.',
+  Workspaces: 'Espacios de trabajo',
+  Administration: 'Administración',
+  'Account areas': 'Áreas de cuenta',
+  'Manage your team and shared character settings.':
+    'Administra tu equipo y los ajustes de personajes compartidos.',
+  'Back to conversation': 'Volver a la conversación',
+  'Create a workspace': 'Crear un espacio de trabajo',
+  'Team or business name': 'Nombre del equipo o negocio',
+  'Active workspace': 'Espacio activo',
+  'Workspace sections': 'Secciones del espacio',
+  'Workspace invitation': 'Invitación al espacio',
+  'Accept invitation': 'Aceptar invitación',
+  'Ownership invitation': 'Invitación de propiedad',
+  'Accept ownership': 'Aceptar propiedad',
+  'This workspace is suspended.': 'Este espacio está suspendido.',
+  'Commercial access is not available yet.': 'El acceso comercial aún no está disponible.',
+  'Your current personal conversations remain private.':
+    'Tus conversaciones personales siguen siendo privadas.',
+  'Paid usage is not active yet.': 'El consumo de pago aún no está activo.',
+  'Subscriptions and invoices will appear when payments are available.':
+    'Las suscripciones y facturas aparecerán cuando estén disponibles los pagos.',
+  'Shared characters': 'Personajes compartidos',
+  'Copy one of your saved character settings into this workspace.':
+    'Copia uno de tus ajustes guardados a este espacio.',
+  'Personal saved setting': 'Ajuste personal guardado',
+  'Choose a saved setting': 'Elige un ajuste guardado',
+  'No shared settings yet.': 'Aún no hay ajustes compartidos.',
+  'Workspace credentials remain inactive until paid access is available.':
+    'Las credenciales del espacio estarán inactivas hasta que esté disponible el acceso de pago.',
+  'Credential name': 'Nombre de la credencial',
+  'Create credential': 'Crear credencial',
+  'Copy this credential now. It will not be shown again.':
+    'Copia esta credencial ahora. No volverá a mostrarse.',
+  'Invite by email': 'Invitar por correo',
+  Role: 'Rol',
+  'Role for {email}': 'Rol de {email}',
+  'Create invitation': 'Crear invitación',
+  'Share this link with the invited person.': 'Comparte este enlace con la persona invitada.',
+  'Transfer ownership': 'Transferir propiedad',
+  'Choose an existing member. Email verification is required.':
+    'Elige un miembro actual. Se requiere verificación por correo.',
+  'New owner': 'Nuevo propietario',
+  'Choose a member': 'Elige un miembro',
+  'Email code': 'Código del correo',
+  'Send verification code': 'Enviar código de verificación',
+  'Prepare transfer': 'Preparar transferencia',
+  'Share this link with the new owner.': 'Comparte este enlace con el nuevo propietario.',
+  'Verify by email': 'Verificar por correo',
+  'An email code is required each time you enter this panel.':
+    'Se requiere un código por correo cada vez que entras a este panel.',
+  'Leave administration': 'Salir de administración',
+  'Administration sections': 'Secciones de administración',
+  Customers: 'Clientes',
+  'Usage and costs': 'Uso y costos',
+  'Service health': 'Estado del servicio',
+  Audit: 'Auditoría',
+  'Reason for operational change': 'Motivo del cambio operativo',
+  Suspended: 'Suspendido',
+  Active: 'Activo',
+  Suspend: 'Suspender',
+  'No customer workspaces yet.': 'Aún no hay espacios de clientes.',
+  'Plan prices are not configured yet.': 'Aún no se han configurado los precios.',
+  'Paid usage and measured costs are not available yet.':
+    'El uso de pago y sus costos medidos aún no están disponibles.',
+  'API available. Other services have not been verified here.':
+    'API disponible. Los demás servicios no se han verificado aquí.',
+  owner: 'Propietario',
+  administrator: 'Administrador',
+  editor: 'Editor',
+  billing: 'Facturación',
+  support: 'Soporte',
+  overview: 'Resumen',
+  characters: 'Personajes',
+  integrations: 'Integraciones',
+  usage: 'Uso',
+  team: 'Equipo',
+  activity: 'Actividad',
+  customers: 'Clientes',
+  plans: 'Planes',
+  'usage-costs': 'Uso y costos',
+  'service-health': 'Estado del servicio',
+  audit: 'Auditoría',
+  pending_payment_activation: 'Pendiente de pagos',
 }

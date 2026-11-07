@@ -11,6 +11,7 @@ defineProps<{
   previewDisabled?: boolean
   laughterBusy?: boolean
   laughterAvailable?: boolean
+  emotionsAvailable?: boolean
 }>()
 const emit = defineEmits<{ preview: [kind: string, amount?: number, repetitions?: number] }>()
 const { t } = useLocaleStore()
@@ -34,11 +35,19 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
 <template>
   <div class="customization-section">
     <EmotionControls
+      v-if="emotionsAvailable !== false"
       :model-value="settings.emotion_baseline"
       @update:model-value="update('emotion_baseline', $event)"
     />
-    <p class="customization-note">
+    <p v-if="emotionsAvailable !== false" class="customization-note">
       {{ t('Emotion changes apply to the next phrase while speaking.') }}
+    </p>
+    <p v-else class="customization-note">
+      {{
+        t(
+          'This character supports speech, blinking, head movement, smiles and brows. Emotional expressions and laughter are not available yet.',
+        )
+      }}
     </p>
     <fieldset class="customization-group">
       <legend class="sr-only">{{ t('Automatic reactions') }}</legend>
@@ -52,7 +61,7 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
             update('automatic_expressions', ($event.target as HTMLInputElement).checked)
           " /><span class="customization-toggle-track" aria-hidden="true"
       /></label>
-      <label class="customization-field"
+      <label v-if="emotionsAvailable !== false" class="customization-field"
         >{{ t('Reaction style') }}
         <select
           :value="regulation.temperament"
@@ -73,7 +82,9 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
         </select>
       </label>
       <p
-        v-if="!settings.automatic_expressions || !regulation.enabled"
+        v-if="
+          emotionsAvailable !== false && (!settings.automatic_expressions || !regulation.enabled)
+        "
         :id="`${id}-reaction-help`"
         class="customization-note"
       >
@@ -83,7 +94,9 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
             : t('Enable emotion stability in Advanced.')
         }}
       </p>
-      <p v-else :id="`${id}-reaction-help`" class="sr-only">{{ t(selectedDescription) }}</p>
+      <p v-else-if="emotionsAvailable !== false" :id="`${id}-reaction-help`" class="sr-only">
+        {{ t(selectedDescription) }}
+      </p>
     </fieldset>
     <label class="customization-field"
       >{{ t('Character instructions') }}
@@ -120,6 +133,7 @@ function update<K extends keyof StreamSettings>(key: K, value: StreamSettings[K]
           :preview-disabled="previewDisabled"
           :laughter-busy="laughterBusy"
           :laughter-available="laughterAvailable"
+          :emotions-available="emotionsAvailable"
           @preview="(kind, amount, repetitions) => emit('preview', kind, amount, repetitions)"
         />
       </div>

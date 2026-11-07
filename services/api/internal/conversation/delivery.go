@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"errors"
+	"sync"
 	"syntelle/render-contract"
 	"time"
 )
@@ -29,13 +30,18 @@ type progressiveDirectedSpeech interface {
 }
 
 type phraseAttempt struct {
-	streamed bool
-	ticket   *DeliveryTicket
-	audio    any
-	ctx      context.Context
-	cancel   context.CancelFunc
-	notice   chan rendercontract.DeliveryNotice
-	done     chan struct{}
+	streamed        bool
+	ticket          *DeliveryTicket
+	audio           any
+	err             error
+	ctx             context.Context
+	cancel          context.CancelFunc
+	activated       chan struct{}
+	activationErr   error
+	prepared        chan struct{}
+	done            chan struct{}
+	closeOnce       sync.Once
+	progressCleanup func()
 }
 
 // Facial cues and contextual amusement cannot override the emotion that was
@@ -53,24 +59,51 @@ func coherentIntent(intent PerformanceIntent, reservation *rendercontract.Delive
 	return intent
 }
 
-func (a *phraseAttempt) close() { a.cancel(); <-a.done; a.ticket.Close() }
+func (a *phraseAttempt) close() {
+	a.closeOnce.Do(func() {
+		a.cancel()
+		if a.progressCleanup != nil {
+			a.progressCleanup()
+		}
+		<-a.prepared
+		<-a.done
+		a.ticket.Close()
+	})
+}
 
 func (a *phraseAttempt) activation(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case notice := <-a.notice:
-		if notice.Status == "activated" && notice.Token == a.ticket.Reservation.Token {
-			return nil
-		}
-		if notice.Status == "invalidated" && notice.Reason == "superseded_by_settings" {
-			return ErrDeliverySuperseded
-		}
-		return errors.New("approved delivery did not activate")
+	case <-a.activated:
+		return a.activationErr
 	}
 }
 
 func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, language string, p PerformancePhrase, index int, progress ...func(any, *rendercontract.DeliveryReservation) error) (*phraseAttempt, error) {
+	a, err := s.beginDirectedPhrase(ctx, cid, id, voice, language, p, index, progress...)
+	if err != nil {
+		return nil, err
+	}
+	if err = a.preparation(ctx); err != nil {
+		a.close()
+		return nil, err
+	}
+	return a, nil
+}
+
+func (a *phraseAttempt) preparation(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-a.prepared:
+		return a.err
+	}
+}
+
+// Preparation and activation have separate broadcast completions: the next
+// phrase may prepare after actual PCM activation while this provider still runs.
+func (s *Service) beginDirectedPhrase(ctx context.Context, cid, id, voice, language string, p PerformancePhrase, index int, progress ...func(any, *rendercontract.DeliveryReservation) error) (*phraseAttempt, error) {
 	provider, ok := s.Speech.(DirectedSpeech)
 	if s.Delivery == nil || !ok {
 		return nil, errors.New("coordinated speech is unavailable")
@@ -94,16 +127,18 @@ func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, lan
 		return nil, err
 	}
 	work, cancel := context.WithCancel(ctx)
-	a := &phraseAttempt{ticket: ticket, ctx: work, cancel: cancel, notice: make(chan rendercontract.DeliveryNotice, 1), done: make(chan struct{})}
+	a := &phraseAttempt{ticket: ticket, ctx: work, cancel: cancel, activated: make(chan struct{}), prepared: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(a.done)
+		defer close(a.activated)
 		select {
 		case <-work.Done():
+			a.activationErr = work.Err()
 			return
-		case n := <-ticket.Updates:
+		case n, ok := <-ticket.Updates:
 			// Early PCM needs an activation receipt immediately for echo checks,
 			// even while the native provider is still completing this recording.
-			if n.Status == "activated" && len(progress) > 0 && progress[0] != nil {
+			if n.Status == "activated" && n.Token == ticket.Reservation.Token && len(progress) > 0 && progress[0] != nil {
 				receiptCtx, stop := context.WithTimeout(context.WithoutCancel(work), 3*time.Second)
 				receipt, e := s.Store.Reserve(receiptCtx, "delivery-activation", ticket.Reservation.Token, rendercontract.DeliveryVersion, cid, id, map[string]any{"index": index, "text": p.Text, "token": ticket.Reservation.Token, "provider_pending": true}, false)
 				if e == nil {
@@ -115,44 +150,47 @@ func (s *Service) prepareDirectedPhrase(ctx context.Context, cid, id, voice, lan
 					n.Reason = "activation_archive_failed"
 				}
 			}
-			if n.Status != "activated" {
+			if !ok || n.Status != "activated" || n.Token != ticket.Reservation.Token {
+				a.activationErr = errors.New("approved delivery did not activate")
+				if n.Status == "invalidated" && n.Reason == "superseded_by_settings" {
+					a.activationErr = ErrDeliverySuperseded
+				}
 				cancel()
 			}
-			a.notice <- n
 		}
 	}()
-	key := id + "-" + ticket.Reservation.Token
-	phraseContext := context.WithValue(work, phraseSpeechKey{}, key)
-	var prepared any
-	if streaming, ok := provider.(progressiveDirectedSpeech); ok && len(progress) > 0 && progress[0] != nil {
-		prepared, err = streaming.PrepareDirectedProgressive(phraseContext, p.Text, language, voice, id, delivery, func(value any) error {
-			if e := work.Err(); e != nil {
-				return e
-			}
-			if e := progress[0](value, &ticket.Reservation); e != nil {
-				return e
-			}
-			a.streamed = true
-			return nil
-		})
-	} else {
-		prepared, err = provider.PrepareDirected(phraseContext, p.Text, language, voice, id, delivery)
-	}
-	if err != nil {
-		if work.Err() != nil && ctx.Err() == nil {
-			select {
-			case n := <-a.notice:
-				if n.Status == "invalidated" && n.Reason == "superseded_by_settings" {
+	go func() {
+		defer close(a.prepared)
+		key := id + "-" + ticket.Reservation.Token
+		phraseContext := context.WithValue(work, phraseSpeechKey{}, key)
+		var prepared any
+		var err error
+		if streaming, ok := provider.(progressiveDirectedSpeech); ok && len(progress) > 0 && progress[0] != nil {
+			prepared, err = streaming.PrepareDirectedProgressive(phraseContext, p.Text, language, voice, id, delivery, func(value any) error {
+				if e := work.Err(); e != nil {
+					return e
+				}
+				if e := progress[0](value, &ticket.Reservation); e != nil {
+					return e
+				}
+				a.streamed = true
+				return nil
+			})
+		} else {
+			prepared, err = provider.PrepareDirected(phraseContext, p.Text, language, voice, id, delivery)
+		}
+		if err != nil {
+			if work.Err() != nil && ctx.Err() == nil {
+				<-a.activated
+				if errors.Is(a.activationErr, ErrDeliverySuperseded) {
 					err = ErrDeliverySuperseded
 				}
-			case <-ctx.Done():
-				err = ctx.Err()
-			case <-time.After(time.Second):
 			}
+			a.err = err
+			cancel()
+			return
 		}
-		a.close()
-		return nil, err
-	}
-	a.audio = prepared
+		a.audio = prepared
+	}()
 	return a, nil
 }

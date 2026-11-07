@@ -20,23 +20,26 @@ func semanticFocus(s SpeechState) float64 {
 			continue
 		}
 		start := cue.Time - .15
-		peak := cue.Time + rendercontract.NaturalGestureLead(cue.Kind, cue.Duration)
+		peak := performanceCuePeak(cue)
 		w := ease((s.Position-start)/math.Max(.15, peak-start)) * (1 - ease((s.Position-cue.Time-cue.Duration)/.32))
 		weight = math.Max(weight, w)
 	}
 	return unit(weight)
 }
 
-func browAccent(s SpeechState) float64 {
+func browAccent(s SpeechState, includeEmphasis ...bool) float64 {
 	if !s.Active || !coordinatedSpeech(s) {
 		return 0
 	}
 	result := 0.
 	for _, cue := range s.plan().Performance.Resolved {
+		if cue.Kind == "emphasis" && len(includeEmphasis) > 0 && !includeEmphasis[0] {
+			continue
+		}
 		if cue.Amount == nil || (cue.Kind != "brows" && cue.Kind != "emphasis") {
 			continue
 		}
-		peak := cue.Time + rendercontract.NaturalGestureLead(cue.Kind, cue.Duration)
+		peak := performanceCuePeak(cue)
 		weight := ease((s.Position-peak+.15)/.15) * (1 - ease((s.Position-peak)/.32))
 		amount := *cue.Amount
 		if cue.Kind == "emphasis" {
@@ -69,4 +72,11 @@ func (a *accentMotion) sample(ms, target float64, active bool, session uint64, i
 		a.value = unit(residual)
 	}
 	return a.value
+}
+
+func performanceCuePeak(cue PerformanceCue) float64 {
+	if cue.ID != "" && cue.Confidence > 0 {
+		return cue.Peak
+	}
+	return cue.Time + rendercontract.NaturalGestureLead(cue.Kind, cue.Duration)
 }

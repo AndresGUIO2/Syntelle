@@ -3,8 +3,15 @@ package rendercontract
 import (
 	"errors"
 	"math"
+	"regexp"
 	"strings"
 )
+
+var privateCharacterID = regexp.MustCompile(`^char_[0-9a-f]{32}$`)
+
+// ValidCharacterID checks syntax only. The API separately authorizes ownership
+// and resolves the immutable ready package; IDs are never filesystem paths.
+func ValidCharacterID(id string) bool { return id == "syntelle" || privateCharacterID.MatchString(id) }
 
 type Settings struct {
 	EmotionBaseline      EmotionBaseline   `json:"emotion_baseline"`
@@ -39,8 +46,8 @@ func (s Settings) Validate() error {
 	if !s.EmotionRegulation.Valid() {
 		return errors.New("choose a supported temperament")
 	}
-	if s.Character != "syntelle" || (s.Language != "en-US" && s.Language != "es-CO") {
-		return errors.New("choose Syntelle and a supported language")
+	if !ValidCharacterID(s.Character) || (s.Language != "en-US" && s.Language != "es-CO") {
+		return errors.New("choose a prepared character and a supported language")
 	}
 	if !SupportedVoice(s.Voice) {
 		return errors.New("choose a supported voice")

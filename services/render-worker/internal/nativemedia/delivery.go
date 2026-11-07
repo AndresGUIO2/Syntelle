@@ -37,9 +37,13 @@ func (s *session) invalidateDeliveryLocked(reason string) {
 	}
 	s.queue = kept
 	s.nextIndex = min(s.nextIndex, r.Request.PhraseIndex)
-	if s.stream != nil && s.stream.delivery != nil && s.stream.delivery.Token == r.Token && s.playing != s.stream {
-		s.stream = nil
+	for index, c := range s.streams {
+		if c.delivery != nil && c.delivery.Token == r.Token && c != s.playing {
+			delete(s.streams, index)
+		}
 	}
+	s.refreshStreamAliasLocked()
+
 	s.delivery = nil
 	if s.host != nil {
 		s.host.emit(event("performance_notice", s.id, r.Request.TurnID, rendercontract.DeliveryNotice{RequestID: r.Request.RequestID, Token: r.Token, Status: "invalidated", Reason: reason}))
@@ -82,12 +86,18 @@ func (s *session) preflight(raw json.RawMessage) error {
 		return nil
 	}
 	capability, ok := s.scene.(interface{ EmotionsAvailable() bool })
-	if !ok || !capability.EmotionsAvailable() {
-		notice.Reason = "emotion_capability_unavailable"
-		return nil
+	emotions := ok && capability.EmotionsAvailable()
+	policySettings, policyRequest := settings, request
+	if !emotions {
+		// Basic prepared portraits still use the same reservation/activation
+		// protocol. No unavailable emotional deformation or styled voice is implied.
+		policySettings.EmotionBaseline = rendercontract.EmotionBaseline{State: "neutral"}
+		policySettings.EmotionRegulation = rendercontract.EmotionRegulation{}
+		policySettings.AutomaticExpressions = false
+		policyRequest.Emotion = nil
 	}
-	policy, decision := s.emotionController.ReserveEmotion(s.emotionClock, settings, request, s.generation, s.requestedSettings != nil)
-	r := rendercontract.DeliveryReservation{Expressive: settings.AutomaticExpressions && !settings.ReducedMotion, Version: rendercontract.DeliveryVersion, Token: rand.Text(), Request: request, Instance: s.emotionInstance, Generation: s.generation, Effective: decision.Effective, Reason: decision.Reason}
+	policy, decision := s.emotionController.ReserveEmotion(s.emotionClock, policySettings, policyRequest, s.generation, s.requestedSettings != nil)
+	r := rendercontract.DeliveryReservation{Expressive: emotions && settings.AutomaticExpressions && !settings.ReducedMotion, Version: rendercontract.DeliveryVersion, Token: rand.Text(), Request: request, Instance: s.emotionInstance, Generation: s.generation, Effective: decision.Effective, Reason: decision.Reason}
 	s.delivery = &pendingDelivery{reservation: r, policy: policy, settings: settings, expires: s.emotionClock + 90000}
 	s.coordinated = true
 	notice.Status, notice.Reason, notice.Reservation = "reserved", "", &r

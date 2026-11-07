@@ -4,6 +4,13 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { nativeArguments, nativeAssetMount, localMediaPort, gpuArguments, gpuAvailable, videoEncoder, rendererMode, gpuPipeline, gpuPrecision, gpuPrecisionForHeight } from '../scripts/start-local.mjs'
 
+test('private character registry is a separate read-only mount and CLI argument', () => {
+  const args = nativeArguments({image:'candidate',container:'api',assets:'assets',packages:'private-packages',api:'http://127.0.0.1:8080',capacity:2,name:'worker'})
+  assert.ok(args.includes('type=bind,source=private-packages,target=/opt/syntelle-packages,readonly'))
+  assert.equal(args[args.indexOf('--packages')+1], '/opt/syntelle-packages')
+  assert.throws(() => nativeArguments({image:'candidate',container:'api',assets:'assets',packages:'private,rw',api:'http://127.0.0.1:8080',capacity:2,name:'worker'}), /mount options/)
+})
+
 test('retired browser engine fails before private configuration or Docker access', () => {
   const script = fileURLToPath(new URL('../scripts/start-local.mjs', import.meta.url))
   const result = spawnSync(process.execPath, [script, '--engine', 'chromium'], {

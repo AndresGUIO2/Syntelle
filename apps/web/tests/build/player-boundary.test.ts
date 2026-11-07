@@ -16,6 +16,8 @@ test('public boundary blocks internal files while the interface loads', async ()
     isPrivatePlayerModule('/src/features/streaming/StreamWorkspace.vue?vue&type=script'),
     false,
   )
+  for (const path of ['WorkspacePanel.vue', 'StaffPanel.vue', 'useWorkspaces.ts'])
+    assert.equal(isPrivatePlayerModule(`/src/features/workspaces/${path}`), false, path)
   const server = await createServer({ server: { port: 0, strictPort: false } })
   try {
     await server.listen()

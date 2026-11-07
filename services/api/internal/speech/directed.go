@@ -40,7 +40,7 @@ func (s *Service) LoadVoiceCapabilities(path string) error {
 			return errors.New("invalid voice capability locale")
 		}
 		for _, style := range v.Styles {
-			if style != "reassuring" && style != "curious" && style != "amused" {
+			if style == "" || !rendercontract.ValidDeliveryStyle(style) || (locale != "en-US" && (style == "fearful" || style == "sad" || style == "angry")) {
 				return errors.New("invalid voice style capability")
 			}
 		}
@@ -66,18 +66,23 @@ func (s *Service) VoiceDirection(r rendercontract.DeliveryReservation) (renderco
 		return d, nil
 	}
 	style := ""
-	switch r.Request.Purpose {
-	case "reassure":
-		if r.Effective.State != "angry" && r.Effective.State != "disgusted" {
-			style = "reassuring"
-		}
-	case "ask":
-		if r.Effective.State != "sad" && r.Effective.State != "angry" && r.Effective.State != "fearful" && r.Effective.State != "disgusted" {
-			style = "curious"
-		}
-	case "playful":
-		if r.Effective.State == "playful" || r.Effective.State == "joyful" {
-			style = "amused"
+	switch r.Effective.State {
+	case "fearful", "sad", "angry":
+		style = r.Effective.State
+	default:
+		switch r.Request.Purpose {
+		case "reassure":
+			if r.Effective.State != "disgusted" {
+				style = "reassuring"
+			}
+		case "ask":
+			if r.Effective.State != "sad" && r.Effective.State != "angry" && r.Effective.State != "fearful" && r.Effective.State != "disgusted" {
+				style = "curious"
+			}
+		case "playful":
+			if r.Effective.State == "playful" || r.Effective.State == "joyful" {
+				style = "amused"
+			}
 		}
 	}
 	for _, allowed := range c.Locales[r.Request.Language].Styles {
@@ -90,6 +95,10 @@ func (s *Service) VoiceDirection(r rendercontract.DeliveryReservation) (renderco
 
 // ValidateResult is shared by bounded offline probes and normal preparation.
 func ValidateResult(result Result) error { return validateSpeechResult(result) }
+
+// PreparationBinding shares the historical identity with private offline probes.
+// It exposes no public request field or provider instruction.
+func PreparationBinding(input Input, region string) string { return speechBinding(input, region) }
 
 // Laughter uses its prepared facial path and may legitimately emit only Rest.
 // Keep normal spoken-phoneme validation unchanged.

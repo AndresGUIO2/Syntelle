@@ -9,6 +9,7 @@ import (
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/audio"
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/common"
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/speech"
+	"strconv"
 	"sync/atomic"
 	"syntelle/api/internal/conversation"
 	"time"
@@ -28,7 +29,7 @@ func (p *azureRecognition) Run(ctx context.Context, language string, pcm <-chan 
 	if e = config.SetSpeechRecognitionLanguage(language); e != nil {
 		return e
 	}
-	if e = config.SetProperty(common.SegmentationSilenceTimeoutMs, "700"); e != nil {
+	if e = config.SetProperty(common.SegmentationSilenceTimeoutMs, strconv.Itoa(conversation.RecognitionSegmentationMS)); e != nil {
 		return e
 	}
 	format, e := audio.GetWaveFormatPCM(16000, 16, 1)
@@ -63,11 +64,11 @@ func (p *azureRecognition) Run(ctx context.Context, language string, pcm <-chan 
 	})
 	recognizer.SpeechStartDetected(func(event speech.RecognitionEventArgs) {
 		defer event.Close()
-		emit(conversation.RecognitionEvent{Type: "start"})
+		emit(conversation.RecognitionEvent{Type: "start", OffsetMS: float64(event.Offset) / 10000})
 	})
 	recognizer.Recognizing(func(event speech.SpeechRecognitionEventArgs) {
 		defer event.Close()
-		emit(conversation.RecognitionEvent{Type: "partial", ID: event.Result.ResultID, Text: event.Result.Text})
+		emit(conversation.RecognitionEvent{Type: "partial", ID: event.Result.ResultID, Text: event.Result.Text, OffsetMS: float64(event.Result.Offset) / float64(time.Millisecond), DurationMS: float64(event.Result.Duration) / float64(time.Millisecond)})
 	})
 	recognizer.Recognized(func(event speech.SpeechRecognitionEventArgs) {
 		defer event.Close()

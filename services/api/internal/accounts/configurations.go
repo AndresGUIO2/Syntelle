@@ -91,7 +91,15 @@ func (s *Service) configurations(w http.ResponseWriter, r *http.Request) {
 			httpapi.WriteError(w, 400, "invalid_settings", err.Error())
 			return
 		}
-		if s.cfg.PackageHash == "" {
+		packageHash := s.cfg.PackageHash
+		if input.Settings.Character != "syntelle" {
+			packageHash, err = s.ResolveCharacter(r.Context(), p.AccountID, input.Settings.Character)
+			if err != nil {
+				accessError(w, err)
+				return
+			}
+		}
+		if packageHash == "" {
 			httpapi.WriteError(w, 503, "package_unavailable", "The Syntelle package has not been registered.")
 			return
 		}
@@ -111,10 +119,10 @@ func (s *Service) configurations(w http.ResponseWriter, r *http.Request) {
 				e := s.cfg.Now().Add(24 * time.Hour)
 				expiry = &e
 			}
-			_, err = s.Pool.Exec(r.Context(), `INSERT INTO syntelle_accounts.configurations(id,account_id,guest_session_id,name,package_hash,settings,created_at,updated_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8)`, id, accountID, guestID, input.Name, s.cfg.PackageHash, b, s.cfg.Now(), expiry)
+			_, err = s.Pool.Exec(r.Context(), `INSERT INTO syntelle_accounts.configurations(id,account_id,guest_session_id,name,package_hash,settings,created_at,updated_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8)`, id, accountID, guestID, input.Name, packageHash, b, s.cfg.Now(), expiry)
 		} else {
 			var result interface{ RowsAffected() int64 }
-			result, err = s.Pool.Exec(r.Context(), `UPDATE syntelle_accounts.configurations SET name=$4,package_hash=$5,settings=$6,updated_at=$7 WHERE id=$1 AND ((account_id=$2 AND $2<>'') OR (guest_session_id=$3 AND $2='')) AND (expires_at IS NULL OR expires_at>$7)`, id, p.AccountID, p.SessionID, input.Name, s.cfg.PackageHash, b, s.cfg.Now())
+			result, err = s.Pool.Exec(r.Context(), `UPDATE syntelle_accounts.configurations SET name=$4,package_hash=$5,settings=$6,updated_at=$7 WHERE id=$1 AND ((account_id=$2 AND $2<>'') OR (guest_session_id=$3 AND $2='')) AND (expires_at IS NULL OR expires_at>$7)`, id, p.AccountID, p.SessionID, input.Name, packageHash, b, s.cfg.Now())
 			if err == nil && result.RowsAffected() == 0 {
 				err = ErrNotFound
 			}

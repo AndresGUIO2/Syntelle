@@ -24,14 +24,19 @@ func (b ExpressionBaseline) valid() bool {
 	return b.Regulation.Valid() && b.Emotion.Valid() && !math.IsNaN(b.Smile) && !math.IsNaN(b.Brows) && b.Smile >= 0 && b.Smile <= 1 && b.Brows >= 0 && b.Brows <= 1
 }
 
+const SemanticMotionDirection = "semantic-anchors/1"
+
 type PerformanceProfile struct {
-	Voice        string                     `json:"voice,omitempty"`
-	MotionPolicy string                     `json:"motion_policy,omitempty"`
-	Version      string                     `json:"version"`
-	PackageHash  string                     `json:"package_hash"`
-	Reviewed     bool                       `json:"reviewed"`
-	Capabilities []string                   `json:"capabilities"`
-	Laughter     map[string]json.RawMessage `json:"laughter"`
+	MotionDirection   string                            `json:"motion_direction,omitempty"`
+	Identity          *CharacterIdentity                `json:"identity,omitempty"`
+	EmotionalPresence *rendercontract.EmotionalPresence `json:"emotional_presence,omitempty"`
+	Voice             string                            `json:"voice,omitempty"`
+	MotionPolicy      string                            `json:"motion_policy,omitempty"`
+	Version           string                            `json:"version"`
+	PackageHash       string                            `json:"package_hash"`
+	Reviewed          bool                              `json:"reviewed"`
+	Capabilities      []string                          `json:"capabilities"`
+	Laughter          map[string]json.RawMessage        `json:"laughter"`
 }
 
 func (s *Service) RuntimeVoice() string {
@@ -60,6 +65,15 @@ func LoadPerformanceProfile(path, packageHash string) (*PerformanceProfile, erro
 	}
 	if p.Voice != "" && !rendercontract.SupportedVoice(p.Voice) {
 		return nil, errors.New("invalid character voice")
+	}
+	if err := p.Identity.validate(); err != nil {
+		return nil, err
+	}
+	if p.EmotionalPresence != nil && (p.EmotionalPresence.Version != "emotional-presence/1" || !p.EmotionalPresence.Validation.Valid || p.EmotionalPresence.Minimum != .4 || p.EmotionalPresence.InactivityMS != 180000 || p.EmotionalPresence.RecoveryMS != 60000) {
+		return nil, errors.New("invalid emotional presence profile")
+	}
+	if p.MotionDirection != "" && p.MotionDirection != SemanticMotionDirection {
+		return nil, errors.New("invalid motion direction policy")
 	}
 	seen := map[string]bool{}
 	if p.MotionPolicy != "" && p.MotionPolicy != rendercontract.ConversationalMotionVersion {
@@ -113,10 +127,27 @@ func (s *Service) directionContext(b ExpressionBaseline, voiceLanguage ...string
 		}
 		capabilities = kept
 	}
-	value, _ := json.Marshal(map[string]any{"prepared_capabilities": capabilities, "emotion_regulation": map[string]any{"version": rendercontract.EmotionPolicyVersion, "settings": b.Regulation.Normalized(), "temperament": b.Regulation.Profile(), "ceilings": map[string]float64{"joyful": rendercontract.EmotionCeiling("joyful"), "playful": rendercontract.EmotionCeiling("playful"), "affectionate": rendercontract.EmotionCeiling("affectionate"), "curious": rendercontract.EmotionCeiling("curious"), "sad": rendercontract.EmotionCeiling("sad"), "angry": rendercontract.EmotionCeiling("angry"), "fearful": rendercontract.EmotionCeiling("fearful"), "surprised": rendercontract.EmotionCeiling("surprised"), "disgusted": rendercontract.EmotionCeiling("disgusted")}}, "manual_expression_baseline": b, "baseline_policy": "temporary-targets-then-return", "legacy_speaking_smile_maximum": .5, "emotion_policy": "temporary-contextual-targets-then-return-to-owner-baseline"})
+	ceilings := map[string]float64{}
+	for _, state := range rendercontract.EmotionStates[1:] {
+		ceilings[state] = rendercontract.EmotionCeiling(state)
+	}
+	regulation := map[string]any{"version": rendercontract.EmotionPolicyVersion, "settings": b.Regulation.Normalized(), "temperament": b.Regulation.Profile(), "ceilings": ceilings}
+	policy := "temporary-contextual-targets-then-return-to-owner-baseline"
+	if s.Performance != nil && s.Performance.EmotionalPresence != nil {
+		for state := range ceilings {
+			ceilings[state] = 1
+		}
+		regulation["minimum_final_automatic_intensity"] = .4
+		regulation["inactivity_seconds"], regulation["recovery_seconds"] = 180, 60
+		policy = "persistent-committed-mood-across-turns; absolute-contextual-targets; manual-baseline-remains-owner-controlled"
+	}
+	value, _ := json.Marshal(map[string]any{"prepared_capabilities": capabilities, "emotion_regulation": regulation, "manual_expression_baseline": b, "baseline_policy": policy, "legacy_speaking_smile_maximum": .5, "emotion_policy": policy})
 	motion := ""
 	if s.Performance != nil && s.Performance.MotionPolicy == rendercontract.ConversationalMotionVersion {
 		motion = "\nApplication-owned head policy: eight movement cycles per rolling 20 seconds, minimum 2.2-second spacing, semantic priority over acoustic beats. Movement timing continues across phrases; do not treat eight as a whole-reply ceiling."
+	}
+	if s.Performance != nil && s.Performance.MotionDirection == SemanticMotionDirection {
+		motion += "\nPrepared intentional speaking policy: conspicuous head actions require a meaningful exact semantic anchor; acoustic peaks refine that action, never create one. Keep expressive quick/wide actions for meaningful emphasis; do not limit explanations to one restrained beat and do not fill a quota. Affirm/disagree describe the speaker actually agreeing/disagreeing, not an event narrated in a story. Narrative events such as someone welcoming a traveler do not themselves justify an agreement nod. Use optional tilt/emphasis/brows/smile for communicative purpose, leaving quiet spans. The application retains only confidently timed future actions."
 	}
 	return "\nApplication-owned performance context: " + string(value) + motion
 }

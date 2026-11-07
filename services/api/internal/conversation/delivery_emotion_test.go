@@ -1,9 +1,23 @@
 package conversation
 
 import (
+	"strings"
 	"syntelle/render-contract"
 	"testing"
 )
+
+func TestDirectorContextMatchesQualifiedPersistentPolicy(t *testing.T) {
+	s := &Service{}
+	baseline := ExpressionBaseline{}
+	if context := s.directionContext(baseline); !strings.Contains(context, `"fearful":0.35`) {
+		t.Fatal("legacy context changed", context)
+	}
+	s.Performance = &PerformanceProfile{EmotionalPresence: &rendercontract.EmotionalPresence{Version: "emotional-presence/1"}}
+	context := s.directionContext(baseline)
+	if !strings.Contains(context, `"fearful":1`) || !strings.Contains(context, `"minimum_final_automatic_intensity":0.4`) || strings.Contains(context, "temporary-contextual-targets-then-return") {
+		t.Fatal("director still receives legacy limits", context)
+	}
+}
 
 func TestApprovedEmotionSuppressesConflictingPlayfulCues(t *testing.T) {
 	amount := .7

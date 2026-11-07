@@ -50,19 +50,20 @@ type Event struct {
 	Baseline          *ExpressionBaseline               `json:"expression_baseline,omitempty"`
 }
 type Service struct {
-	Delivery    DeliveryCoordinator
-	Store       *Store
-	Model       Model
-	Speech      Speech
-	Recognition Recognition
-	mu          sync.Mutex
-	connections map[*websocket.Conn]context.CancelFunc
-	channels    map[*Channel]context.CancelFunc
-	leases      map[string]chan struct{}
-	closing     bool
-	workers     sync.WaitGroup
-	Performance *PerformanceProfile
-	laughPolicy map[string]laughterPolicy
+	endpointVersion string // Private legacy fixture selector; default is fast.
+	Delivery        DeliveryCoordinator
+	Store           *Store
+	Model           Model
+	Speech          Speech
+	Recognition     Recognition
+	mu              sync.Mutex
+	connections     map[*websocket.Conn]context.CancelFunc
+	channels        map[*Channel]context.CancelFunc
+	leases          map[string]chan struct{}
+	closing         bool
+	workers         sync.WaitGroup
+	Performance     *PerformanceProfile
+	laughPolicy     map[string]laughterPolicy
 }
 
 var identifier = regexp.MustCompile(`^[a-zA-Z0-9_-]{8,128}$`)
@@ -185,7 +186,7 @@ func (s *Service) socket(w http.ResponseWriter, r *http.Request) {
 // runSession is transport independent: legacy sockets and private render sessions
 // share recognition, echo handling, cancellation and progressive speech.
 func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send func(context.Context, Event)) {
-	var cid, language, voice, instructions string
+	var cid, character, language, voice, instructions string
 	baseline := ExpressionBaseline{}
 	var turnID string
 	var turnCancel context.CancelFunc
@@ -206,7 +207,12 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 	windows := []playbackWindow{}
 	gate := false
 	utterance := recognitionUtterance{}
-	quiet := turnQuiet{}
+	quiet := newTurnEndpoint(s.endpointVersion)
+	stagedInput := make(chan Event, 64)
+	stagedRecognition := make(chan RecognitionEvent, 32)
+	releaseWatermark := false
+	waitForQueuedInput := false
+	lateRecognition := []lateRecognitionWindow{}
 	settle := time.NewTimer(utterancePause)
 	settle.Stop()
 	defer settle.Stop()
@@ -223,6 +229,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		pauseUtterance()
 		maximumHold.Stop()
 		held = nil
+		quiet.clearEpoch()
 	}
 	armUtterance := func() {
 		if utterance.id != "" {
@@ -232,6 +239,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		}
 	}
 	holdUtterance := func() {
+		if quiet.fast != nil {
+			return
+		}
 		maximumHold.Stop()
 		maximumHold.Reset(utteranceMaximumHold)
 		held = maximumHold.C
@@ -302,6 +312,9 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				slog.Error("Interruption evidence could not be committed", "code", "interruption_archive_failed", "conversation_id", cid, "turn_id", turnID, "failure_class", classification)
 				emit("persistence_warning", turnID, "Playback stopped, but this change could not be saved.", nil)
 			}
+		}
+		if playing && len(windows) > 0 && windows[len(windows)-1].end < 0 {
+			windows[len(windows)-1].end = microphoneMS
 		}
 		playing = false
 		if reason != "superseded" {
@@ -378,7 +391,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		done := turnDone
 		turnComplete = done
 		emit("accepted", id, text, nil)
-		performanceInstructions := instructions + s.directionContext(baseline, voice, language)
+		performanceInstructions := instructions + s.identityContext(character) + s.directionContext(baseline, voice, language)
 		go func() {
 			defer close(done)
 			defer stop()
@@ -390,6 +403,24 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		}()
 	}
 	flushUtterance := func() {
+		now := time.Now()
+		if q := quiet.fast; q != nil && utterance.id != "" {
+			_, reason := q.wait(utterance.text, now)
+			slog.Info("Confirmed speech released for response", "code", "recognition_turn_released", "conversation_id", cid, "result_id", utterance.id, "policy", fastEndpointVersion, "reason", reason, "final_to_release_ms", float64(now.Sub(q.finalAt))/float64(time.Millisecond), "samples", q.samples, "confirmed_sample", q.confirmedSample, "voice_sample", q.voiceSample, "noise_rms", q.floor)
+			if q.expired(now) && q.samples > q.confirmedSample {
+				kept := lateRecognition[:0]
+				for _, w := range lateRecognition {
+					if now.Before(w.until) {
+						kept = append(kept, w)
+					}
+				}
+				lateRecognition = kept
+				lateRecognition = append(lateRecognition, lateRecognitionWindow{float64(q.confirmedSample) / 16, float64(q.samples) / 16, now.Add(30 * time.Second)})
+				if len(lateRecognition) > 8 {
+					lateRecognition = lateRecognition[len(lateRecognition)-8:]
+				}
+			}
+		}
 		clearUtterance()
 		id, text := utterance.take()
 		if micID != "" && id != "" {
@@ -398,13 +429,55 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 		}
 	}
 	for {
+		// A deadline owns a finite input/callback watermark. New silent packets
+		// cannot perpetually move that watermark while its relevant events drain.
+		if releaseWatermark && len(stagedRecognition) == 0 && (!waitForQueuedInput || len(stagedInput) == 0) {
+			releaseWatermark = false
+			if utterance.id != "" {
+				if quiet.delay(utterance.text, time.Now()) > 0 {
+					armUtterance()
+				} else {
+					flushUtterance()
+				}
+			}
+		}
+		inputs, callbacks := incoming, (<-chan RecognitionEvent)(recognized)
+		if len(stagedRecognition) > 0 {
+			inputs = nil
+			callbacks = stagedRecognition
+		} else if len(stagedInput) > 0 {
+			inputs = stagedInput
+			callbacks = nil
+		}
+		deadline := settled
+		if releaseWatermark {
+			deadline = nil
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-turnComplete:
 			turnComplete = nil
 			releaseVoiceIfIdle()
-		case <-settled:
+		case <-deadline:
+			if quiet.fast != nil {
+				settle.Stop()
+				settled = nil
+				for n := min(len(recognized), cap(stagedRecognition)); n > 0; n-- {
+					stagedRecognition <- <-recognized
+				}
+				waitForQueuedInput = len(stagedInput) > 0
+				probe, now := *quiet.fast, time.Now()
+				for n := min(len(incoming), cap(stagedInput)-len(stagedInput)); n > 0; n-- {
+					item := <-incoming
+					stagedInput <- item
+					if !waitForQueuedInput && item.ConversationID == cid {
+						waitForQueuedInput = probe.queuedTurnEvidence(item, micID, now)
+					}
+				}
+				releaseWatermark = true
+				continue
+			}
 			// A continuation already queued by the SDK wins over the deadline.
 			if len(recognized) > 0 || len(incoming) > 0 {
 				settle.Reset(20 * time.Millisecond)
@@ -427,12 +500,12 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				continue
 			}
 			flushUtterance()
-		case event, open := <-incoming:
+		case event, open := <-inputs:
 			if !open {
 				return
 			}
 			if event.Type == "hello" {
-				if cid != "" || !identifier.MatchString(event.ConversationID) || !identifier.MatchString(event.TurnID) || (event.Character != "syntelle" && event.Character != "cafe" && event.Character != "woodland") || (event.Language != "en-US" && event.Language != "es-CO") || len([]rune(event.Instructions)) > 2000 || !rendercontract.SupportedVoice(event.Voice) {
+				if cid != "" || !identifier.MatchString(event.ConversationID) || !identifier.MatchString(event.TurnID) || (!rendercontract.ValidCharacterID(event.Character) && event.Character != "cafe" && event.Character != "woodland") || (event.Language != "en-US" && event.Language != "es-CO") || len([]rune(event.Instructions)) > 2000 || !rendercontract.SupportedVoice(event.Voice) {
 					return
 				}
 				s.mu.Lock()
@@ -456,6 +529,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				s.leases[event.ConversationID] = make(chan struct{})
 				s.mu.Unlock()
 				cid = event.ConversationID
+				character = event.Character
 				language = event.Language
 				voice = event.Voice
 				instructions = event.Instructions
@@ -545,6 +619,11 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				}
 			case "playback_started":
 				if event.TurnID == turnID {
+					if playing {
+						// Adjacent phrase activations belong to one uninterrupted
+						// playback interval on the microphone clock.
+						continue
+					}
 					playing = true
 					completedPlayback = false
 					gate = false
@@ -584,7 +663,8 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				}
 				micID = event.TurnID
 				microphoneMS = 0
-				quiet = turnQuiet{}
+				quiet = newTurnEndpoint(s.endpointVersion)
+				lateRecognition = nil
 				activityMS = -10000
 				windows = nil
 				if playing {
@@ -616,9 +696,14 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					if len(event.Audio) == 0 || len(event.Audio) > 6400 || len(event.Audio)%2 != 0 {
 						return
 					}
+					if microphoneMS == 0 && quiet.fast != nil {
+						slog.Info("First microphone packet received", "code", "capture_receipt", "conversation_id", cid, "stream_id", micID, "packet_duration_ms", float64(len(event.Audio))/32, "received_unix_ms", time.Now().UnixMilli())
+					}
 					microphoneMS += float64(len(event.Audio)) / 32
 					quiet.audio(event.Audio, time.Now())
-					if quiet.recentVoice(time.Now()) && utterance.id != "" {
+					if quiet.fast != nil && utterance.id != "" {
+						armUtterance()
+					} else if quiet.recentVoice(time.Now()) && utterance.id != "" {
 						refreshUtteranceHold()
 						if settled != nil {
 							armUtterance()
@@ -632,7 +717,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					}
 				}
 			}
-		case event := <-recognized:
+		case event := <-callbacks:
 			if micID == "" || event.StreamID != micID {
 				if event.Type == "final" {
 					slog.Warn("Confirmed recognition did not match the active microphone", "code", "recognition_final_inactive_microphone", "conversation_id", cid, "result_id", event.ID)
@@ -641,16 +726,25 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 			}
 			switch event.Type {
 			case "partial":
-				if strings.TrimSpace(event.Text) != "" {
+				if quiet.fast != nil {
+					quiet.progress(event, time.Now())
+					armUtterance()
+				} else if strings.TrimSpace(event.Text) != "" {
 					pauseUtterance()
 					refreshUtteranceHold()
 				}
 				emit("transcript_partial", micID, utterance.preview(event.Text), nil)
 			case "start":
-				pauseUtterance()
-				refreshUtteranceHold()
+				if quiet.fast != nil {
+					quiet.progress(event, time.Now())
+					armUtterance()
+				} else {
+					pauseUtterance()
+					refreshUtteranceHold()
+				}
 				emit("speech_detected", micID, "", nil)
 			case "end":
+				quiet.progress(event, time.Now())
 				// A no-match result resolves an interim segment without inventing text.
 				emit("transcript_partial", micID, utterance.text, nil)
 				armUtterance()
@@ -669,13 +763,14 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 				// speaker is active. A delayed SDK result after playback has ended
 				// may retain an overlapping offset but must remain eligible as a
 				// follow-up turn.
-				if playing && (!gate || overlapsPlayback(event, windows, microphoneMS, activityMS)) {
+				lateConfirmed := quiet.fast != nil && lateConfirmedBeforePlayback(event, lateRecognition, windows, time.Now())
+				if playing && !lateConfirmed && (!gate || overlapsPlayback(event, windows, microphoneMS, activityMS)) {
 					slog.Info("Confirmed recognition suppressed during playback", "code", "recognition_final_playback", "conversation_id", cid, "result_id", event.ID)
 					emit("transcript_partial", micID, utterance.text, nil)
 					armUtterance()
 					continue
 				}
-				if len(windows) > 0 {
+				if len(windows) > 0 && !lateConfirmed {
 					spoken, err := s.Store.PlaybackText(ctx, cid, turnID)
 					if err != nil {
 						emit("microphone_error", micID, "The interruption could not be checked. Use Stop reply before asking again.", nil)
@@ -687,7 +782,7 @@ func (s *Service) runSession(ctx context.Context, incoming <-chan Event, send fu
 					}
 				}
 				utterance.append(event.ID, event.Text)
-				quiet.confirm(event.OffsetMS + event.DurationMS)
+				quiet.confirm(event, time.Now())
 				slog.Info("Confirmed recognition queued for a turn", "code", "recognition_final_queued", "conversation_id", cid, "result_id", event.ID)
 				emit("transcript_partial", micID, utterance.text, nil)
 				holdUtterance()
@@ -933,7 +1028,11 @@ func (s *Service) runTurn(ctx context.Context, cid, id, text, language, voice, i
 	}
 }
 func (s *Service) RunRecognition(ctx context.Context, cid, id, language string, pcm <-chan []byte, emit func(RecognitionEvent)) {
-	op, e := s.Store.Reserve(ctx, "recognition", id, "", cid, "", map[string]any{"language": language, "sample_rate": 16000, "bits": 16, "channels": 1, "segmentation_silence_ms": 700, "turn_settle_ms": utterancePause.Milliseconds(), "turn_maximum_idle_hold_ms": utteranceMaximumHold.Milliseconds(), "turn_assembly": "audio-quiet/1", "turn_quiet_ms": 1100, "turn_minimum_final_guard_ms": 250, "turn_open_clause_quiet_ms": 2500, "sdk": "1.52.0"}, false)
+	policy := map[string]any{"language": language, "sample_rate": 16000, "bits": 16, "channels": 1, "segmentation_silence_ms": fastSegmentationMS, "turn_assembly": fastEndpointVersion, "turn_quiet_ms": fastQuiet.Milliseconds(), "turn_minimum_final_guard_ms": fastFinalGuard.Milliseconds(), "turn_open_clause_quiet_ms": fastOpenClauseQuiet.Milliseconds(), "turn_stale_fallback_ms": fastFallback.Milliseconds(), "pcm_only_continuation_ms": fastPCMLease.Milliseconds(), "stalled_sdk_progress_ms": fastSDKLease.Milliseconds(), "sdk": "1.52.0"}
+	if s.endpointVersion == legacyEndpointVersion {
+		policy = map[string]any{"language": language, "sample_rate": 16000, "bits": 16, "channels": 1, "segmentation_silence_ms": 700, "turn_settle_ms": utterancePause.Milliseconds(), "turn_maximum_idle_hold_ms": utteranceMaximumHold.Milliseconds(), "turn_assembly": legacyEndpointVersion, "turn_quiet_ms": 1100, "turn_minimum_final_guard_ms": 250, "turn_open_clause_quiet_ms": 2500, "sdk": "1.52.0"}
+	}
+	op, e := s.Store.Reserve(ctx, "recognition", id, "", cid, "", policy, false)
 	if e != nil {
 		emit(RecognitionEvent{Type: "error", Text: "Recognition request could not be committed."})
 		return
@@ -947,6 +1046,7 @@ func (s *Service) RunRecognition(ctx context.Context, cid, id, language string, 
 	audioMS := 0.
 	archiveFailed := false
 	e = s.Recognition.Run(ctx, language, pcm, func(event RecognitionEvent) {
+		callbackAt := time.Now()
 		recognitionMu.Lock()
 		defer recognitionMu.Unlock()
 		if event.Type == "final" {
@@ -955,6 +1055,7 @@ func (s *Service) RunRecognition(ctx context.Context, cid, id, language string, 
 				emit(RecognitionEvent{Type: "error", Text: "Recognition transcript could not be committed."})
 				return
 			}
+			slog.Info("Confirmed recognition archived", "code", "recognition_final_archived", "conversation_id", cid, "result_id", event.ID, "callback_to_archive_ms", float64(time.Since(callbackAt))/float64(time.Millisecond), "source_offset_ms", event.OffsetMS, "source_duration_ms", event.DurationMS)
 			segments++
 		}
 		if event.Type == "usage" {

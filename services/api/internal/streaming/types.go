@@ -19,6 +19,7 @@ type Config struct {
 	MaximumSessions   int
 	PackageHash       string
 	ValidatePrincipal func(context.Context, accounts.Principal) error
+	ResolveCharacter  func(context.Context, string, string) (string, error)
 	Admission         AdmissionConfig
 	DisableTimeLimits bool
 }
@@ -42,6 +43,7 @@ type Command struct {
 }
 
 type SessionResponse struct {
+	EmotionsAvailable bool                       `json:"emotions_available"`
 	LaughterAvailable bool                       `json:"laughter_available"`
 	StartupTimeoutMS  int                        `json:"startup_timeout_ms,omitempty"`
 	ICEServers        []rendercontract.ICEServer `json:"ice_servers,omitempty"`
@@ -63,6 +65,12 @@ type commandResult struct {
 }
 
 type streamSession struct {
+	packageHash             string
+	basicCharacter          bool
+	moodCheckpoint          *rendercontract.MoodCheckpoint
+	emotionalPresence       bool
+	workerLostAt            time.Time
+	workerLostTurn          string
 	coordinated             bool
 	requestedPolicyRevision uint64
 	appliedSettings         *rendercontract.Settings

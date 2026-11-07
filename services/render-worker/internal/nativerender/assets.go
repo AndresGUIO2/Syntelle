@@ -40,15 +40,15 @@ type Projection struct {
 	Articulation json.RawMessage
 }
 type Motion struct {
-	SpeechJaw   *rendercontract.SpeechJawRig `json:"speech_jaw"`
-	Mandible    *rendercontract.MandibleRig  `json:"mandible"`
-	BuildID     string                       `json:"build_id"`
-	OriginalSHA string                       `json:"original_sha256"`
-	OralBuildID string                       `json:"oral_build_id"`
-	Canvas      Size
-	Foreground  string
-	Projection  Projection
-	Anatomy     struct {
+	EmotionalPresence *rendercontract.EmotionalPresence `json:"emotional_presence"`
+	SpeechJaw         *rendercontract.SpeechJawRig      `json:"speech_jaw"`
+	BuildID           string                            `json:"build_id"`
+	OriginalSHA       string                            `json:"original_sha256"`
+	OralBuildID       string                            `json:"oral_build_id"`
+	Canvas            Size
+	Foreground        string
+	Projection        Projection
+	Anatomy           struct {
 		ChinY      float64 `json:"chin_y"`
 		FaceHeight float64 `json:"face_height"`
 	}
@@ -59,6 +59,7 @@ type Motion struct {
 	}
 }
 type EmotionRig struct {
+	SmileAmounts  []float64 `json:"smile_amounts"`
 	EyelidTension []float64 `json:"eyelid_tension"`
 	EditCoverage  string    `json:"edit_coverage"`
 	Oral          *struct {
@@ -103,9 +104,6 @@ type JointPair struct {
 	Triangles [][3]int     `json:"triangles"`
 }
 type JointExpression struct {
-	SkinAppearance struct {
-		FieldSHA string `json:"field_sha256"`
-	} `json:"skin_appearance"`
 	LipMaterial          *textureRecord `json:"lip_material"`
 	Mode                 string         `json:"mode"`
 	MaximumArticulation  float64        `json:"maximum_articulation"`
@@ -154,27 +152,27 @@ type Assets struct {
 	viewTextures []*Texture
 	// Only small content identities are cached here, never concatenated atlases.
 	// Prepared texture bytes and their ordering remain immutable after Load.
-	gpuAtlasKeys                                               sync.Map
-	MotionScale                                                float64
-	PackageHash                                                string
-	Motion                                                     Motion
-	MotionJSON, OralJSON, GazeJSON, ExpressionJSON             json.RawMessage
-	Foreground, ReferenceField, ExpressionField, SmileMaterial *Texture
-	EmotionField                                               *Texture
-	Expression                                                 Expression
-	SkinFrames                                                 []*Texture
-	LaughFrames                                                []*Texture
-	LaughLips                                                  *Texture
-	ReferenceFrames                                            []*Texture
-	ReferenceCavity                                            *Texture
-	ReferenceUpper, ReferenceLower                             *Texture
-	Oral                                                       *OralAssets
-	Opened, Closed, EyeMask, Sclera, Ownership                 *Texture
-	EyeSplit                                                   float64
-	Backgrounds                                                map[string]*Texture
-	vertices                                                   []sourceVertex
-	indices                                                    []uint16
-	fringe                                                     []fringeTriangle
+	gpuAtlasKeys                                   sync.Map
+	MotionScale                                    float64
+	PackageHash                                    string
+	Motion                                         Motion
+	MotionJSON, OralJSON, GazeJSON, ExpressionJSON json.RawMessage
+	Foreground, ExpressionField, SmileMaterial     *Texture
+	EmotionField                                   *Texture
+	Expression                                     Expression
+	SkinFrames                                     []*Texture
+	LaughFrames                                    []*Texture
+	LaughLips                                      *Texture
+	ReferenceFrames                                []*Texture
+	ReferenceCavity                                *Texture
+	ReferenceUpper, ReferenceLower                 *Texture
+	Oral                                           *OralAssets
+	Opened, Closed, EyeMask, Sclera, Ownership     *Texture
+	EyeSplit                                       float64
+	Backgrounds                                    map[string]*Texture
+	vertices                                       []sourceVertex
+	indices                                        []uint16
+	fringe                                         []fringeTriangle
 }
 
 func readChecked(root, path, hash string) ([]byte, error) {
@@ -317,7 +315,31 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 		if err != nil {
 			return nil, err
 		}
+		if presence := a.Motion.EmotionalPresence; presence != nil {
+			if presence.Version != "emotional-presence/1" || presence.SourceSHA != a.Motion.OriginalSHA || !presence.Validation.Valid || presence.Minimum != .4 || presence.InactivityMS != 180000 || presence.RecoveryMS != 60000 || len(presence.Gains) != 10 {
+				return nil, errors.New("invalid emotional presence capability")
+			}
+			for _, state := range rendercontract.EmotionStates {
+				gain, ok := presence.Gains[state]
+				if !ok || !patchFinite(gain) || gain < 1 || gain > 1.25 {
+					return nil, errors.New("invalid prepared emotion gain")
+				}
+			}
+			if a.Expression.EmotionRig == nil || len(a.Expression.EmotionRig.SmileAmounts) != 10 {
+				return nil, errors.New("missing coherent emotion calibration")
+			}
+		}
 		if rig := a.Expression.EmotionRig; rig != nil {
+			if rig.SmileAmounts != nil {
+				if len(rig.SmileAmounts) != 10 || rig.SmileAmounts[0] != 0 {
+					return nil, errors.New("invalid emotion smile calibration")
+				}
+				for _, value := range rig.SmileAmounts {
+					if !rendercontract.UnitAmount(value) {
+						return nil, errors.New("emotion smile exceeds prepared range")
+					}
+				}
+			}
 			if rig.EyelidTension != nil {
 				if len(rig.EyelidTension) != 10 || rig.EyelidTension[0] != 0 {
 					return nil, errors.New("invalid emotional eyelid calibration")
@@ -514,31 +536,6 @@ func loadAssets(root string, backgrounds bool) (*Assets, error) {
 	p := a.Motion.Projection.Geometry
 	if p.SHA256 != m.Geometry.SHA256 || p.Vertices < 4 || p.Vertices > 65535 || len(g) != p.Vertices*20+(p.Triangles+p.FringeTriangles)*6 {
 		return nil, errors.New("invalid native geometry length")
-	}
-	if rig := a.Motion.Mandible; rig != nil {
-		if (rig.Version != "mandibular-rig/1" && rig.Version != "mandibular-rig/2") || rig.SourceSHA != a.Motion.OriginalSHA || rig.MotionBuild != a.Motion.BuildID || rig.OralBuild != a.Motion.OralBuildID || rig.GeometrySHA != p.SHA256 || len(rig.Weights) != p.Vertices || !rig.Validation.Valid || rig.Validation.MinimumAreaRatio <= .25 || rig.Validation.ChinTravel720 < 3 || !patchFinite(rig.MaximumAngle) || rig.MaximumAngle <= 0 || rig.MaximumAngle > .3 {
-			return nil, errors.New("invalid source-bound mandibular companion")
-		}
-		for _, n := range append(append(rig.Hinge[:], rig.Chin[:]...), rig.OralTravel, rig.CornerTravel, rig.ReferenceGap, rig.LowerStop, rig.Validation.MinimumAreaRatio, rig.Validation.ChinTravel720) {
-			if !patchFinite(n) {
-				return nil, errors.New("non-finite mandibular calibration")
-			}
-		}
-		if rig.OralTravel <= 0 || rig.CornerTravel < 0 || rig.ReferenceGap <= 0 {
-			return nil, errors.New("invalid mandibular range")
-		}
-		for pose := range a.Oral.poses {
-			jaw, ok := rig.PoseJaw[pose]
-			gap, found := rig.PoseGap[pose]
-			if !ok || !found || !patchFinite(jaw) || jaw < 0 || jaw > 1 || !patchFinite(gap) || gap < 0 {
-				return nil, errors.New("incomplete mandibular pose calibration")
-			}
-		}
-		for _, w := range rig.Weights {
-			if !patchFinite(w) || w < 0 || w > 1 {
-				return nil, errors.New("invalid mandibular weight")
-			}
-		}
 	}
 	a.vertices = make([]sourceVertex, p.Vertices)
 	for i := range a.vertices {
