@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { legacyCharacterModuleAliases } from './config/legacy-module-paths.ts'
 import { playerBoundary } from './config/player-boundary.ts'
+import { widgetHeaders } from './config/widget-headers.ts'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig(({ mode }) => {
@@ -10,7 +11,7 @@ export default defineConfig(({ mode }) => {
       'Client-rendered demo builds are retired. Use npm run build for the backend-only player.',
     )
   return {
-    plugins: [vue(), playerBoundary()],
+    plugins: [vue(), playerBoundary(), widgetHeaders()],
     define: { __SYNTELLE_DEMO_BUILD__: 'false' },
     resolve: { alias: legacyCharacterModuleAliases },
     build: {

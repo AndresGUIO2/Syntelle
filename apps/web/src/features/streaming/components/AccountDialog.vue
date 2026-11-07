@@ -69,7 +69,7 @@ async function verify() {
     confirmLink.value = false
     requiresConfirmation.value = false
     emit('signedIn')
-    if (props.flow) history.replaceState(null, '', '/?view=stream')
+    // The application navigation owner completes OAuth/return destinations.
   } else emit('resumeStream')
 }
 async function signOut() {
@@ -117,183 +117,189 @@ onScopeDispose(() => {
           ×
         </button>
       </header>
-      <template v-if="!auth.account.value">
-        <p class="intro">{{ t('Save your setup and connect Syntelle to your applications.') }}</p>
-        <p v-if="props.flow && auth.status.value?.email.configured" class="note">
-          {{ t('Verify your email to finish connecting this sign-in method.') }}
-        </p>
-        <form
-          v-if="auth.status.value?.email.configured && !sent"
-          class="email-form"
-          @submit.prevent="sendCode"
-        >
-          <label class="field">
-            {{ t('Email address') }}
-            <input
-              v-model.trim="email"
-              type="email"
-              autocomplete="email"
-              required
-              maxlength="254"
-              :disabled="auth.loading.value"
-          /></label>
-          <button class="button button-primary" type="submit" :disabled="auth.loading.value">
-            {{ t(auth.loading.value ? 'Sending…' : 'Send sign-in code') }}
-          </button>
-        </form>
-        <form
-          v-else-if="auth.status.value?.email.configured"
-          class="email-form"
-          @submit.prevent="verify"
-        >
-          <p class="note">
-            {{ t('Enter the six-digit code sent to') }} <strong>{{ email }}</strong>
-            {{ t('. It expires in ten minutes.') }}
+      <div class="account-body">
+        <template v-if="!auth.account.value">
+          <p class="intro">{{ t('Save your setup and connect Syntelle to your applications.') }}</p>
+          <p v-if="props.flow && auth.status.value?.email.configured" class="note">
+            {{ t('Verify your email to finish connecting this sign-in method.') }}
           </p>
-          <label class="field">
-            {{ t('Sign-in code') }}
-            <input
-              v-model="code"
-              class="code-input"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              pattern="[0-9]{6}"
-              maxlength="6"
-              required
-          /></label>
-          <label v-if="requiresConfirmation" class="link-confirm"
-            ><input v-model="confirmLink" type="checkbox" required />
-            {{
-              t('Connect {provider} to my existing account.', {
-                provider: provider || t('this sign-in method'),
-              })
-            }}</label
+          <form
+            v-if="auth.status.value?.email.configured && !sent"
+            class="email-form"
+            @submit.prevent="sendCode"
           >
-          <button
-            class="button button-primary"
-            type="submit"
-            :disabled="auth.loading.value || (requiresConfirmation && !confirmLink)"
-          >
-            {{ t(auth.loading.value ? 'Verifying…' : 'Continue') }}
-          </button>
-          <button
-            class="text-action"
-            type="button"
-            :disabled="cooldown > 0 || auth.loading.value"
-            @click="sendCode"
-          >
-            {{
-              cooldown > 0 ? t('Resend in {seconds}s', { seconds: cooldown }) : t('Send a new code')
-            }}
-          </button>
-        </form>
-        <p v-if="auth.status.value && !auth.status.value.email.configured" class="note">
-          {{ t('Email sign-in is temporarily unavailable. You can continue as a guest.') }}
-        </p>
-        <button class="text-action guest" type="button" @click="open = false">
-          {{ t('Continue as a guest') }}
-        </button>
-      </template>
-      <template v-else>
-        <p class="account-email">{{ auth.account.value.email }}</p>
-        <div class="tabs" role="group" :aria-label="t('Account sections')">
-          <button type="button" :aria-pressed="tab === 'saved'" @click="tab = 'saved'">
-            {{ t('Saved setups') }}
-          </button>
-          <button type="button" disabled :aria-label="`${t('Developer access')}: ${t('Soon')}`">
-            <span>{{ t('Developer access') }}</span>
-            <span class="soon-badge" aria-hidden="true">{{ t('Soon') }}</span>
-          </button>
-        </div>
-        <section v-if="tab === 'saved'" :aria-label="t('Saved Syntelle setups')">
-          <form class="save-form" @submit.prevent="auth.save(setupName, settings)">
             <label class="field">
-              {{ t('Setup name') }}
-              <input v-model.trim="setupName" maxlength="80" required />
-            </label>
-            <button class="button button-primary" :disabled="auth.loading.value">
-              {{ t('Save') }}
-            </button>
-          </form>
-          <p v-if="!auth.configurations.value.length" class="note">
-            {{
-              t(
-                'Saved instructions and appearance settings will be available when you sign in on another device.',
-              )
-            }}
-          </p>
-          <ul class="resource-list">
-            <li v-for="item in auth.configurations.value" :key="item.id">
-              <strong>{{ item.name }}</strong>
-              <div class="resource-actions">
-                <button type="button" class="text-action" @click="loadConfiguration(item)">
-                  {{ t('Use this setup') }}
-                </button>
-                <button
-                  type="button"
-                  class="text-action"
-                  :disabled="auth.loading.value"
-                  @click="auth.update(item.id, item.name, settings)"
-                >
-                  {{ t('Replace with current setup') }}
-                </button>
-                <button
-                  type="button"
-                  class="text-action delete-action"
-                  :disabled="auth.loading.value"
-                  @click="auth.remove(item.id)"
-                >
-                  {{ t('Delete saved setup') }}
-                </button>
-              </div>
-            </li>
-          </ul>
-        </section>
-        <section v-else :aria-label="t('Integration keys')">
-          <p class="note">
-            {{
-              t(
-                "Use these keys on your application's server to start streams and send messages. Keep them out of browser code.",
-              )
-            }}
-          </p>
-          <form class="save-form" @submit.prevent="auth.createKey(keyName)">
-            <label class="field">
-              {{ t('Key name') }} <input v-model.trim="keyName" maxlength="80" required /></label
-            ><button class="button button-primary" :disabled="auth.loading.value">
-              {{ t('Create key') }}
-            </button>
-          </form>
-          <div v-if="auth.secret.value" class="secret">
-            <label class="field">
-              {{ t('Copy this key now. It is shown only once.') }}
+              {{ t('Email address') }}
               <input
-                :value="auth.secret.value"
-                readonly
-                autocomplete="off"
-                spellcheck="false"
-                :aria-label="t('New integration key')" /></label
-            ><button class="button" type="button" @click="copySecret">{{ t('Copy key') }}</button>
-          </div>
-          <ul class="resource-list">
-            <li v-for="item in auth.keys.value" :key="item.id">
-              <div>
-                <strong>{{ item.name }}</strong
-                ><small>{{ item.id }}</small>
-              </div>
-              <button
-                class="text-action"
-                type="button"
+                v-model.trim="email"
+                type="email"
+                autocomplete="email"
+                required
+                maxlength="254"
                 :disabled="auth.loading.value"
-                @click="auth.revokeKey(item.id)"
-              >
-                {{ t('Revoke') }}
+            /></label>
+            <button class="button button-primary" type="submit" :disabled="auth.loading.value">
+              {{ t(auth.loading.value ? 'Sending…' : 'Send sign-in code') }}
+            </button>
+          </form>
+          <form
+            v-else-if="auth.status.value?.email.configured"
+            class="email-form"
+            @submit.prevent="verify"
+          >
+            <p class="note">
+              {{ t('Enter the six-digit code sent to') }} <strong>{{ email }}</strong>
+              {{ t('. It expires in ten minutes.') }}
+            </p>
+            <label class="field">
+              {{ t('Sign-in code') }}
+              <input
+                v-model="code"
+                class="code-input"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                required
+            /></label>
+            <label v-if="requiresConfirmation" class="link-confirm"
+              ><input v-model="confirmLink" type="checkbox" required />
+              {{
+                t('Connect {provider} to my existing account.', {
+                  provider: provider || t('this sign-in method'),
+                })
+              }}</label
+            >
+            <button
+              class="button button-primary"
+              type="submit"
+              :disabled="auth.loading.value || (requiresConfirmation && !confirmLink)"
+            >
+              {{ t(auth.loading.value ? 'Verifying…' : 'Continue') }}
+            </button>
+            <button
+              class="text-action"
+              type="button"
+              :disabled="cooldown > 0 || auth.loading.value"
+              @click="sendCode"
+            >
+              {{
+                cooldown > 0
+                  ? t('Resend in {seconds}s', { seconds: cooldown })
+                  : t('Send a new code')
+              }}
+            </button>
+          </form>
+          <p v-if="auth.status.value && !auth.status.value.email.configured" class="note">
+            {{ t('Email sign-in is temporarily unavailable. You can continue as a guest.') }}
+          </p>
+          <button class="text-action guest" type="button" @click="open = false">
+            {{ t('Continue as a guest') }}
+          </button>
+        </template>
+        <template v-else>
+          <p class="account-email">{{ auth.account.value.email }}</p>
+          <div class="tabs" role="group" :aria-label="t('Account sections')">
+            <button type="button" :aria-pressed="tab === 'saved'" @click="tab = 'saved'">
+              {{ t('Saved setups') }}
+            </button>
+            <button type="button" disabled :aria-label="`${t('Developer access')}: ${t('Soon')}`">
+              <span>{{ t('Developer access') }}</span>
+              <span class="soon-badge" aria-hidden="true">{{ t('Soon') }}</span>
+            </button>
+          </div>
+          <section v-if="tab === 'saved'" :aria-label="t('Saved Syntelle setups')">
+            <form class="save-form" @submit.prevent="auth.save(setupName, settings)">
+              <label class="field">
+                {{ t('Setup name') }}
+                <input v-model.trim="setupName" maxlength="80" required />
+              </label>
+              <button class="button button-primary" :disabled="auth.loading.value">
+                {{ t('Save') }}
               </button>
-            </li>
-          </ul>
-        </section>
-      </template>
-      <p v-if="auth.error.value" class="error" role="alert">{{ errorMessage(auth.error.value) }}</p>
+            </form>
+            <p v-if="!auth.configurations.value.length" class="note">
+              {{
+                t(
+                  'Saved instructions and appearance settings will be available when you sign in on another device.',
+                )
+              }}
+            </p>
+            <ul class="resource-list">
+              <li v-for="item in auth.configurations.value" :key="item.id">
+                <strong>{{ item.name }}</strong>
+                <div class="resource-actions">
+                  <button type="button" class="text-action" @click="loadConfiguration(item)">
+                    {{ t('Use this setup') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-action"
+                    :disabled="auth.loading.value"
+                    @click="auth.update(item.id, item.name, settings)"
+                  >
+                    {{ t('Replace with current setup') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-action delete-action"
+                    :disabled="auth.loading.value"
+                    @click="auth.remove(item.id)"
+                  >
+                    {{ t('Delete saved setup') }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+          <section v-else :aria-label="t('Integration keys')">
+            <p class="note">
+              {{
+                t(
+                  "Use these keys on your application's server to start streams and send messages. Keep them out of browser code.",
+                )
+              }}
+            </p>
+            <form class="save-form" @submit.prevent="auth.createKey(keyName)">
+              <label class="field">
+                {{ t('Key name') }} <input v-model.trim="keyName" maxlength="80" required /></label
+              ><button class="button button-primary" :disabled="auth.loading.value">
+                {{ t('Create key') }}
+              </button>
+            </form>
+            <div v-if="auth.secret.value" class="secret">
+              <label class="field">
+                {{ t('Copy this key now. It is shown only once.') }}
+                <input
+                  :value="auth.secret.value"
+                  readonly
+                  autocomplete="off"
+                  spellcheck="false"
+                  :aria-label="t('New integration key')" /></label
+              ><button class="button" type="button" @click="copySecret">{{ t('Copy key') }}</button>
+            </div>
+            <ul class="resource-list">
+              <li v-for="item in auth.keys.value" :key="item.id">
+                <div>
+                  <strong>{{ item.name }}</strong
+                  ><small>{{ item.id }}</small>
+                </div>
+                <button
+                  class="text-action"
+                  type="button"
+                  :disabled="auth.loading.value"
+                  @click="auth.revokeKey(item.id)"
+                >
+                  {{ t('Revoke') }}
+                </button>
+              </li>
+            </ul>
+          </section>
+        </template>
+        <p v-if="auth.error.value" class="error" role="alert">
+          {{ errorMessage(auth.error.value) }}
+        </p>
+      </div>
       <footer class="dialog-footer">
         <button
           v-if="auth.account.value"
@@ -314,7 +320,7 @@ onScopeDispose(() => {
 
 <style scoped>
 .account-dialog {
-  width: min(480px, calc(100% - 32px));
+  width: min(600px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   color: var(--text);
@@ -322,21 +328,32 @@ onScopeDispose(() => {
   border: 1px solid var(--divider);
   border-radius: 14px;
   box-shadow: 0 24px 80px #00000040;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 .account-dialog::backdrop {
   background: #08060db3;
 }
 .account-content {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - 34px);
+}
+.account-body {
+  min-height: 0;
+  padding: 0 28px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
+  padding: 24px 28px 16px;
 }
 h2 {
   font-size: 24px;
@@ -353,6 +370,8 @@ h2 {
   color: var(--muted);
   font-size: 28px;
   border-radius: 10px;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 .intro,
 .note,
@@ -384,6 +403,25 @@ h2 {
 .button:disabled {
   opacity: 0.55;
 }
+.button {
+  min-height: 44px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 14px;
+  border-radius: 8px;
+}
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+}
 .separator {
   display: flex;
   align-items: center;
@@ -412,6 +450,8 @@ input {
   border: 1px solid var(--control-border);
   padding: 10px 12px;
   border-radius: 8px;
+  min-width: 0;
+  font: inherit;
 }
 .code-input {
   letter-spacing: 0.35em;
@@ -509,6 +549,9 @@ input {
   padding: 14px 4px;
   border-bottom: 1px solid var(--divider);
   font-size: 13px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  line-height: 1.5;
 }
 .resource-list li:last-child {
   border-bottom: 0;
@@ -519,7 +562,7 @@ input {
   gap: 6px;
 }
 .resource-actions .text-action {
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 10px;
   border: 1px solid var(--divider);
   border-radius: 8px;
@@ -553,12 +596,12 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 14px;
-  padding-top: 10px;
+  flex-shrink: 0;
+  padding: 14px 28px;
   border-top: 1px solid var(--divider);
 }
 .sign-out {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 12px;
   border: 1px solid var(--control-border);
   border-radius: 8px;
@@ -584,8 +627,14 @@ input {
   line-height: 1.5;
 }
 @media (max-width: 450px) {
-  .account-content {
-    padding: 20px 18px;
+  .dialog-header {
+    padding: 20px 18px 12px;
+  }
+  .account-body {
+    padding: 0 18px 20px;
+  }
+  .dialog-footer {
+    padding: 12px 18px;
   }
   h2 {
     font-size: 23px;

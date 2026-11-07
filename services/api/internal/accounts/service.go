@@ -189,6 +189,8 @@ func (s *Service) ValidatePrincipal(ctx context.Context, p Principal) error {
 	var active bool
 	var err error
 	switch p.Kind {
+	case "workspace_key", "widget":
+		return s.validateIntegrationPrincipal(ctx, p)
 	case "key":
 		if p.AccountID == "" || p.KeyID == "" || p.ID != "account:"+p.AccountID {
 			return ErrUnauthorized

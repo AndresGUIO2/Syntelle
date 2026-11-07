@@ -153,6 +153,11 @@ def cleanup_packages(conn, packages):
             referenced = conn.execute(f"""SELECT 1 FROM {TABLE} WHERE deleted_at IS NULL
                 AND ((status='ready' AND package_hash=%s) OR (status IN ('queued','processing')
                 AND source_sha256=%s)) LIMIT 1""",(path.name,record["source_sha256"])).fetchone()
+            # Published workspace copies own their immutable package independently
+            # of the personal creation and its source-retention lifecycle.
+            publications = conn.execute("SELECT to_regclass('syntelle_accounts.publications') AS name").fetchone()
+            if not referenced and publications["name"] is not None:
+                referenced = conn.execute("SELECT 1 FROM syntelle_accounts.publications WHERE package_hash=%s LIMIT 1", (path.name,)).fetchone()
             if not referenced and path.is_dir():
                 shutil.rmtree(path)
 

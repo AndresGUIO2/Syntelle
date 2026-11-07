@@ -1,5 +1,37 @@
+import { consoleSpanish } from './consoleEs'
+import { redesignSpanish } from './redesignEs'
+import { redesignShellEs } from './redesignShellEs'
+import { redesignCharactersSpanish } from './redesignCharactersEs'
+import { redesignIntegrationsEs } from './redesignIntegrationsEs'
 // Interface copy only. User prompts, transcripts and provider records stay verbatim.
 export const spanish: Record<string, string> = {
+  'Main navigation': 'Navegación principal',
+  'Open navigation': 'Abrir navegación',
+  'Close navigation': 'Cerrar navegación',
+  'Expand navigation': 'Expandir navegación',
+  'Collapse navigation': 'Contraer navegación',
+  'More from Syntelle': 'Más de Syntelle',
+  History: 'Historial',
+  Preferences: 'Preferencias',
+  'Make it yours': 'Tu espacio personal',
+  'Back to characters': 'Volver a personajes',
+  'Sign in to access your personal space.': 'Inicia sesión para acceder a tu espacio personal.',
+  'New conversation': 'Nueva conversación',
+  Overview: 'Resumen',
+  Integrations: 'Integraciones',
+  Team: 'Equipo',
+  Activity: 'Actividad',
+  Usage: 'Uso',
+  Billing: 'Facturación',
+  'Your conversation is paused.': 'Tu conversación está en pausa.',
+  'Continue conversation': 'Continuar conversación',
+  'Select Continue conversation when you are ready.':
+    'Selecciona Continuar conversación cuando quieras.',
+  'Pausing your conversation…': 'Pausando tu conversación…',
+  'Your conversation needs attention before continuing.':
+    'Tu conversación necesita atención antes de continuar.',
+  'Your conversation could not be paused safely. Start a new conversation to reconnect.':
+    'No se pudo guardar la pausa de la conversación. Inicia una conversación nueva para reconectar.',
   Chat: 'Conversación',
   Characters: 'Personajes',
   'Shared settings': 'Configuraciones compartidas',
@@ -558,4 +590,47 @@ export const spanish: Record<string, string> = {
   'service-health': 'Estado del servicio',
   audit: 'Auditoría',
   pending_payment_activation: 'Pendiente de pagos',
+  'New workspace': 'Nuevo espacio de trabajo',
+  'Create workspace': 'Crear espacio de trabajo',
+  'Workspace name': 'Nombre del espacio',
+  'A shared home for your team': 'Un espacio para tu equipo',
+  'Bring your team’s settings, integrations, and access together in one place.':
+    'Reúne las configuraciones, integraciones y accesos de tu equipo en un solo lugar.',
+  'Use a team, studio, or business name.': 'Usa el nombre de tu equipo, estudio o empresa.',
+  'Your personal characters and conversations stay private. Share only the settings you choose.':
+    'Tus personajes y conversaciones personales siguen siendo privados. Comparte solo las configuraciones que elijas.',
+  'Creating workspace…': 'Creando espacio…',
+  'Close workspace creation': 'Cerrar creación de espacio',
+  'Shared settings and team access, in one place.':
+    'Configuraciones compartidas y acceso del equipo, en un solo lugar.',
+  'Recent conversations': 'Conversaciones recientes',
+  'Loading conversations…': 'Cargando conversaciones…',
+  'Your conversations will appear here.': 'Tus conversaciones aparecerán aquí.',
+  Today: 'Hoy',
+  Yesterday: 'Ayer',
+  'Previous 7 days': 'Últimos 7 días',
+  Older: 'Anteriores',
+  'Untitled conversation': 'Conversación sin título',
+  'Delete conversation: {title}': 'Eliminar conversación: {title}',
+  'Save conversation: {title}': 'Guardar conversación: {title}',
+  'Delete this conversation?': '¿Eliminar esta conversación?',
+  'Conversations could not be loaded.': 'No se pudieron cargar las conversaciones.',
+  'More conversations could not be loaded.': 'No se pudieron cargar más conversaciones.',
+  'This conversation is unavailable. Choose another conversation or start a new one.':
+    'Esta conversación no está disponible. Elige otra o inicia una nueva.',
+  'This conversation could not be deleted.': 'No se pudo eliminar esta conversación.',
+  'This conversation could not be saved.': 'No se pudo guardar esta conversación.',
+  'Older messages could not be loaded.': 'No se pudieron cargar los mensajes anteriores.',
+  'Saved conversation. Continue when you are ready.':
+    'Conversación guardada. Continúa cuando quieras.',
+  'This saved conversation is unavailable. Start a new conversation to continue.':
+    'Esta conversación guardada no está disponible. Inicia una nueva para continuar.',
+  'Load earlier messages': 'Cargar mensajes anteriores',
+  'This conversation has no saved character settings and cannot be opened.':
+    'Esta conversación no tiene una configuración de personaje guardada y no se puede abrir.',
+  ...consoleSpanish,
+  ...redesignSpanish,
+  ...redesignShellEs,
+  ...redesignCharactersSpanish,
+  ...redesignIntegrationsEs,
 }

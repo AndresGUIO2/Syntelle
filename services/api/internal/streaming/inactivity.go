@@ -3,6 +3,7 @@ package streaming
 import "time"
 
 const inactivityReason = "user inactivity"
+const navigationReason = "navigation"
 
 // Caller holds Service.mu. Transport traffic never changes this deadline.
 func (session *streamSession) inactivityDeadline() time.Time {

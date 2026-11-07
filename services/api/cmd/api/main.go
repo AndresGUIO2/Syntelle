@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"syntelle/api/internal/accounts"
+	"syntelle/api/internal/billing"
 	"syntelle/api/internal/conversation"
 	"syntelle/api/internal/httpapi"
 	"syntelle/api/internal/speech"
@@ -119,6 +120,7 @@ func main() {
 	}
 	var handler http.Handler = newApplicationHandler(processorURL, &http.Client{Timeout: 15 * time.Second}, speechServiceInstance, legacyConversations)
 	var productAccounts *accounts.Service
+	var workspaceBilling *billing.Service
 	var streams *streaming.Service
 	if accountMode || streamMode {
 		var err error
@@ -127,6 +129,16 @@ func main() {
 			log.Fatal("Account service configuration failed: ", err)
 		}
 		handler = productAccounts.Handler(handler)
+		billingConfig := billing.ConfigFromEnv()
+		billingConfig.AuthorizeWorkspace = productAccounts.AuthorizeWorkspaceBilling
+		workspaceBilling = billing.New(ownerStore.Pool, billingConfig)
+		billingContext, cancelBilling := context.WithCancel(ctx)
+		billingDone := make(chan struct{})
+		go func() {
+			defer close(billingDone)
+			_ = workspaceBilling.Run(billingContext)
+		}()
+		defer func() { cancelBilling(); <-billingDone }()
 	}
 	if streamMode {
 		maximum, _ := strconv.Atoi(os.Getenv("SYNTELLE_RENDER_CAPACITY"))
@@ -139,13 +151,21 @@ func main() {
 			log.Fatal("Stream time configuration failed: ", err)
 		}
 		streams, err = streaming.Open(ctx, ownerStore.Pool, conversations, productAccounts.Resolve, streaming.Config{
-			WorkerToken:       os.Getenv("SYNTELLE_RENDER_WORKER_TOKEN"),
-			MaximumSessions:   maximum,
-			PackageHash:       os.Getenv("SYNTELLE_PACKAGE_HASH"),
-			ValidatePrincipal: productAccounts.ValidatePrincipal,
-			ResolveCharacter:  productAccounts.ResolveCharacter,
-			Admission:         admission,
-			DisableTimeLimits: disableTimeLimits,
+			WorkerToken:             os.Getenv("SYNTELLE_RENDER_WORKER_TOKEN"),
+			MaximumSessions:         maximum,
+			PackageHash:             os.Getenv("SYNTELLE_PACKAGE_HASH"),
+			ValidatePrincipal:       productAccounts.ValidatePrincipal,
+			ResolveCharacter:        productAccounts.ResolveCharacter,
+			ResolveIntegration:      productAccounts.ResolveIntegration,
+			ResolveWidget:           productAccounts.ResolveWidget,
+			TurnstileSiteKey:        os.Getenv("SYNTELLE_TURNSTILE_SITE_KEY"),
+			VerifyWidgetChallenge:   streaming.NewTurnstileVerifier(os.Getenv("SYNTELLE_TURNSTILE_SECRET"), os.Getenv("SYNTELLE_TURNSTILE_HOSTNAME"), nil),
+			ReserveIntegrationUsage: workspaceBilling.ReserveIntegrationUsage,
+			StartIntegrationUsage:   workspaceBilling.StartIntegrationUsage,
+			RenewIntegrationUsage:   workspaceBilling.RenewIntegrationUsage,
+			ReleaseIntegrationUsage: workspaceBilling.ReleaseIntegrationUsage,
+			Admission:               admission,
+			DisableTimeLimits:       disableTimeLimits,
 		})
 		if err != nil {
 			log.Fatal("Stream service configuration failed: ", err)
@@ -155,6 +175,7 @@ func main() {
 		handler = streams.Handler(handler)
 	}
 	if streamMode || accountMode {
+		handler = workspaceBilling.Handler(handler)
 		handler = &productHandler{Handler: handler, streams: streams, conversations: conversations}
 	}
 	handler = httpapi.DeploymentGuard(handler)

@@ -188,7 +188,7 @@ func (s *Service) workspaceKeys(w http.ResponseWriter, r *http.Request, wid stri
 		return
 	}
 	if len(tail) == 0 && r.Method == http.MethodGet {
-		rows, err := s.Pool.Query(r.Context(), `SELECT id,name,scope,created_at,revoked_at FROM syntelle_accounts.workspace_keys WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 100`, wid)
+		rows, err := s.Pool.Query(r.Context(), `SELECT id,name,scope,created_at,revoked_at,coalesce(integration_id,'') FROM syntelle_accounts.workspace_keys WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 100`, wid)
 		if err != nil {
 			accessError(w, err)
 			return
@@ -196,14 +196,21 @@ func (s *Service) workspaceKeys(w http.ResponseWriter, r *http.Request, wid stri
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var id, name, scope string
+			var id, name, scope, integrationID string
 			var created time.Time
 			var revoked *time.Time
-			if err = rows.Scan(&id, &name, &scope, &created, &revoked); err != nil {
+			if err = rows.Scan(&id, &name, &scope, &created, &revoked, &integrationID); err != nil {
 				accessError(w, err)
 				return
 			}
-			items = append(items, map[string]any{"id": id, "name": name, "scope": scope, "created_at": created, "revoked_at": revoked, "status": "pending_payment_activation"})
+			status := "pending_payment_activation"
+			if integrationID != "" {
+				status = "integration_scoped"
+			}
+			if revoked != nil {
+				status = "revoked"
+			}
+			items = append(items, map[string]any{"id": id, "name": name, "scope": scope, "created_at": created, "revoked_at": revoked, "integration_id": integrationID, "status": status})
 		}
 		if err = rows.Err(); err != nil {
 			accessError(w, err)
@@ -214,7 +221,8 @@ func (s *Service) workspaceKeys(w http.ResponseWriter, r *http.Request, wid stri
 	}
 	if len(tail) == 0 && r.Method == http.MethodPost {
 		var input struct {
-			Name string `json:"name"`
+			Name          string `json:"name"`
+			IntegrationID string `json:"integration_id,omitempty"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -238,7 +246,15 @@ func (s *Service) workspaceKeys(w http.ResponseWriter, r *http.Request, wid stri
 		}
 		id, secret := randomID(), randomID()
 		token := "syntelle_wk_" + id + "." + secret
-		_, err = tx.Exec(r.Context(), `INSERT INTO syntelle_accounts.workspace_keys(id,workspace_id,name,secret_hash,scope,created_by) VALUES($1,$2,$3,$4,'streams',$5)`, id, wid, input.Name, digest(token), p.AccountID)
+		if input.IntegrationID != "" {
+			var valid bool
+			err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM syntelle_accounts.integrations WHERE id=$1 AND workspace_id=$2 AND revoked_at IS NULL)`, input.IntegrationID, wid).Scan(&valid)
+			if err != nil || !valid {
+				accessError(w, ErrNotFound)
+				return
+			}
+		}
+		_, err = tx.Exec(r.Context(), `INSERT INTO syntelle_accounts.workspace_keys(id,workspace_id,name,secret_hash,scope,created_by,integration_id) VALUES($1,$2,$3,$4,'streams',$5,nullif($6,''))`, id, wid, input.Name, digest(token), p.AccountID, input.IntegrationID)
 		if err == nil {
 			_, err = tx.Exec(r.Context(), `INSERT INTO syntelle_accounts.workspace_audit(workspace_id,actor_account_id,action,target_id) VALUES($1,$2,'key.created',$3)`, wid, p.AccountID, id)
 		}
@@ -249,7 +265,11 @@ func (s *Service) workspaceKeys(w http.ResponseWriter, r *http.Request, wid stri
 			accessError(w, err)
 			return
 		}
-		httpapi.WriteJSON(w, 201, map[string]string{"id": id, "secret": token, "status": "pending_payment_activation"})
+		status := "pending_payment_activation"
+		if input.IntegrationID != "" {
+			status = "integration_scoped"
+		}
+		httpapi.WriteJSON(w, 201, map[string]string{"id": id, "secret": token, "integration_id": input.IntegrationID, "status": status})
 		return
 	}
 	if len(tail) == 1 && r.Method == http.MethodDelete {

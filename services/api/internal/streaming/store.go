@@ -21,7 +21,7 @@ type recordStore struct{ pool *pgxpool.Pool }
 func (s *recordStore) paused(ctx context.Context, id, principal string) (string, string, bool, error) {
 	var cid, language string
 	var messages bool
-	err := s.pool.QueryRow(ctx, `SELECT conversation_id,settings->>'language',EXISTS(SELECT 1 FROM syntelle_conversation.turns t WHERE t.conversation_id=s.conversation_id) FROM syntelle_streaming.sessions s WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason=$3`, id, principal, inactivityReason).Scan(&cid, &language, &messages)
+	err := s.pool.QueryRow(ctx, `SELECT conversation_id,settings->>'language',EXISTS(SELECT 1 FROM syntelle_conversation.turns t WHERE t.conversation_id=s.conversation_id) FROM syntelle_streaming.sessions s WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason IN ($3,$4)`, id, principal, inactivityReason, navigationReason).Scan(&cid, &language, &messages)
 	return cid, language, messages, err
 }
 
@@ -92,7 +92,7 @@ func (s *recordStore) state(ctx context.Context, id, state, reason string, close
 	if _, err = tx.Exec(ctx, `UPDATE syntelle_streaming.sessions SET used_ms=used_ms+CASE WHEN lease_started_at IS NULL THEN 0 ELSE least(lease_ms,greatest(0,ceil(extract(epoch FROM (clock_timestamp()-lease_started_at))*1000)::bigint)) END,lease_ms=0,lease_started_at=NULL,state=$2,reason=$3,updated_at=now(),closed_at=now() WHERE id=$1`, id, state, reason); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE syntelle_streaming.commands SET status='interrupted',finished_at=now() WHERE session_id=$1 AND status='accepted'`, id); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE syntelle_streaming.commands SET status=CASE WHEN kind='suspend' AND $2='paused' THEN 'complete' ELSE 'interrupted' END,finished_at=now() WHERE session_id=$1 AND status='accepted'`, id, state); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

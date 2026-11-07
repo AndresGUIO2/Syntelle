@@ -21,6 +21,9 @@ type Key struct {
 }
 
 func (s *Service) resolveKey(ctx context.Context, authorization string) (Principal, error) {
+	if strings.HasPrefix(authorization, "Bearer syntelle_wk_") {
+		return s.resolveWorkspaceKey(ctx, authorization)
+	}
 	value, ok := strings.CutPrefix(authorization, "Bearer syntelle_sk_")
 	parts := strings.Split(value, ".")
 	if !ok || len(parts) != 2 || len(parts[0]) != 43 || len(parts[1]) != 43 {

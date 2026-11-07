@@ -107,17 +107,17 @@ button {
   font-size: 14px;
 }
 .button-primary {
-  color: var(--on-accent);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--on-primary, var(--on-accent));
+  background: var(--primary, var(--accent));
+  border-color: var(--primary-border, var(--accent));
 }
 @media (hover: hover) {
   .button:hover {
     background: var(--subtle);
   }
   .button-primary:hover {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
+    background: var(--primary-hover, var(--accent-hover));
+    border-color: var(--primary-border, var(--accent-hover));
   }
 }
 .visually-hidden {

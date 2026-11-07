@@ -8,11 +8,16 @@ import (
 
 // Principal grants product access only. It never grants local-owner privileges.
 type Principal struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	AccountID string `json:"account_id,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	KeyID     string `json:"key_id,omitempty"`
+	ID                  string `json:"id"`
+	Kind                string `json:"kind"`
+	AccountID           string `json:"account_id,omitempty"`
+	SessionID           string `json:"session_id,omitempty"`
+	KeyID               string `json:"key_id,omitempty"`
+	WorkspaceID         string `json:"workspace_id,omitempty"`
+	IntegrationID       string `json:"integration_id,omitempty"`
+	PublicationID       string `json:"publication_id,omitempty"`
+	VisitorID           string `json:"visitor_id,omitempty"`
+	IntegrationRevision int64  `json:"integration_revision,omitempty"`
 }
 
 type Account struct {

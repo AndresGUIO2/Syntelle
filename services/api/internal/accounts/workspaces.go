@@ -90,6 +90,10 @@ func (s *Service) workspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case len(parts) >= 2 && parts[1] == "publications":
+		s.workspacePublications(w, r, id, parts[2:], p, role)
+	case len(parts) >= 2 && parts[1] == "integrations":
+		s.workspaceIntegrations(w, r, id, parts[2:], p, role)
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		s.workspaceOverview(w, r, id, role, suspended)
 	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:

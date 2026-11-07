@@ -45,26 +45,80 @@ Use Syntelle as the product name, syntelle in internal project identifiers, and 
 
 The application copies are `apps/web/public/brand/colors-studio.svg` and `apps/web/public/brand/colors-studio-symbol.svg`. They are byte-identical to the owner's `NewLogo.svg` and `colors-c-contorno.svg` in `E:/Carpetas/Documentos/01-MisProyectos/Colors/`.
 
-The [owner-supplied mockups](../design/design-reference.md) guide composition without requiring an identical implementation. Use an original semi-realistic illustrated sample character inspired by the broad treatment of the earlier protected reference. The generated photorealistic human in those mockups is not the selected character.
+### Console navigation signature and surfaces (phase128)
 
-The original [Stitch prompt](../prompts/stitch-mockups.md) and supplied HTML mockups retain the earlier jade palette as historical reference material. The tokens above govern the current application. The first implementation milestone remains the separate local image-validation slice.
+The console supersedes the earlier theme-dependent header attribution: its sidebar and mobile navigation stay near-black `#0D1016` in both themes. Use the original white-lettered Colors Studio wordmark at 120px width, preserving aspect ratio, grouped with `by` below Syntelle. Collapsed navigation and the mobile header retain `by` and the original multicolor symbol. The drawer shows the full signature. `BrandSignature.vue` owns these variants; no generated replacement, recoloring or SVG byte modification is permitted.
 
+The owner rejected the phase127 composition and approved revising these guidelines. Console-only canvas/panel colors are now `#F2F3F7`/`#FFFFFF` in light mode and cool graphite `#353740`/`#41444E` in dark mode. Navigation uses light text independent of content theme. The full application frame owns the canvas color, including every gutter; never paint a narrow central dark strip over a light outer frame. Console content starts alongside navigation with responsive 32–80px desktop gutters and 56px top spacing. Sections may use up to 1,600px without centering a narrow block on an ultrawide screen. Mobile retains 24px top/16px side spacing. Use 34px desktop titles, 15px body text, 20px outline navigation icons and 44px minimum controls. The conversation player retains its own layout and palette.
 
-## Conversation workspace surfaces
+Personal Overview/Characters precede grouped workspace destinations. History remains inside Test. Characters use substantial portrait cards, with the included sample explicitly identified and a useful first-portrait entry alongside it. Avoid tiny sample thumbnails under oversized dashed empty states, repeated collection introductions and duplicate primary actions. Prefer website rows and compact usage/billing details in their respective destinations. Maintain visible keyboard focus, readable status labels and separately scrollable navigation on short screens. Validate actual wide-screen composition at 2,545px as well as desktop/mobile; palette numbers alone do not establish visual quality. See [console redesign](../development/console-redesign.md) for ownership and review boundaries.
 
-The public workspaces use a centered 1,520 px shell, including responsive 24–40 px side gutters, with 32 px vertical padding and a 40/60 portrait/conversation split separated by 32 px. Align the header branding and actions to the same content edges. Conversation content has 28 px side padding and long character replies have a 72-character width preference. Panel corners remain 10–16 px according to the existing surface.
+### Content distribution (phase129)
 
-Mobile uses 16 px side gutters, 20 px vertical padding and 16 px between the portrait and independently scrolling conversation. The stage height is `clamp(160px, 26svh, 240px)`. The remote player preserves its video aspect ratio. The existing local renderer uses a shared face-relative CSS crop, capped on desktop at `min(88cqh, 135cqw, 800px)`; compact layouts retain their existing relative crop inside the smaller stage. These are presentation constraints, without changes to character geometry, source images or motion.
+Center each complete page composition inside the available application canvas. Size pages for their actual content, rather than stretching all screens to the gallery maximum. Align each page heading and its primary action with the body. Use narrower whole-page compositions for creation/setup/verification and contextual states. Small collections should not leave their heading action hundreds of pixels beyond the occupied cards. Keep illustration and copy together, group related actions and reflow statistics compactly on mobile. Spare canvas remains the same themed surface; do not introduce contrasting gutters or fill it with invented information.
 
-| Token | Light | Dark |
+Navigation remains stable in Test. Conversation history is secondary, opened explicitly from its toolbar in a temporary right panel, full width on mobile. Keep modal close controls visible and return focus on dismissal. Long account lists and history scroll inside their own panels. Preserve the explicit action required to resume media.
+
+### Console primary buttons (phase130)
+
+The owner rejected the pale lavender primary button. Console and account primary actions now use a deeper, muted violet with white text and icons in both themes. Separate primary-button tokens from the accent used for links, focus and selected states. The conversation player keeps its existing palette.
+
+| Primary button role | Light theme | Dark theme |
 | --- | --- | --- |
-| Raised surface | `#FFFFFF` | `#26232C` |
-| Transcript surface | `#F6F5F8` | `#1E1C23` |
-| User message | `#EDE7F9` | `#342B46` |
-| Workspace accent wash | `#8C64D514` | `#9F7ADB12` |
-| Portrait edge tint | `#9676CF33` | `#B296ED38` |
+| Background | `#7854BF` | `#7854BF` |
+| Hover background | `#6846AA` | `#8561CC` |
+| Label and icon | `#FFFFFF` | `#FFFFFF` |
+| Boundary | `#7854BF` | `#A88BD0` |
 
-The 64 px microphone retains a light center (`#FFFFFF` to `#EEEAF5`) and dark icon (`#292332`) in both themes. The owner rejected the first thick-rim treatment. The current microphone uses a solid dark glyph, a separate 82 px fine orbit and a soft masked violet glow, with an essential control boundary and the existing violet keyboard focus outline. Conversation buttons share a consistent local SVG vocabulary and tactile neutral surfaces; the original top bar is preserved. The halo is a local visual meter, driven by captured PCM RMS at approximately 100 ms intervals. It does not drive speech recognition, interruption detection or character motion. Off and error states are static; reduced motion uses static rings and labels for every state.
+White labels have 5.50:1 contrast at rest, 6.90:1 on the light hover and 4.59:1 on the dark hover. The dark boundary has at least 3.36:1 contrast against the console canvas and panel. Keep the existing bright accent for keyboard focus. Both shared button classes use these tokens inside console/account surfaces; outside them, the existing accent-based colors remain available. This color correction does not change button dimensions or interaction behavior. Visual acceptance remains owner review.
 
+### Character gallery cards (phase131)
 
-Icon-only theme/customization/close controls use a quiet treatment: no painted border, raised box or permanent background. Keep 44 px targets and a visible keyboard focus outline, with subtle hover feedback on hover-capable devices. Text actions may retain a tinted surface. The microphone remains the visually prominent voice action.
+The included character uses a full-height photographic cover with a dark lower fade, a compact inclusion badge, a clear name/status row and a separated action footer. Preserve the supplied poster bytes; the fade is a display overlay. White labels stay on the dark footer in both themes. Test uses the shared violet primary action, and the website action remains secondary.
+
+The first-character entry pairs a layered portrait-frame illustration with concise copy and a distinct action footer. Build the illustration from the existing line icons and themed surfaces, without generating a new person. Use 22px outer corners with an 8px inset around the 14px illustration panel, restrained shadows, a 500px minimum card height and the existing responsive gallery widths. Entire creation cards are single links with visible keyboard focus; do not nest interactive controls. Hover movement is limited to pointers that support hover and visitors who allow motion. Keep the original character preparation and connection behavior.
+
+### Dark console palette correction (phase132)
+
+The owner likes the light-theme button colors and rejected the flat gray appearance of the dark content area. Preserve all light-theme colors. This dark-only correction supersedes the phase128 console colors and phase130 dark button colors: use muted indigo/plum surfaces and a more vivid violet for primary actions. The near-black sidebar and conversation player retain their palettes.
+
+| Dark console role | Color |
+| --- | --- |
+| Complete content canvas | `#37304B` |
+| Main panel | `#433854` |
+| Raised panel | `#514365` |
+| Subtle surface | `#3B3250` |
+| Main text | `#F7F3FC` |
+| Secondary text | `#CBBFDB` |
+| Link and focus accent | `#CAACFF` |
+| Accent hover | `#DBC2FF` |
+| Essential control boundary | `#B29DC5` |
+| Primary action | `#8756E8` |
+| Primary action hover | `#7950D1` |
+| Primary action label/icon | `#FFFFFF` |
+| Primary action boundary | `#B396EE` |
+
+Keep the complete frame and content canvas consistent. Primary labels have 4.64:1 contrast at rest and 5.41:1 on hover. Rendered token checks cover body/link text at 4.5:1 or above and essential boundaries at 3:1 or above across all four console surfaces. The canvas/sidebar separation remains above the existing 1.5:1 product target. The light gallery is pixel-identical to the preserved phase131 view. These checks do not replace owner visual review.
+
+### Neutral dark theme and ivory actions (phase133)
+
+The owner rejected the phase132 violet button and overly colorful background. This correction supersedes its dark palette: use deeper neutral graphite for the canvas and layered charcoal panels, with ivory primary buttons and dark labels. Violet remains a small link, focus and illustration accent. Preserve the approved light theme.
+
+| Dark console role | Color |
+| --- | --- |
+| Complete content canvas | `#25262C` |
+| Main panel | `#303139` |
+| Raised panel | `#3A3B45` |
+| Subtle surface | `#2B2C34` |
+| Main text | `#F3F0EB` |
+| Secondary text | `#BFBCC8` |
+| Link and focus accent | `#C4B3E2` |
+| Accent hover | `#DFD2F3` |
+| Essential control boundary | `#9996A8` |
+| Primary action and boundary | `#EEEAE2` |
+| Primary action hover | `#FFFFFF` |
+| Primary action label/icon | `#28262D` |
+
+Apply the same ivory treatment to sample-card actions, creation illustration controls and account buttons; the sample's light-theme border remains unchanged. Primary labels have 12.45:1 contrast at rest and 14.94:1 on hover. Body/link text still meets 4.5:1 and essential boundaries 3:1 across the four console surfaces.
+
+The owner-requested deeper canvas intentionally narrows the luminance gap from the unchanged near-black navigation. Replace the previous dark-only 1.5:1 surface-separation product target with 1.2:1; the actual ratio is 1.26:1. This product target is not a WCAG text requirement. Keep the separate sidebar, visible divider and consistent full-frame canvas. Light-theme separation remains at least 1.5:1. The light gallery remains pixel-identical, and owner visual review is pending.

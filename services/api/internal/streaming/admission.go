@@ -259,7 +259,9 @@ func (s *Service) reserveSession(session *streamSession) error {
 	if httpapi.Cloud() && s.worker != nil && time.Since(s.workerStarted) > 24*time.Minute {
 		return errRenderCapacity
 	}
-	if s.admission != nil && !s.admission.config.DisableSessionLimit {
+	// Workspace server keys share the paid workspace concurrency allowance;
+	// applying the personal demo's one-session ceiling here defeats that plan.
+	if s.admission != nil && !s.admission.config.DisableSessionLimit && session.principal.Kind != "workspace_key" {
 		count := 0
 		for _, existing := range s.sessions {
 			if existing.principal.ID == session.principal.ID {

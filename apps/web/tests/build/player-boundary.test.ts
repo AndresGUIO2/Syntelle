@@ -32,7 +32,14 @@ test('public boundary blocks internal files while the interface loads', async ()
       '@fs/E:/Carpetas/Documentos/01-MisProyectos/ImageAssistant/docs/README.md',
     ])
       assert.equal((await fetch(new URL(path, base))).status, 403, path)
-    for (const path of ['', 'src/main.ts', 'src/features/streaming/StreamWorkspace.vue'])
+    for (const path of [
+      '',
+      'characters',
+      'characters/new',
+      'pricing',
+      'src/main.ts',
+      'src/features/streaming/StreamWorkspace.vue',
+    ])
       assert.equal((await fetch(new URL(path, base))).status, 200, path)
   } finally {
     await server.close()

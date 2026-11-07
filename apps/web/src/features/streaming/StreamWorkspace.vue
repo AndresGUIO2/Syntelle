@@ -4,6 +4,8 @@ import {
   computed,
   nextTick,
   onMounted,
+  onActivated,
+  onDeactivated,
   onScopeDispose,
   shallowRef,
   useTemplateRef,
@@ -12,11 +14,9 @@ import {
 import ChatPanel from '../conversation/components/ChatPanel.vue'
 import ConversationIcon from '../conversation/components/ConversationIcon.vue'
 import RemotePlayer from './components/RemotePlayer.vue'
-import AccountDialog from './components/AccountDialog.vue'
-import ConversationHistory from './components/ConversationHistory.vue'
 import StreamSettingsPanel from './components/StreamSettings.vue'
 import { useWorkspaceViewport } from '../conversation/composables/useWorkspaceViewport'
-import { useAccount } from './composables/useAccount'
+import type { useAccount } from './composables/useAccount'
 import { useRemoteStream } from './composables/useRemoteStream'
 import {
   DEFAULT_VOICE,
@@ -27,83 +27,53 @@ import {
 import type { ConversationTurn } from '../conversation/types'
 import { isCharacterID } from '../characters/api'
 import { useSelectedCharacter } from '../characters/useSelectedCharacter'
+import type { HistoryItem } from '../history/useConversationHistory'
 
-const props = withDefaults(defineProps<{ characterId?: string }>(), { characterId: 'syntelle' })
+const props = withDefaults(
+  defineProps<{ characterId?: string; auth: ReturnType<typeof useAccount> }>(),
+  { characterId: 'syntelle' },
+)
+const auth = props.auth
+const settings = defineModel<StreamSettings>({ required: true })
+const emit = defineEmits<{
+  navigate: [event: MouseEvent]
+  conversationChanged: [id: string | null]
+  conversationUpdated: [id: string]
+  newConversation: []
+}>()
+const active = shallowRef(true)
+let actionEpoch = 0
 const locale = useLocaleStore()
 const { t } = locale
-const settings = shallowRef<StreamSettings>(defaultSettings())
 const workspace = useTemplateRef<HTMLElement>('workspace')
 const customizeButton = useTemplateRef<HTMLButtonElement>('customizeButton')
 const { viewportStyle, keyboardOpen } = useWorkspaceViewport(workspace)
-const accountOpen = shallowRef(false)
-const historyOpen = shallowRef(false)
-const emit = defineEmits<{ accountChange: [signedIn: boolean] }>()
-function openAccount() {
-  accountOpen.value = true
-}
-defineExpose({ openAccount })
 const settingsOpen = shallowRef(false)
 const settingsDialog = useTemplateRef<HTMLDialogElement>('settingsDialog')
 const customizeHeading = useTemplateRef<HTMLElement>('customizeHeading')
 const player = useTemplateRef<InstanceType<typeof RemotePlayer>>('player')
 const mediaControls = useTemplateRef<HTMLElement>('mediaControls')
-const query = new URLSearchParams(location.search)
-const flow = query.get('flow_id') ?? undefined
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
-try {
-  const previous = JSON.parse(localStorage.getItem('syntelle.stream.settings') ?? 'null')
-  if (previous?.character === 'syntelle')
-    settings.value = { ...defaultSettings(), ...previous, voice: DEFAULT_VOICE }
-  else {
-    // Carry the owner's existing appearance/instructions into the unified player.
-    const appearance = JSON.parse(localStorage.getItem('syntelle.demo.appearance') ?? 'null')
-    const background = JSON.parse(localStorage.getItem('syntelle.motion.background') ?? 'null')
-    settings.value = {
-      ...defaultSettings(),
-      blinking: appearance?.blinking !== false,
-      movement: appearance?.movement !== false,
-      automatic_expressions: appearance?.automaticExpressions !== false,
-      ...(['light-studio', 'dark-lounge', 'natural-space'].includes(background?.id)
-        ? {
-            background: background.id,
-            blur: Math.max(0, Math.min(20, Number(background.blur) || 0)),
-          }
-        : {}),
-      instructions:
-        localStorage.getItem('syntelle.instructions.syntelle') ?? defaultSettings().instructions,
-    }
-  }
-} catch {
-  /* Local preferences are optional. */
-}
-settings.value = {
-  ...settings.value,
-  language: locale.speechLanguage,
-  reduced_motion: reducedMotion.matches,
-}
-const auth = useAccount()
 const invalidCharacter = props.characterId !== 'syntelle' && !isCharacterID(props.characterId)
-if (isCharacterID(props.characterId))
-  settings.value = {
-    ...defaultSettings(),
-    character: props.characterId,
-    language: locale.speechLanguage,
-    reduced_motion: reducedMotion.matches,
-    emotion_regulation: { enabled: false, temperament: 'calm' },
-  }
 const selectedCharacter = useSelectedCharacter(() => settings.value.character)
-watch(auth.account, (account) => emit('accountChange', Boolean(account)), { immediate: true })
 const remote = useRemoteStream(() => settings.value)
+const historyPreview = shallowRef<Pick<HistoryItem, 'id' | 'language' | 'settings'> | null>(null)
+watch(remote.conversationId, (id) => emit('conversationChanged', id || null))
+watch(remote.conversationRevision, () => {
+  if (remote.conversationId.value) emit('conversationUpdated', remote.conversationId.value)
+})
 const microphoneStartupPending = shallowRef(false)
 const queuedPreview = shallowRef<{ kind: string; amount: number; repetitions: number } | null>(null)
 const canStartMicrophone = computed(
   () =>
     !invalidCharacter &&
     selectedCharacter.ready.value &&
+    (!historyPreview.value || Boolean(historyPreview.value.settings)) &&
+    !remote.suspending.value &&
     ['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value),
 )
 watch(remote.ready, (ready) => {
-  if (!ready || !microphoneStartupPending.value) return
+  if (!active.value || !ready || !microphoneStartupPending.value) return
   microphoneStartupPending.value = false
   void remote.toggleMicrophone()
 })
@@ -135,7 +105,7 @@ const previewDisabled = computed(
 )
 watch([remote.ready, remote.connecting, remote.error, remote.state], () => {
   const preview = queuedPreview.value
-  if (!preview) return
+  if (!active.value || !preview) return
   if (remote.ready.value) {
     queuedPreview.value = null
     remote.command('preview', preview.kind, undefined, preview.amount, preview.repetitions)
@@ -148,32 +118,25 @@ watch([remote.ready, remote.connecting, remote.error, remote.state], () => {
   }
 })
 let configureTimer: ReturnType<typeof setTimeout> | undefined
-watch(
-  () => locale.speechLanguage,
-  (language) => {
-    settings.value = { ...settings.value, language }
-  },
-  { flush: 'sync' },
-)
 watch(settings, (value, previous) => {
-  try {
-    localStorage.setItem('syntelle.stream.settings', JSON.stringify(value))
-  } catch {
-    /* Optional. */
-  }
   if (previous.language !== value.language) {
     microphoneStartupPending.value = false
     clearTimeout(configureTimer)
     remote.stopMicrophone()
+    // Preserve a resumable handle: the server will require the original
+    // language or an explicit new conversation, rather than losing context.
+    if (remote.state.value === 'paused' || remote.suspending.value) return
     void remote.stop()
     return
   }
-  if (!remote.id.value) return
+  if (!active.value || !remote.id.value || remote.suspending.value) return
   const { background: _background, blur: _blur, ...character } = value
   const { background: _previousBackground, blur: _previousBlur, ...previousCharacter } = previous
   if (JSON.stringify(character) === JSON.stringify(previousCharacter)) return
   clearTimeout(configureTimer)
-  configureTimer = setTimeout(() => remote.command('configure', '', value), 150)
+  configureTimer = setTimeout(() => {
+    if (active.value && !remote.suspending.value) remote.command('configure', '', value)
+  }, 150)
 })
 watch([settingsOpen, settingsDialog], async ([open, element], [wasOpen]) => {
   if (!element) return
@@ -184,7 +147,7 @@ watch([settingsOpen, settingsDialog], async ([open, element], [wasOpen]) => {
   } else if (wasOpen) {
     if (element.open) element.close()
     await nextTick()
-    customizeButton.value?.focus()
+    if (active.value) customizeButton.value?.focus()
   }
 })
 function closeSettingsOnEscape(event: KeyboardEvent) {
@@ -203,54 +166,98 @@ function closeSettingsOnEscape(event: KeyboardEvent) {
   event.preventDefault()
   settingsOpen.value = false
 }
-function preferenceChanged() {
-  settings.value = { ...settings.value, reduced_motion: reducedMotion.matches }
-}
-reducedMotion.addEventListener('change', preferenceChanged)
-async function beforeLogin() {
+async function stopForAuth() {
+  actionEpoch++
   microphoneStartupPending.value = false
+  queuedPreview.value = null
   clearTimeout(configureTimer)
   await remote.stop()
 }
+async function prepareHistorySelection() {
+  actionEpoch++
+  microphoneStartupPending.value = false
+  queuedPreview.value = null
+  clearTimeout(configureTimer)
+  settingsOpen.value = false
+  settingsDialog.value?.close()
+  player.value?.suspendPresentation()
+  const paused = await remote.suspendNavigation()
+  // This action remains in the same mounted chat. Restore its ability to
+  // respond to a later explicit Continue, with the paused media detached.
+  await nextTick()
+  if (active.value && !remote.suspending.value) {
+    remote.activatePresentation()
+    player.value?.activatePresentation()
+  }
+  return paused
+}
 async function reconnect() {
-  if (invalidCharacter) return
+  if (!active.value || invalidCharacter || remote.suspending.value) return
+  if (historyPreview.value && !historyPreview.value.settings) return
+  const action = ++actionEpoch
   if (remote.state.value === 'ended') remote.turns.value = []
   await auth.refresh()
-  if (!(await selectedCharacter.refresh())) return
-  await remote.connect()
+  if (!active.value || action !== actionEpoch) return
+  if (!(await selectedCharacter.refresh()) || !active.value || action !== actionEpoch) return
+  await remote.connect(false, historyPreview.value?.id ?? '')
+  if (active.value && action === actionEpoch && remote.id.value) historyPreview.value = null
 }
-async function signedIn() {
+async function previewHistory(
+  item: { id: string; language: string; settings?: StreamSettings },
+  turns: ConversationTurn[],
+) {
+  if (!active.value) return false
+  const action = ++actionEpoch
   microphoneStartupPending.value = false
+  queuedPreview.value = null
+  clearTimeout(configureTimer)
+  settingsOpen.value = false
   await remote.stop()
-  await auth.refresh()
-  await selectedCharacter.refresh()
-  accountOpen.value = false
-  if (auth.account.value) historyOpen.value = true
+  if (!active.value || action !== actionEpoch) return false
+  if (item.settings) {
+    locale.locale = item.language === 'es-CO' ? 'es' : 'en'
+    settings.value = {
+      ...defaultSettings(),
+      ...item.settings,
+      language: locale.speechLanguage,
+      voice: DEFAULT_VOICE,
+      reduced_motion: reducedMotion.matches,
+    }
+  }
+  await nextTick()
+  if (!active.value || action !== actionEpoch) return false
+  await remote.stop()
+  if (!active.value || action !== actionEpoch) return false
+  remote.turns.value = turns
+  remote.partial.value = ''
+  remote.error.value = ''
+  historyPreview.value = item
+  remote.conversationId.value = item.id
+  return true
 }
 async function continueHistory(
   item: { id: string; language: string; settings?: StreamSettings },
   turns: ConversationTurn[],
 ) {
-  if (!item.settings) return
-  historyOpen.value = false
-  await remote.stop()
-  locale.locale = item.language === 'es-CO' ? 'es' : 'en'
-  settings.value = {
-    ...defaultSettings(),
-    ...item.settings,
-    language: locale.speechLanguage,
-    voice: DEFAULT_VOICE,
-    reduced_motion: reducedMotion.matches,
-  }
-  await nextTick()
-  await remote.stop()
-  remote.turns.value = turns
-  if (!(await selectedCharacter.refresh())) return
-  await remote.connect(false, item.id)
+  if (!(await previewHistory(item, turns)) || !item.settings) return
+  const action = actionEpoch
+  await player.value?.enableAudio()
+  if (!active.value || action !== actionEpoch) return
+  await reconnect()
+}
+function updateHistoryTurns(id: string, turns: ConversationTurn[]) {
+  if (!active.value || remote.conversationId.value !== id) return
+  const current = new Map(remote.turns.value.map((turn) => [turn.id, turn]))
+  for (const turn of turns) if (!current.has(turn.id)) current.set(turn.id, turn)
+  remote.turns.value = [...current.values()].sort((a, b) => a.sequence - b.sequence)
 }
 async function load(configuration: SavedConfiguration) {
+  const action = ++actionEpoch
   microphoneStartupPending.value = false
+  historyPreview.value = null
+  remote.conversationId.value = ''
   await remote.stop()
+  if (!active.value || action !== actionEpoch) return
   settings.value = {
     ...defaultSettings(),
     ...configuration.settings,
@@ -260,7 +267,10 @@ async function load(configuration: SavedConfiguration) {
   }
 }
 async function previewExpression(kind: string, amount = 1, repetitions = 1) {
+  if (!active.value || remote.suspending.value) return
+  const action = actionEpoch
   if (kind === 'laugh') await player.value?.enableAudio()
+  if (!active.value || action !== actionEpoch) return
   microphoneStartupPending.value = false
   if (remote.microphone.value) remote.stopMicrophone()
   if (remote.ready.value) {
@@ -271,8 +281,16 @@ async function previewExpression(kind: string, amount = 1, repetitions = 1) {
   if (!remote.connecting.value) await reconnect()
 }
 async function microphone() {
-  if (invalidCharacter || !selectedCharacter.ready.value) return
+  if (
+    !active.value ||
+    remote.suspending.value ||
+    invalidCharacter ||
+    !selectedCharacter.ready.value
+  )
+    return
+  const action = actionEpoch
   await player.value?.enableAudio()
+  if (!active.value || action !== actionEpoch) return
   if (remote.microphone.value || remote.startingMicrophone.value) {
     await remote.toggleMicrophone()
     return
@@ -287,6 +305,13 @@ async function microphone() {
   await remote.toggleMicrophone()
 }
 async function entryAction() {
+  if (!active.value || remote.suspending.value) return
+  if (historyPreview.value || remote.state.value === 'paused') {
+    const action = actionEpoch
+    await player.value?.enableAudio()
+    if (active.value && action === actionEpoch) await reconnect()
+    return
+  }
   if (remote.state.value === 'not-started' || remote.state.value === 'ended') {
     await microphone()
     return
@@ -295,32 +320,67 @@ async function entryAction() {
   await reconnect()
 }
 async function newChat() {
+  emit('newConversation')
+  const action = ++actionEpoch
+  historyPreview.value = null
+  remote.conversationId.value = ''
+  queuedPreview.value = null
   microphoneStartupPending.value = false
   await remote.stop()
+  if (!active.value || action !== actionEpoch) return
   remote.turns.value = []
   remote.partial.value = ''
 }
 watch(auth.account, (account, previous) => {
-  if (!account && previous) {
-    historyOpen.value = false
+  if (previous && account?.id !== previous.id) {
+    historyPreview.value = null
+    remote.conversationId.value = ''
+    void stopForAuth()
     remote.turns.value = []
     remote.partial.value = ''
   }
 })
-onMounted(async () => {
+function suspendNavigation() {
+  active.value = false
+  actionEpoch++
+  microphoneStartupPending.value = false
+  queuedPreview.value = null
+  clearTimeout(configureTimer)
+  settingsOpen.value = false
+  settingsDialog.value?.close()
+  player.value?.suspendPresentation()
+  return remote.suspendNavigation()
+}
+onActivated(() => {
+  active.value = true
+  remote.activatePresentation()
+  // A return may reveal a deleted character or an expired account, but it
+  // must never allocate a renderer or capture a microphone by itself.
+  void auth.refresh()
+  void selectedCharacter.refresh()
+})
+onDeactivated(() => {
+  void suspendNavigation()
+})
+onMounted(() => {
   window.addEventListener('keydown', closeSettingsOnEscape)
-  if (query.has('auth') || flow) accountOpen.value = true
-  await auth.refresh()
-  await remote.loadPolicy()
-  if (query.has('auth_error')) {
-    accountOpen.value = true
-    auth.error.value = 'Sign-in could not finish. Try again or continue as a guest.'
-  }
+  void remote.loadPolicy()
 })
 onScopeDispose(() => {
+  actionEpoch++
+  active.value = false
   window.removeEventListener('keydown', closeSettingsOnEscape)
   clearTimeout(configureTimer)
-  reducedMotion.removeEventListener('change', preferenceChanged)
+})
+defineExpose({
+  load,
+  previewHistory,
+  continueHistory,
+  updateHistoryTurns,
+  prepareHistorySelection,
+  stopForAuth,
+  newChat,
+  suspendNavigation,
 })
 </script>
 
@@ -338,7 +398,7 @@ onScopeDispose(() => {
       <div class="stage-column">
         <RemotePlayer
           ref="player"
-          :media="remote.media.value"
+          :media="remote.suspending.value ? null : remote.media.value"
           :ready="remote.ready.value"
           :suppressed="remote.audioSuppressed.value"
           :still="['not-started', 'disconnected', 'paused', 'ended'].includes(remote.state.value)"
@@ -371,13 +431,25 @@ onScopeDispose(() => {
                   : selectedCharacter.error.value,
               )
             }}
-            <a href="/characters/new">{{ t('Characters') }}</a>
+            <a href="/characters" @click="emit('navigate', $event)">{{ t('Characters') }}</a>
           </p>
           <p v-else-if="selectedCharacter.loading.value" class="connection-status" role="status">
             {{ t('Loading your character…') }}
           </p>
-          <p v-if="remote.state.value !== 'not-started'" class="connection-status" role="status">
-            {{ t(remote.status.value) }}
+          <p
+            v-if="
+              (historyPreview && !historyPreview.settings) || remote.state.value !== 'not-started'
+            "
+            class="connection-status"
+            role="status"
+          >
+            {{
+              t(
+                historyPreview && !historyPreview.settings
+                  ? 'This saved conversation is unavailable. Start a new conversation to continue.'
+                  : remote.status.value,
+              )
+            }}
           </p>
           <button
             v-if="
@@ -386,7 +458,12 @@ onScopeDispose(() => {
             "
             type="button"
             class="entry-action"
-            :disabled="invalidCharacter || !selectedCharacter.ready.value"
+            :disabled="
+              invalidCharacter ||
+              !selectedCharacter.ready.value ||
+              remote.suspending.value ||
+              (Boolean(historyPreview) && !historyPreview?.settings)
+            "
             @click="entryAction"
           >
             <svg
@@ -403,8 +480,8 @@ onScopeDispose(() => {
             <span class="entry-action-label">
               {{
                 t(
-                  remote.state.value === 'paused'
-                    ? 'Resume'
+                  historyPreview || remote.state.value === 'paused'
+                    ? 'Continue conversation'
                     : remote.state.value === 'disconnected'
                       ? 'Reconnect'
                       : remote.state.value === 'ended'
@@ -438,9 +515,9 @@ onScopeDispose(() => {
         :character="selectedCharacter.name.value"
         :configured="remote.configured.value"
         :can-start-microphone="canStartMicrophone"
-        :not-started="remote.state.value === 'not-started'"
-        :paused="remote.state.value === 'paused'"
-        :checking="remote.connecting.value || microphoneStartupPending"
+        :not-started="!historyPreview && remote.state.value === 'not-started'"
+        :paused="Boolean(historyPreview) || remote.state.value === 'paused'"
+        :checking="remote.connecting.value || remote.suspending.value || microphoneStartupPending"
         :ready="remote.ready.value"
         :pending="remote.pending.value"
         :speaking="remote.speaking.value"
@@ -448,12 +525,14 @@ onScopeDispose(() => {
         :input-level="remote.inputLevel.value"
         :starting-microphone="remote.startingMicrophone.value || microphoneStartupPending"
         :recognition-available="remote.recognition.value"
-        :status="remote.status.value"
+        :status="
+          historyPreview ? 'Saved conversation. Continue when you are ready.' : remote.status.value
+        "
         :error="remote.error.value"
         :connection-message="
           t(
-            remote.state.value === 'paused'
-              ? 'Select Resume to continue your conversation.'
+            historyPreview || remote.state.value === 'paused'
+              ? 'Select Continue conversation when you are ready.'
               : remote.state.value === 'not-started'
                 ? ''
                 : remote.state.value === 'ended'
@@ -467,23 +546,15 @@ onScopeDispose(() => {
         @stop="remote.interrupt"
         @new-chat="newChat"
       >
+        <template #before-messages><slot name="history-tools" /></template>
         <template #media-actions>
           <div ref="mediaControls" />
         </template>
         <template #actions>
-          <button
-            v-if="auth.account.value"
-            class="quiet-action icon-action"
-            type="button"
-            :aria-label="t('Conversation history')"
-            :title="t('Conversation history')"
-            @click="historyOpen = true"
-          >
-            <ConversationIcon name="history" />
-          </button>
+          <slot name="conversation-actions" />
           <button
             ref="customizeButton"
-            class="quiet-action icon-action"
+            class="quiet-action customize-action"
             type="button"
             :aria-label="t('Customize')"
             :title="t('Customize')"
@@ -492,27 +563,13 @@ onScopeDispose(() => {
             :aria-expanded="settingsOpen"
             @click="settingsOpen = true"
           >
-            <ConversationIcon name="adjust" />
+            <ConversationIcon name="adjust" /><span class="customize-label">{{
+              t('Customize')
+            }}</span>
           </button>
         </template>
       </ChatPanel>
     </div>
-    <AccountDialog
-      v-model="accountOpen"
-      :auth="auth"
-      :settings="settings"
-      :before-login="beforeLogin"
-      :flow="flow"
-      @load="load"
-      @signed-in="signedIn"
-      @signed-out="signedIn"
-      @resume-stream="signedIn"
-    />
-    <ConversationHistory
-      v-model="historyOpen"
-      :signed-in="Boolean(auth.account.value)"
-      @continue="continueHistory"
-    />
     <dialog
       id="stream-customization"
       ref="settingsDialog"
@@ -581,6 +638,23 @@ onScopeDispose(() => {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+.customize-action {
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .customize-label {
+    display: none;
+  }
+  .customize-action {
+    width: 44px;
+    padding: 0;
+  }
 }
 .icon-action {
   width: 44px;

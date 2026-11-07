@@ -2,7 +2,10 @@
 import { computed, onBeforeUnmount, shallowRef } from 'vue'
 import { useLocaleStore } from '../../stores/locale'
 import { request } from '../streaming/api'
+import SectionNavigation from '../navigation/SectionNavigation.vue'
 const { t } = useLocaleStore()
+withDefaults(defineProps<{ conversationHref?: string }>(), { conversationHref: '/' })
+defineEmits<{ navigate: [event: MouseEvent] }>()
 type StaffRole = 'administrator' | 'support'
 type Customer = { id: string; name: string; suspended: boolean; created_at: string }
 type Audit = {
@@ -24,10 +27,21 @@ const reason = shallowRef('')
 const error = shallowRef('')
 const busy = shallowRef(false)
 const sections = computed(() =>
-  role.value === 'administrator'
-    ? ['customers', 'plans', 'usage-costs', 'service-health', 'audit']
-    : ['customers', 'plans', 'usage-costs', 'service-health'],
+  role.value === 'administrator' ? ['customers', 'audit'] : ['customers'],
 )
+const sectionLabels: Record<string, string> = {
+  customers: 'Customers',
+  plans: 'Plans',
+  'usage-costs': 'Usage and costs',
+  'service-health': 'Service health',
+  audit: 'Audit',
+}
+const sectionItems = computed(() =>
+  sections.value.map((value) => ({ value, label: t(sectionLabels[value] ?? value) })),
+)
+function selectSection(value: string) {
+  if (sections.value.includes(value)) section.value = value
+}
 const adminHeaders = computed(() => ({ 'X-Syntelle-Staff-Access': token.value }))
 async function run(work: () => Promise<void>) {
   busy.value = true
@@ -113,95 +127,92 @@ onBeforeUnmount(leave)
 </script>
 
 <template>
-  <section class="staff-panel" :aria-label="t('Administration')">
+  <section
+    class="staff-panel"
+    :class="{ 'verification-state': !token }"
+    :aria-label="t('Administration')"
+  >
     <header class="heading">
       <div>
-        <p class="eyebrow">Syntelle</p>
+        <p class="eyebrow">{{ t('Staff console') }}</p>
         <h1>{{ t('Administration') }}</h1>
       </div>
-      <a href="/">{{ t('Back to conversation') }}</a>
     </header>
     <p v-if="error" class="error" role="alert">{{ t(error) }}</p>
     <p v-if="busy" role="status">{{ t('Loading…') }}</p>
-    <div v-if="!token" class="card">
+    <div v-if="!token" class="card verification-card">
       <h2>{{ t('Verify by email') }}</h2>
       <p>{{ t('An email code is required each time you enter this panel.') }}</p>
-      <button v-if="!challengeId" type="button" :disabled="busy" @click="sendCode">
+      <button
+        v-if="!challengeId"
+        class="console-button primary"
+        type="button"
+        :disabled="busy"
+        @click="sendCode"
+      >
         {{ t('Send verification code') }}
       </button>
-      <form v-else class="row" @submit.prevent="verify">
-        <input
-          v-model="code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          maxlength="6"
-          required
-          :aria-label="t('Email code')"
-        /><button type="submit" :disabled="busy">{{ t('Verify') }}</button>
+      <form v-else class="verification-form" @submit.prevent="verify">
+        <label for="staff-email-code">{{ t('Email code') }}</label>
+        <div class="row">
+          <input
+            id="staff-email-code"
+            v-model="code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            required
+            :aria-label="t('Email code')"
+          /><button class="console-button primary" type="submit" :disabled="busy">
+            {{ t('Verify') }}
+          </button>
+        </div>
       </form>
     </div>
     <template v-else>
-      <div class="row">
-        <span>{{ t(role ?? '') }}</span
+      <div class="session-toolbar">
+        <span class="staff-role">{{ t(role ?? '') }}</span
         ><button type="button" @click="leave">{{ t('Leave administration') }}</button>
       </div>
-      <nav class="tabs" :aria-label="t('Administration sections')">
-        <button
-          v-for="item in sections"
-          :key="item"
-          type="button"
-          :aria-current="section === item ? 'page' : undefined"
-          @click="section = item"
-        >
-          {{ t(item) }}
-        </button>
-      </nav>
-      <section v-if="section === 'customers'" class="card">
-        <h2>{{ t('Customers') }}</h2>
-        <label v-if="role === 'administrator'" for="suspension-reason">{{
-          t('Reason for operational change')
-        }}</label
-        ><input
-          v-if="role === 'administrator'"
-          id="suspension-reason"
-          v-model="reason"
-          maxlength="500"
+      <div class="details">
+        <SectionNavigation
+          :label="t('Administration sections')"
+          :items="sectionItems"
+          :selected="section"
+          @select="selectSection"
         />
-        <ul class="entries">
-          <li v-for="item in customers" :key="item.id">
-            <span>{{ item.name }} · {{ item.suspended ? t('Suspended') : t('Active') }}</span
-            ><button
-              v-if="role === 'administrator'"
-              type="button"
-              :disabled="!reason.trim()"
-              @click="changeSuspension(item)"
-            >
-              {{ item.suspended ? t('Resume') : t('Suspend') }}
-            </button>
-          </li>
-        </ul>
-        <p v-if="!customers.length">{{ t('No customer workspaces yet.') }}</p>
-      </section>
-      <section v-else-if="section === 'plans'" class="card">
-        <h2>{{ t('Plans') }}</h2>
-        <p>{{ t('Plan prices are not configured yet.') }}</p>
-      </section>
-      <section v-else-if="section === 'usage-costs'" class="card">
-        <h2>{{ t('Usage and costs') }}</h2>
-        <p>{{ t('Paid usage and measured costs are not available yet.') }}</p>
-      </section>
-      <section v-else-if="section === 'service-health'" class="card">
-        <h2>{{ t('Service health') }}</h2>
-        <p>{{ t('API available. Other services have not been verified here.') }}</p>
-      </section>
-      <section v-else-if="section === 'audit' && role === 'administrator'" class="card">
-        <h2>{{ t('Audit') }}</h2>
-        <ul class="entries">
-          <li v-for="item in audit" :key="item.created_at + item.action + item.target_id">
-            {{ t(item.action) }} · {{ new Date(item.created_at).toLocaleString() }}
-          </li>
-        </ul>
-      </section>
+        <section v-if="section === 'customers'" class="card">
+          <h2>{{ t('Customers') }}</h2>
+          <div v-if="role === 'administrator'" class="reason-field">
+            <label for="suspension-reason">{{ t('Reason for operational change') }}</label
+            ><input id="suspension-reason" v-model="reason" maxlength="500" />
+          </div>
+          <ul class="entries">
+            <li v-for="item in customers" :key="item.id">
+              <span class="customer-identity"
+                ><strong>{{ item.name }}</strong
+                ><small>{{ item.suspended ? t('Suspended') : t('Active') }}</small></span
+              ><button
+                v-if="role === 'administrator'"
+                type="button"
+                :disabled="!reason.trim()"
+                @click="changeSuspension(item)"
+              >
+                {{ item.suspended ? t('Resume') : t('Suspend') }}
+              </button>
+            </li>
+          </ul>
+          <p v-if="!customers.length">{{ t('No customer workspaces yet.') }}</p>
+        </section>
+        <section v-else-if="section === 'audit' && role === 'administrator'" class="card">
+          <h2>{{ t('Audit') }}</h2>
+          <ul class="entries">
+            <li v-for="item in audit" :key="item.created_at + item.action + item.target_id">
+              {{ t(item.action) }} · {{ new Date(item.created_at).toLocaleString() }}
+            </li>
+          </ul>
+        </section>
+      </div>
     </template>
   </section>
 </template>
@@ -209,10 +220,15 @@ onBeforeUnmount(leave)
 <style scoped>
 .staff-panel {
   display: grid;
-  gap: 1rem;
-  max-width: 1050px;
-  margin: 0 auto;
+  gap: 24px;
+  width: 100%;
+  max-width: 1184px;
+  min-width: 0;
+  margin: 0;
   color: var(--text);
+}
+.staff-panel.verification-state {
+  max-width: 640px;
 }
 .heading {
   display: flex;
@@ -221,10 +237,28 @@ onBeforeUnmount(leave)
   gap: 1rem;
 }
 .heading h1 {
-  margin: 0.2rem 0;
-  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+  font-weight: 650;
+}
+.heading > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 13px;
+  text-underline-offset: 4px;
+}
+.details {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
 }
 .eyebrow {
+  margin: 0 0 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted);
@@ -232,15 +266,68 @@ onBeforeUnmount(leave)
 }
 .card {
   background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 18px;
-  padding: 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 24px;
   display: grid;
   gap: 0.8rem;
+  min-width: 0;
+}
+.verification-card {
+  width: 100%;
+  padding: 28px;
+  gap: 16px;
+}
+.verification-card > button {
+  justify-self: start;
+}
+.verification-form,
+.reason-field {
+  display: grid;
+  gap: 8px;
+}
+.verification-form label,
+.reason-field label {
+  font-size: 13px;
+  font-weight: 550;
+}
+.verification-form input {
+  width: 180px;
+  min-width: 0;
+  font-size: 20px;
+  letter-spacing: 0.22em;
+}
+.reason-field {
+  width: 100%;
+  max-width: 640px;
+  margin: 4px 0 12px;
+}
+.reason-field input {
+  width: 100%;
+  min-width: 0;
+}
+.session-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--divider);
+}
+.staff-role {
+  padding: 5px 9px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--subtle);
+  border-radius: 5px;
 }
 .card h2,
 .card p {
   margin: 0;
+}
+.card p {
+  color: var(--muted);
+  line-height: 1.6;
 }
 .row,
 .tabs {
@@ -251,19 +338,30 @@ onBeforeUnmount(leave)
 }
 button,
 input {
-  min-height: 40px;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--control-border);
   border-radius: 10px;
   padding: 0.5rem 0.7rem;
   background: var(--page);
   color: var(--text);
+  font: inherit;
+  font-size: 14px;
 }
 button {
   cursor: pointer;
+  flex-shrink: 0;
 }
-button:hover,
-button[aria-current='page'] {
-  border-color: var(--accent);
+@media (hover: hover) {
+  button:hover {
+    border-color: var(--accent);
+  }
+}
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 button:disabled {
   opacity: 0.5;
@@ -279,15 +377,53 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.6rem 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  padding: 16px 0;
+  border-bottom: 1px solid var(--divider);
+  overflow-wrap: anywhere;
+}
+.entries li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.customer-identity {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.customer-identity strong {
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+.customer-identity small {
+  font-size: 12px;
+  color: var(--muted);
 }
 .error {
-  color: #a43562;
+  color: var(--error);
 }
 @media (max-width: 600px) {
   .heading {
     flex-direction: column;
+  }
+  .heading h1 {
+    font-size: 28px;
+  }
+  .card {
+    padding: 20px;
+  }
+  .session-toolbar {
+    flex-wrap: wrap;
+  }
+  .entries li {
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+@media (max-width: 1023px) {
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
   }
 }
 </style>

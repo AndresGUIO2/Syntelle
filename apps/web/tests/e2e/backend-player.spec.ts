@@ -30,10 +30,14 @@ function languageTrigger(page: Page) {
   return page.getByRole('button', { name: /^(Platform language|Idioma de la plataforma):/ })
 }
 async function chooseLanguage(page: Page, language: 'en' | 'es') {
+  const navigation = page.getByRole('button', { name: /^(Open navigation|Abrir navegación)$/ })
+  if (await navigation.isVisible()) await navigation.click()
   await languageTrigger(page).click()
   await page
     .getByRole('menuitemradio', { name: language === 'en' ? 'English' : 'Español', exact: true })
     .click()
+  const close = page.getByRole('button', { name: /^(Close navigation|Cerrar navegación)$/ })
+  if (await close.isVisible()) await close.click()
 }
 
 test('local static preview uses the chosen background without rendering or time-cap copy', async ({
@@ -145,6 +149,127 @@ test('microphone starts the conversation and capture in one action', async ({
     )
     .toBe('nod')
   expect(remote.commands.filter((event) => event.data?.type === 'mic_stop')).toHaveLength(1)
+})
+
+test('navigation stops actual microphone tracks and rejects late playback without hidden restart', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName !== 'chromium',
+    'Actual Web Audio capture is required for this lifecycle check.',
+  )
+  const remote = await fixture(page, false, true)
+  await page.addInitScript(() => {
+    const captures: MediaStreamTrack[] = []
+    Object.defineProperty(window, 'navigationCaptureTracks', { value: captures })
+    navigator.mediaDevices.getUserMedia = async () => {
+      const audio = new AudioContext()
+      const output = audio.createMediaStreamDestination()
+      const oscillator = audio.createOscillator()
+      const gain = audio.createGain()
+      gain.gain.value = 0
+      oscillator.connect(gain).connect(output)
+      oscillator.start()
+      for (const track of output.stream.getTracks()) {
+        const stop = track.stop.bind(track)
+        track.stop = () => {
+          stop()
+          void audio.close()
+        }
+        captures.push(track)
+      }
+      return output.stream
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start with microphone', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Microphone on', exact: true })).toBeVisible()
+  const video = page.locator('video.remote-source')
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth))
+    .toBeGreaterThan(0)
+  remote.publish({
+    type: 'conversation',
+    data: { type: 'accepted', turn_id: 'navigation-live', text: 'Keep this conversation.' },
+  })
+  remote.publish({
+    type: 'playback',
+    data: { event: 'playback_started', turn_id: 'navigation-live' },
+  })
+  await expect(video).toHaveJSProperty('muted', false)
+  await video.evaluate((element: HTMLVideoElement) => {
+    Object.defineProperty(window, 'navigationMedia', {
+      value: { element, stream: element.srcObject },
+    })
+  })
+  // Opening navigation leaves the exact A/V element and live capture intact.
+  await page.getByRole('button', { name: 'Collapse navigation', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand navigation', exact: true }).click()
+  await page.setViewportSize({ width: 900, height: 1000 })
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
+  await page.getByRole('button', { name: 'Close navigation', exact: true }).click()
+  expect(
+    await video.evaluate((element: HTMLVideoElement) => {
+      const before = Object.getOwnPropertyDescriptor(window, 'navigationMedia')!.value as {
+        element: HTMLVideoElement
+        stream: MediaStream
+      }
+      const tracks = Object.getOwnPropertyDescriptor(window, 'navigationCaptureTracks')!
+        .value as MediaStreamTrack[]
+      return (
+        element === before.element &&
+        element.srcObject === before.stream &&
+        tracks.length === 1 &&
+        tracks.every((track) => track.readyState === 'live')
+      )
+    }),
+  ).toBe(true)
+  expect(remote.commands.filter((event) => event.data?.type === 'suspend')).toHaveLength(0)
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
+  await page.getByRole('link', { name: 'Pricing', exact: true }).click()
+  await expect(page).toHaveURL(/\/pricing$/)
+  await expect
+    .poll(() => remote.commands.filter((event) => event.data?.type === 'suspend').length)
+    .toBe(1)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tracks = Object.getOwnPropertyDescriptor(window, 'navigationCaptureTracks')!
+          .value as MediaStreamTrack[]
+        return tracks.length === 1 && tracks.every((track) => track.readyState === 'ended')
+      }),
+    )
+    .toBe(true)
+  remote.publish({
+    type: 'playback',
+    data: { event: 'playback_started', turn_id: 'navigation-live' },
+  })
+  const packetsAfterLeave = remote.commands.filter((event) => event.data?.type === 'audio').length
+  await page.waitForTimeout(300)
+  expect(
+    await page.evaluate(() => {
+      const { element } = Object.getOwnPropertyDescriptor(window, 'navigationMedia')!.value as {
+        element: HTMLVideoElement
+      }
+      return { muted: element.muted, paused: element.paused, attached: element.srcObject !== null }
+    }),
+  ).toEqual({ muted: true, paused: true, attached: false })
+  expect(remote.commands.filter((event) => event.data?.type === 'audio')).toHaveLength(
+    packetsAfterLeave,
+  )
+  remote.publish({ type: 'paused', data: { reason: 'navigation' } })
+  await page.goBack()
+  await expect(
+    page.getByRole('button', { name: 'Continue conversation', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText('Keep this conversation.', { exact: true })).toBeVisible()
+  await page.waitForTimeout(300)
+  expect(remote.sessionRequests).toHaveLength(1)
+  expect(remote.commands.filter((event) => event.data?.type === 'mic_start')).toHaveLength(1)
+  expect(remote.commands.filter((event) => event.data?.type === 'mic_stop')).toHaveLength(1)
+  expect(remote.deleted).toEqual([])
+  await page.screenshot({ path: test.info().outputPath('navigation-capture-stopped.png') })
 })
 
 test('five-minute end returns to a portrait and never silently restarts', async ({ page }) => {
@@ -717,7 +842,7 @@ test('inactivity pause releases the player and resumes only after explicit actio
   })
   await expect(page.getByText('Keep my conversation.', { exact: true })).toBeVisible()
   remote.publish({ type: 'paused', data: { reason: 'user inactivity' } })
-  const resume = page.getByRole('button', { name: 'Resume', exact: true })
+  const resume = page.getByRole('button', { name: 'Continue conversation', exact: true })
   await expect(resume).toBeVisible()
   await expect(page.locator('.remote-stage')).toHaveClass(/remote-stage-still/)
   await expect(page.locator('.connection-state [role="status"]')).toHaveText(

@@ -381,6 +381,9 @@ func (s *Service) adminWorkspaceAction(w http.ResponseWriter, r *http.Request, p
 		accessError(w, err)
 		return
 	}
+	if next && s.OnRevoked != nil {
+		s.OnRevoked("workspace", parts[1])
+	}
 	httpapi.WriteJSON(w, 200, map[string]bool{"suspended": next})
 }
 

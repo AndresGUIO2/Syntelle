@@ -47,7 +47,7 @@ func (s *recordStore) allocateUnmetered(ctx context.Context, session *streamSess
 		return err
 	}
 	if resume {
-		result, err := tx.Exec(ctx, `UPDATE syntelle_streaming.sessions SET settings=$3,browser_session_id=$4,key_id=$5,principal_kind=$6,state='starting',reason='',closed_at=NULL,updated_at=now() WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason=$7`, session.id, session.principal.ID, settings, session.principal.SessionID, session.principal.KeyID, session.principal.Kind, inactivityReason)
+		result, err := tx.Exec(ctx, `UPDATE syntelle_streaming.sessions SET settings=$3,browser_session_id=$4,key_id=$5,principal_kind=$6,state='starting',reason='',closed_at=NULL,updated_at=now() WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason IN ($7,$8)`, session.id, session.principal.ID, settings, session.principal.SessionID, session.principal.KeyID, session.principal.Kind, inactivityReason, navigationReason)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (s *recordStore) allocate(ctx context.Context, session *streamSession, pack
 	}
 	var sessionUsed, allocated int64
 	if resume {
-		err = tx.QueryRow(ctx, `SELECT used_ms FROM syntelle_streaming.sessions WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason=$3 FOR UPDATE`, session.id, session.principal.ID, inactivityReason).Scan(&sessionUsed)
+		err = tx.QueryRow(ctx, `SELECT used_ms FROM syntelle_streaming.sessions WHERE id=$1 AND principal_id=$2 AND state='paused' AND closed_at IS NOT NULL AND reason IN ($3,$4) FOR UPDATE`, session.id, session.principal.ID, inactivityReason, navigationReason).Scan(&sessionUsed)
 		if err != nil {
 			return time.Time{}, err
 		}

@@ -266,6 +266,9 @@ func (s *Service) workerSocket(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
+			if !s.startIntegrationUsage(session) {
+				continue
+			}
 			s.setState(session, "idle", "")
 			s.toPlayer(session, event)
 		case "playback":
@@ -544,6 +547,10 @@ func (s *Service) playerSocket(w http.ResponseWriter, r *http.Request, id string
 			}
 			p.send(envelope("command", id, result))
 		case "microphone":
+			if session.capabilities != nil && !session.capabilities["message"] {
+				p.send(envelope("error", id, map[string]string{"message": "Microphone conversation is not allowed by this integration."}))
+				continue
+			}
 			// Admission precedes GPU startup; do not open paid recognition while
 			// the admitted renderer is still starting.
 			if starting {

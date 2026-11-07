@@ -27,6 +27,11 @@ const older = shallowRef(0)
 const busy = shallowRef(false)
 const error = shallowRef('')
 const confirmDelete = shallowRef(false)
+let previousFocus: HTMLElement | null = null
+function closed() {
+  open.value = false
+  if (previousFocus?.isConnected) previousFocus.focus()
+}
 
 async function load() {
   if (!props.signedIn) return
@@ -125,6 +130,7 @@ async function remove() {
 watch([open, dialog], ([visible, element]) => {
   if (!element) return
   if (visible && !element.open) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     element.showModal()
     void load()
   } else if (!visible && element.open) element.close()
@@ -148,7 +154,7 @@ watch(
     ref="dialog"
     class="history-dialog"
     :aria-label="t('Conversation history')"
-    @close="open = false"
+    @close="closed"
   >
     <header>
       <h2>{{ t('Conversation history') }}</h2>

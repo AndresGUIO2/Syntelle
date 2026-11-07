@@ -23,8 +23,33 @@ const props = defineProps<{
     | 'pip'
     | 'globe'
     | 'chevron-down'
+    | 'chevron-left'
+    | 'menu'
+    | 'sidebar'
+    | 'history'
+    | 'workspace'
+    | 'shield'
+    | 'tag'
+    | 'user'
+    | 'users'
+    | 'grid'
+    | 'code'
+    | 'chart'
+    | 'card'
+    | 'copy'
+    | 'external'
 }>()
 const shapes = {
+  grid: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],
+  code: ['m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18'],
+  chart: ['M4 3v18h17', 'M8 16v-4m5 4V8m5 8V5'],
+  card: ['M3 5h18v14H3z', 'M3 10h18M6 15h4'],
+  users: [
+    'M15 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+    'M3 21v-2a7 7 0 0 1 14 0v2m1-16a4 4 0 0 1 0 8m2 3a5 5 0 0 1 2 4v1',
+  ],
+  copy: ['M8 8h13v13H8z', 'M16 8V3H3v13h5'],
+  external: ['M14 3h7v7m0-7L10 14', 'M10 3H3v18h18v-7'],
   upload: ['M12 16V3m-4 4 4-4 4 4', 'M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4'],
   image: [
     'M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z',
@@ -62,6 +87,14 @@ const shapes = {
     'M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18Z',
   ],
   'chevron-down': ['m6 9 6 6 6-6'],
+  'chevron-left': ['m14 6-6 6 6 6'],
+  menu: ['M4 6h16M4 12h16M4 18h16'],
+  sidebar: ['M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z', 'M9 3v18'],
+  history: ['M3 11a9 9 0 1 1 2.6 7', 'M3 4v7h7', 'M12 7v5l3 2'],
+  workspace: ['M3 7h18v13H3z', 'M8 7V4h8v3', 'M3 12h18', 'M10 11v3h4v-3'],
+  shield: ['m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6z', 'm8 12 3 3 5-6'],
+  tag: ['M3 3h8l10 10-8 8L3 11z', 'M7 7h.01'],
+  user: ['M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z', 'M4 21v-2a8 8 0 0 1 16 0v2'],
 }
 const paths = computed(() => shapes[props.name])
 </script>

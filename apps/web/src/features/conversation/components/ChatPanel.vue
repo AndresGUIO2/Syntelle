@@ -29,6 +29,7 @@ const props = defineProps<{
 defineEmits<{ microphone: []; stop: []; newChat: [] }>()
 defineSlots<{
   actions?: () => unknown
+  'before-messages'?: () => unknown
   'media-actions'?: () => unknown
 }>()
 const displayStatus = computed(() => {
@@ -43,7 +44,7 @@ const displayStatus = computed(() => {
 })
 const emptyDescription = computed(() =>
   props.paused
-    ? 'Select Resume to continue your conversation.'
+    ? 'Select Continue conversation when you are ready.'
     : props.notStarted
       ? 'Your conversation will appear here.'
       : undefined,
@@ -63,23 +64,24 @@ const emptyDescription = computed(() =>
         <button
           class="new-chat"
           type="button"
-          :aria-label="t('New chat')"
-          :title="t('New chat')"
+          :aria-label="t('New conversation')"
+          :title="t('New conversation')"
           @click="$emit('newChat')"
         >
           <ConversationIcon name="new-chat" />
-          <span class="new-chat-label">{{ t('New chat') }}</span>
+          <span class="new-chat-label">{{ t('New conversation') }}</span>
         </button>
         <slot name="actions" />
       </div>
     </header>
+    <slot name="before-messages" />
     <ConversationMessages
       :turns="turns"
       :partial="partial"
       :character="character"
       :empty-description="emptyDescription"
     />
-    <p v-if="!checking && !configured && !notStarted" class="setup-note">
+    <p v-if="!checking && !configured && !notStarted && !paused" class="setup-note">
       {{ t('Voice conversation is not configured on the local server yet.') }}
     </p>
     <p v-if="error" class="chat-error" role="alert">{{ errorMessage(error) }}</p>
@@ -121,7 +123,7 @@ const emptyDescription = computed(() =>
   align-items: center;
   gap: 16px;
   padding: 18px 20px 18px 28px;
-  background: var(--surface);
+  background: transparent;
   border-bottom: 1px solid var(--divider);
 }
 .chat-heading {
@@ -167,9 +169,9 @@ const emptyDescription = computed(() =>
   min-width: 44px;
   min-height: 44px;
   padding: 0 11px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--divider));
+  border: 1px solid transparent;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  background: transparent;
   color: var(--text);
   font-size: 13px;
   font-weight: 600;

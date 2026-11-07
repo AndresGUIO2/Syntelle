@@ -63,7 +63,21 @@ export default defineConfig({
       ...project,
       // Historical client/laboratory suites remain as evidence. Their browser
       // entry points are retired from the public application.
-      testMatch: ['**/backend-player.spec.ts', '**/workspaces.spec.ts', '**/characters.spec.ts'],
+      testMatch: [
+        '**/backend-player.spec.ts',
+        '**/workspaces.spec.ts',
+        '**/characters.spec.ts',
+        '**/navigation.spec.ts',
+        '**/console.spec.ts',
+        '**/widget.spec.ts',
+        '**/console-redesign.spec.ts',
+        '**/console-canvas.spec.ts',
+        '**/console-layout.spec.ts',
+        '**/secondary-layout.spec.ts',
+        '**/shell-redesign.spec.ts',
+        '**/character-journey.spec.ts',
+        '**/integration-journey.spec.ts',
+      ],
     })),
     {
       name: 'api',

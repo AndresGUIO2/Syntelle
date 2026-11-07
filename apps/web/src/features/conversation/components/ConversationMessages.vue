@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useLocaleStore } from '../../../stores/locale'
-import { nextTick, useTemplateRef, watch } from 'vue'
+import { nextTick, onActivated, onDeactivated, useTemplateRef, watch } from 'vue'
 import type { ConversationTurn } from '../types'
 const { t } = useLocaleStore()
 const props = defineProps<{
@@ -12,11 +12,29 @@ const props = defineProps<{
 }>()
 const transcript = useTemplateRef<HTMLElement>('transcript')
 let followingLatest = true
+let active = true
+let savedTop = 0
+let activation = 0
 function trackScroll() {
   const element = transcript.value
-  if (element)
+  if (active && element) {
+    savedTop = element.scrollTop
     followingLatest = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+  }
 }
+onDeactivated(() => {
+  active = false
+  activation++
+})
+onActivated(async () => {
+  const current = ++activation
+  // Scroll events caused by detaching the cached DOM must not overwrite the
+  // owner's reading position. Reattach first, then restore that position.
+  await nextTick()
+  if (current !== activation) return
+  if (transcript.value) transcript.value.scrollTop = savedTop
+  active = true
+})
 watch(
   () => [props.turns, props.partial],
   async () => {
@@ -26,7 +44,10 @@ watch(
       return
     }
     await nextTick()
-    if (followingLatest && element) element.scrollTop = element.scrollHeight
+    if (active && followingLatest && element) {
+      element.scrollTop = element.scrollHeight
+      savedTop = element.scrollTop
+    }
   },
 )
 </script>
@@ -115,7 +136,7 @@ watch(
   max-width: 36ch;
 }
 .exchange + .exchange {
-  margin-top: 20px;
+  margin-top: 28px;
 }
 .user-message {
   width: fit-content;
@@ -128,21 +149,19 @@ watch(
 }
 .user-message .message-body {
   padding: 12px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-radius: 16px 4px 16px 16px;
+  border: 1px solid transparent;
+  border-radius: 16px;
   background: var(--user-surface);
-  box-shadow: var(--message-shadow);
+  box-shadow: none;
 }
 .character-message {
-  margin-top: 16px;
+  margin-top: 22px;
 }
 .character-message .message-body {
   max-width: 72ch;
-  padding: 14px 16px;
-  border: 1px solid var(--divider);
-  border-radius: 4px 16px 16px 16px;
-  background: var(--surface-raised);
-  box-shadow: var(--message-shadow);
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
 }
 .message-speaker {
   margin: 0 0 6px;
@@ -163,7 +182,7 @@ watch(
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), #d2b8f5);
+  background: var(--accent);
 }
 .message-text {
   margin: 0;

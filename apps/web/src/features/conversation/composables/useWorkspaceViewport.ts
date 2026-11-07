@@ -1,4 +1,12 @@
-import { computed, onMounted, onScopeDispose, shallowRef, type Ref } from 'vue'
+import {
+  computed,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  onScopeDispose,
+  shallowRef,
+  type Ref,
+} from 'vue'
 
 // Safari's keyboard resizes the visual viewport without resizing the page layout.
 export function useWorkspaceViewport(host: Ref<HTMLElement | null>) {
@@ -7,6 +15,7 @@ export function useWorkspaceViewport(host: Ref<HTMLElement | null>) {
   let restingHeight = 0
   let width = 0
   let frame = 0
+  let listening = false
   function measure() {
     const viewport = window.visualViewport
     const visibleHeight = viewport?.height ?? window.innerHeight
@@ -26,22 +35,29 @@ export function useWorkspaceViewport(host: Ref<HTMLElement | null>) {
     cancelAnimationFrame(frame)
     frame = requestAnimationFrame(measure)
   }
-  onMounted(() => {
+  function activate() {
+    if (listening) return
+    listening = true
     measure()
     window.addEventListener('resize', schedule)
     window.visualViewport?.addEventListener('resize', schedule)
     window.visualViewport?.addEventListener('scroll', schedule)
     document.addEventListener('focusin', schedule)
     document.addEventListener('focusout', schedule)
-  })
-  onScopeDispose(() => {
+  }
+  function deactivate() {
+    listening = false
     cancelAnimationFrame(frame)
     window.removeEventListener('resize', schedule)
     window.visualViewport?.removeEventListener('resize', schedule)
     window.visualViewport?.removeEventListener('scroll', schedule)
     document.removeEventListener('focusin', schedule)
     document.removeEventListener('focusout', schedule)
-  })
+  }
+  onMounted(activate)
+  onActivated(activate)
+  onDeactivated(deactivate)
+  onScopeDispose(deactivate)
   return {
     viewportStyle: computed(() =>
       height.value === null ? {} : { '--demo-viewport-height': `${height.value}px` },

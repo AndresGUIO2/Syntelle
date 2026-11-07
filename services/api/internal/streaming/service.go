@@ -78,6 +78,10 @@ func Open(parent context.Context, pool *pgxpool.Pool, conversations *conversatio
 
 func (s *Service) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/widgets/") {
+			s.widget(w, r)
+			return
+		}
 		if r.URL.Path == "/api/v1/conversations" || strings.HasPrefix(r.URL.Path, "/api/v1/conversations/") {
 			s.history(w, r)
 			return
@@ -115,7 +119,7 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 			s.playerSocket(w, r, parts[0])
 			return
 		}
-		principal, err := s.resolve(w, r, true)
+		principal, err := s.resolveStreamPrincipal(w, r)
 		if err != nil {
 			writeError(w, 401, "Sign in or start a visitor session.")
 			return
@@ -124,6 +128,10 @@ func (s *Service) Handler(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/api/v1/streams" && r.Method == http.MethodPost {
+			if principal.Kind == "widget" {
+				writeError(w, 403, "Widget permissions are limited to one stream.")
+				return
+			}
 			s.create(w, r, principal)
 			return
 		}
@@ -194,16 +202,44 @@ func (s *Service) response(session *streamSession, ticket string) SessionRespons
 	if httpapi.Cloud() {
 		startupTimeout = 95000
 	}
-	return SessionResponse{EmotionsAvailable: !session.basicCharacter, LaughterAvailable: !session.basicCharacter && s.conversation.HasLaughter(session.settings.Voice, session.settings.Language), StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: session.settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil, RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits}
+	settings := session.settings
+	if session.principal.IntegrationID != "" {
+		settings.Instructions = ""
+	}
+	return SessionResponse{EmotionsAvailable: !session.basicCharacter, LaughterAvailable: !session.basicCharacter && s.conversation.HasLaughter(session.settings.Voice, session.settings.Language), StartupTimeoutMS: startupTimeout, ICEServers: ice, ID: session.id, Ticket: ticket, State: session.state, Settings: settings, Configured: s.conversation.Model != nil && s.conversation.Speech != nil, SpeechConfigured: s.conversation.Speech != nil, Recognition: s.conversation.Recognition != nil && (session.capabilities == nil || session.capabilities["message"]), RemainingSeconds: max(0, int(math.Ceil(time.Until(session.deadline).Seconds()))), TimeLimitsEnabled: !s.config.DisableTimeLimits || session.principal.IntegrationID != ""}
 }
+
+type streamCreateInput struct {
+	Settings               accounts.Settings `json:"settings"`
+	ResumeFrom             string            `json:"resume_from,omitempty"`
+	ContinueConversationID string            `json:"continue_conversation_id,omitempty"`
+	IntegrationID          string            `json:"integration_id,omitempty"`
+}
+
 func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
-	input := struct {
-		Settings               accounts.Settings `json:"settings"`
-		ResumeFrom             string            `json:"resume_from,omitempty"`
-		ContinueConversationID string            `json:"continue_conversation_id,omitempty"`
-	}{Settings: accounts.Defaults()}
+	input := streamCreateInput{Settings: accounts.Defaults()}
 	if decode(w, r, &input) != nil {
 		writeError(w, 400, "Invalid stream settings.")
+		return
+	}
+	s.createInput(w, r, principal, input)
+}
+func (s *Service) createInput(w http.ResponseWriter, r *http.Request, principal accounts.Principal, input streamCreateInput) {
+	var integration *accounts.PublishedIntegration
+	if principal.IntegrationID != "" {
+		if input.IntegrationID != "" && input.IntegrationID != principal.IntegrationID || input.ResumeFrom != "" || input.ContinueConversationID != "" || s.config.ResolveIntegration == nil {
+			writeError(w, 403, "Invalid integration session.")
+			return
+		}
+		i, err := s.config.ResolveIntegration(r.Context(), principal, principal.IntegrationID)
+		if err != nil {
+			writeError(w, 403, "Integration is unavailable.")
+			return
+		}
+		integration = &i
+		input.Settings = i.Settings
+	} else if input.IntegrationID != "" {
+		writeError(w, 403, "An integration credential is required.")
 		return
 	}
 	if input.ResumeFrom != "" && input.ContinueConversationID != "" {
@@ -243,7 +279,13 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		s.characterMu.Lock()
 		defer s.characterMu.Unlock()
 	}
-	packageHash, err := s.resolvePackage(r.Context(), principal, input.Settings.Character)
+	var packageHash string
+	var err error
+	if integration != nil {
+		packageHash = integration.Publication.PackageHash
+	} else {
+		packageHash, err = s.resolvePackage(r.Context(), principal, input.Settings.Character)
+	}
 	if err != nil {
 		writeError(w, 404, "Prepared character not found.")
 		return
@@ -252,7 +294,11 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	characterName := ""
 	if basic {
 		normalizeBasicSettings(&input.Settings)
-		characterName, err = s.store.characterName(r.Context(), principal.AccountID, input.Settings.Character, packageHash)
+		if integration != nil {
+			characterName = integration.Publication.Name
+		} else {
+			characterName, err = s.store.characterName(r.Context(), principal.AccountID, input.Settings.Character, packageHash)
+		}
 		if err != nil {
 			writeError(w, 404, "Prepared character not found.")
 			return
@@ -299,6 +345,23 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	session := &streamSession{packageHash: packageHash, basicCharacter: basic, emotionalPresence: !basic && !httpapi.Cloud() && s.conversation != nil && s.conversation.Performance != nil && s.conversation.Performance.EmotionalPresence != nil, emotionPolicyRevision: 1, id: id, cid: cid, principal: principal, settings: input.Settings, state: "starting", created: time.Now(), lastSeen: time.Now(), cancel: cancel, commandMu: make(chan struct{}, 1)}
+	capability := ""
+	if integration != nil {
+		session.nextUsageRenewal = time.Now().Add(10 * time.Second)
+		session.capabilities = map[string]bool{}
+		for _, v := range integration.Capabilities {
+			session.capabilities[v] = true
+		}
+		if principal.Kind == "widget" {
+			capability, err = randomID("syntelle_wp_")
+			if err != nil {
+				cancel()
+				writeError(w, 500, "Player permission could not be created.")
+				return
+			}
+			session.capabilityHash = sha256.Sum256([]byte(capability))
+		}
+	}
 	if hadMessages {
 		session.lastMessage = session.created
 	}
@@ -318,17 +381,39 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		return
 	}
 	var deadline time.Time
-	if s.config.DisableTimeLimits {
+	if integration != nil {
+		if s.config.ReserveIntegrationUsage == nil || s.config.ReleaseIntegrationUsage == nil || s.config.RenewIntegrationUsage == nil || s.config.StartIntegrationUsage == nil || s.config.ValidatePrincipal == nil {
+			err = errors.New("Paid workspace usage is unavailable.")
+		} else {
+			err = s.config.ValidatePrincipal(r.Context(), principal)
+			if err == nil {
+				deadline, err = s.config.ReserveIntegrationUsage(r.Context(), principal.WorkspaceID, principal.IntegrationID, id)
+			}
+		}
+		if err == nil && !deadline.After(time.Now()) {
+			err = errors.New("Invalid paid usage lease.")
+		}
+		if err == nil {
+			err = s.store.allocateIntegration(r.Context(), session, packageHash)
+		}
+	} else if s.config.DisableTimeLimits {
 		err = s.store.allocateUnmetered(r.Context(), session, packageHash, input.ResumeFrom != "")
 	} else {
 		deadline, err = s.store.allocate(r.Context(), session, packageHash, input.ResumeFrom != "")
 	}
 	if err != nil {
+		if integration != nil && s.config.ReleaseIntegrationUsage != nil {
+			releaseCtx, releaseCancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
+			_ = s.config.ReleaseIntegrationUsage(releaseCtx, id)
+			releaseCancel()
+		}
 		s.mu.Lock()
 		delete(s.sessions, id)
 		s.mu.Unlock()
 		cancel()
-		if errors.Is(err, errDemoTime) || errors.Is(err, errSessionTime) {
+		if integration != nil {
+			writeError(w, 429, "This workspace has no available usage or simultaneous session slot.")
+		} else if errors.Is(err, errDemoTime) || errors.Is(err, errSessionTime) {
 			writeError(w, 429, err.Error())
 		} else {
 			writeError(w, 500, "Stream could not be saved.")
@@ -342,6 +427,21 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 		session.cancel = func() { leaseCancel(); cancel() }
 		s.mu.Unlock()
 		ctx = leaseCtx
+	}
+	if integration != nil {
+		if err = s.config.ValidatePrincipal(ctx, principal); err != nil {
+			s.closeSession(id, "authorization revoked")
+			writeError(w, 403, "Integration is no longer available.")
+			return
+		}
+		s.mu.Lock()
+		active := s.sessions[id] == session
+		s.mu.Unlock()
+		if !active || ctx.Err() != nil {
+			s.closeSession(id, "authorization revoked")
+			writeError(w, 403, "Integration is no longer available.")
+			return
+		}
 	}
 	channel, err := s.conversation.OpenCharacterChannel(ctx, basic, packageHash, input.Settings.Character, characterName, func(event conversation.Event) { s.conversationEvent(session, event) })
 	if err != nil {
@@ -376,11 +476,20 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, principal accou
 	}
 	s.mu.Lock()
 	result := s.response(session, ticket)
+	result.Capability = capability
 	s.mu.Unlock()
 	writeJSON(w, 201, result)
 }
 
 func (s *Service) command(ctx context.Context, session *streamSession, c Command) (commandResult, error) {
+	if session.capabilities != nil && (!session.capabilities[c.Type] || c.Settings != nil) {
+		return commandResult{ID: c.ID}, errors.New("This action is not allowed by the integration.")
+	}
+	if session.principal.IntegrationID != "" && (c.Type == "message" || c.Type == "speak") && s.admission != nil {
+		if s.admission.allow("integration-turn", session.principal.IntegrationID, 60, time.Now()) != 0 || s.admission.allow("integration-player-turn", session.principal.ID, 12, time.Now()) != 0 {
+			return commandResult{ID: c.ID}, errors.New("Please wait before sending another message.")
+		}
+	}
 	if c.Settings != nil {
 		next := *c.Settings
 		next.Voice = s.conversation.RuntimeVoice()
@@ -399,7 +508,7 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 	if !identifier.MatchString(c.ID) {
 		return result, errors.New("A unique command identifier is required.")
 	}
-	if c.Type != "message" && c.Type != "speak" && c.Type != "interrupt" && c.Type != "configure" && c.Type != "preview" {
+	if c.Type != "message" && c.Type != "speak" && c.Type != "interrupt" && c.Type != "configure" && c.Type != "preview" && c.Type != "suspend" {
 		return result, errors.New("Unknown command type.")
 	}
 	if (c.Type == "message" || c.Type == "speak") && (strings.TrimSpace(c.Text) == "" || len([]rune(c.Text)) > 65536) {
@@ -430,7 +539,7 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 	if !active || channel == nil {
 		return result, errors.New("This stream has ended.")
 	}
-	if state == "starting" {
+	if state == "starting" && c.Type != "suspend" {
 		return result, errors.New("Wait for the renderer to become ready.")
 	}
 	if c.Type == "preview" && state != "idle" {
@@ -473,6 +582,14 @@ func (s *Service) command(ctx context.Context, session *streamSession, c Command
 	}
 	s.mu.Unlock()
 	switch c.Type {
+	case "suspend":
+		// The terminal paused notice, rather than a queued command receipt,
+		// confirms that continuation is durable before the player disconnects.
+		err = s.finishSession(session.id, navigationReason, time.Time{})
+		if err != nil {
+			slog.Warn("Stream navigation suspension failed", "code", "navigation_suspend_failed", "stream_id", session.id)
+		}
+		return result, err
 	case "message", "speak":
 		if previous != "" {
 			_ = s.store.finish(ctx, session.id, previous, "interrupted")
@@ -573,7 +690,7 @@ func (s *Service) Revoke(kind, id string) {
 	s.mu.Lock()
 	ids := []string{}
 	for _, session := range s.sessions {
-		if kind == "session" && session.principal.SessionID == id || kind == "key" && session.principal.KeyID == id {
+		if kind == "session" && session.principal.SessionID == id || (kind == "key" || kind == "workspace_key") && session.principal.KeyID == id || kind == "workspace" && session.principal.WorkspaceID == id || kind == "integration" && session.principal.IntegrationID == id || kind == "publication" && session.principal.PublicationID == id {
 			ids = append(ids, session.id)
 		}
 	}
@@ -596,21 +713,30 @@ func (s *Service) closeSession(id, reason string) {
 }
 
 func (s *Service) endSession(id, reason string, inactiveAt time.Time) {
+	if err := s.finishSession(id, reason, inactiveAt); err != nil {
+		slog.Warn("Stream closure could not be persisted", "code", "stream_close_archive_failed", "stream_id", id)
+	}
+}
+
+func (s *Service) finishSession(id, reason string, inactiveAt time.Time) error {
 	s.mu.Lock()
 	session := s.sessions[id]
 	if session == nil {
 		s.mu.Unlock()
-		return
+		if reason == navigationReason {
+			return errors.New("This stream has ended.")
+		}
+		return nil
 	}
 	if !inactiveAt.IsZero() && reason == inactivityReason && inactiveAt.Before(session.inactivityDeadline()) {
 		s.mu.Unlock()
-		return
+		return nil
 	}
 	if reason == sessionLimitReason && (session.deadline.IsZero() || inactiveAt.Before(session.deadline)) {
 		s.mu.Unlock()
-		return
+		return nil
 	}
-	paused := reason == inactivityReason
+	paused := reason == inactivityReason || reason == navigationReason
 	ended := reason == sessionLimitReason
 	delete(s.sessions, id)
 	session.state = "closed"
@@ -638,8 +764,14 @@ func (s *Service) endSession(id, reason string, inactiveAt time.Time) {
 	worker.send(envelope("stop", id, map[string]string{"reason": reason}))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), time.Second)
 	defer cancel()
-	if err := s.store.state(ctx, id, finalState, reason, true); err != nil {
-		slog.Warn("Stream closure could not be persisted", "code", "stream_close_archive_failed", "stream_id", id)
+	persistErr := s.store.state(ctx, id, finalState, reason, true)
+	if session.principal.IntegrationID != "" && s.config.ReleaseIntegrationUsage != nil {
+		billingCtx, billingCancel := context.WithTimeout(context.WithoutCancel(s.ctx), 2*time.Second)
+		billingErr := s.config.ReleaseIntegrationUsage(billingCtx, id)
+		billingCancel()
+		if persistErr == nil {
+			persistErr = billingErr
+		}
 	}
 	if player != nil {
 		if paused || ended {
@@ -650,13 +782,22 @@ func (s *Service) endSession(id, reason string, inactiveAt time.Time) {
 			if ended {
 				kind = "ended"
 			}
-			b, _ := json.Marshal(envelope(kind, id, map[string]string{"reason": reason}))
+			data := map[string]string{"reason": reason}
+			if persistErr != nil {
+				kind = "error"
+				data = map[string]string{"code": "suspension_failed", "message": "Conversation suspension could not be saved. Reconnect explicitly to continue."}
+			}
+			b, _ := json.Marshal(envelope(kind, id, data))
 			_ = player.conn.Write(notice, websocket.MessageText, b)
 			stop()
 		}
 		player.cancel()
 		_ = player.conn.CloseNow()
 	}
+	if persistErr != nil {
+		return errors.New("Conversation suspension could not be saved. Reconnect explicitly to continue.")
+	}
+	return nil
 }
 func (s *Service) setState(session *streamSession, state, reason string) {
 	s.mu.Lock()
@@ -691,6 +832,7 @@ func (s *Service) expire() {
 			s.purgeOldHistory(ctx)
 			cancel()
 		case now := <-ticker.C:
+			s.renewIntegrationUsage(now)
 			s.expireAt(now)
 		}
 	}

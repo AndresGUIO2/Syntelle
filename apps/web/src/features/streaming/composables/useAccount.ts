@@ -1,4 +1,4 @@
-import { shallowRef } from 'vue'
+import { shallowRef, watch } from 'vue'
 import { request } from '../api'
 import type {
   Account,
@@ -17,17 +17,40 @@ export function useAccount() {
   const keys = shallowRef<IntegrationKey[]>([])
   const secret = shallowRef('')
   let requestEpoch = 0
+  let ownerEpoch = 0
+  let operationEpoch = 0
+
+  watch(
+    account,
+    (value, previous) => {
+      if (value?.id === previous?.id) return
+      // A globally shared account must never publish another owner's late data.
+      ownerEpoch++
+      operationEpoch++
+      requestEpoch++
+      configurations.value = []
+      keys.value = []
+      secret.value = ''
+      error.value = ''
+      loading.value = false
+    },
+    { flush: 'sync' },
+  )
 
   async function run<T>(work: () => Promise<T>): Promise<T | undefined> {
     if (loading.value) return
+    const owner = ownerEpoch
+    const operation = ++operationEpoch
     loading.value = true
     error.value = ''
     try {
-      return await work()
+      const result = await work()
+      return owner === ownerEpoch ? result : undefined
     } catch (failure) {
-      error.value = failure instanceof Error ? failure.message : 'The account request failed.'
+      if (owner === ownerEpoch && operation === operationEpoch)
+        error.value = failure instanceof Error ? failure.message : 'The account request failed.'
     } finally {
-      loading.value = false
+      if (operation === operationEpoch) loading.value = false
     }
   }
 
@@ -49,14 +72,18 @@ export function useAccount() {
 
   async function loadLibrary() {
     if (!account.value) return
-    await run(async () => {
-      const [saved, access] = await Promise.all([
+    const owner = ownerEpoch
+    const result = await run(() =>
+      Promise.all([
         request<{ items: SavedConfiguration[] }>('/api/v1/configurations'),
         request<{ items: IntegrationKey[] }>('/api/v1/keys'),
-      ])
+      ]),
+    )
+    if (result && owner === ownerEpoch) {
+      const [saved, access] = result
       configurations.value = saved.items
       keys.value = access.items
-    })
+    }
   }
 
   function sendCode(email: string, flow?: string) {
@@ -73,6 +100,9 @@ export function useAccount() {
   }
 
   async function verify(challenge_id: string, code: string, confirmLink = false) {
+    if (loading.value) return false
+    const owner = ownerEpoch
+    requestEpoch++ // A pre-verification account read cannot undo sign-in.
     const result = await run(() =>
       request<{ account: Account }>('/api/v1/auth/email/verify', 'POST', {
         challenge_id,
@@ -80,46 +110,52 @@ export function useAccount() {
         confirm_link: confirmLink,
       }),
     )
-    if (result) {
+    if (result && owner === ownerEpoch) {
       account.value = result.account
+      const verifiedOwner = ownerEpoch
       await loadLibrary()
-      return true
+      return verifiedOwner === ownerEpoch
     }
     return false
   }
 
   async function save(name: string, settings: StreamSettings) {
+    const owner = ownerEpoch
     const result = await run(() =>
       request<SavedConfiguration>('/api/v1/configurations', 'POST', { name, settings }),
     )
-    if (result) await loadLibrary()
-    return Boolean(result)
+    if (result && owner === ownerEpoch) await loadLibrary()
+    return Boolean(result) && owner === ownerEpoch
   }
 
   async function remove(id: string) {
+    const owner = ownerEpoch
     const result = await run(async () => {
       await request(`/api/v1/configurations/${encodeURIComponent(id)}`, 'DELETE')
       return true
     })
-    if (result) configurations.value = configurations.value.filter((item) => item.id !== id)
+    if (result && owner === ownerEpoch)
+      configurations.value = configurations.value.filter((item) => item.id !== id)
   }
 
   async function update(id: string, name: string, settings: StreamSettings) {
+    const owner = ownerEpoch
     const result = await run(() =>
       request<SavedConfiguration>(`/api/v1/configurations/${encodeURIComponent(id)}`, 'PATCH', {
         name,
         settings,
       }),
     )
-    if (result) await loadLibrary()
+    if (result && owner === ownerEpoch) await loadLibrary()
   }
 
   async function createKey(name: string) {
+    const owner = ownerEpoch
     secret.value = ''
     const result = await run(() =>
       request<IntegrationKey & { secret: string }>('/api/v1/keys', 'POST', { name }),
     )
-    if (result) {
+    if (result && owner === ownerEpoch) {
       secret.value = result.secret
       keys.value = [
         ...keys.value,
@@ -129,16 +165,25 @@ export function useAccount() {
   }
 
   async function revokeKey(id: string) {
+    const owner = ownerEpoch
     const result = await run(async () => {
       await request(`/api/v1/keys/${encodeURIComponent(id)}`, 'DELETE')
       return true
     })
-    if (result) keys.value = keys.value.filter((item) => item.id !== id)
+    if (result && owner === ownerEpoch) keys.value = keys.value.filter((item) => item.id !== id)
   }
 
   async function logout() {
+    // Sign-out supersedes an in-flight library/read without letting its late
+    // completion reset loading or restore private resources.
+    const owner = ++ownerEpoch
+    operationEpoch++
+    requestEpoch++
+    loading.value = false
+    secret.value = ''
     await run(async () => {
       await request('/api/v1/auth/logout', 'POST', {})
+      if (owner !== ownerEpoch) return
       account.value = null
       configurations.value = []
       keys.value = []

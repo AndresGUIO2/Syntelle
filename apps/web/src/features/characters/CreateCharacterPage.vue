@@ -1,105 +1,110 @@
 <script setup lang="ts">
-import { useTemplateRef } from 'vue'
 import { useLocaleStore } from '../../stores/locale'
 import CharacterUpload from './CharacterUpload.vue'
 import CharacterLibrary from './CharacterLibrary.vue'
+import CharacterPreparation from './CharacterPreparation.vue'
+import ConsoleHeading from '../console/ConsoleHeading.vue'
 import { useCharacters } from './useCharacters'
-const emit = defineEmits<{ navigate: [event: MouseEvent] }>()
+import { useCharacterJourney, type CharacterConnection } from './useCharacterJourney'
+const emit = defineEmits<{
+  navigate: [event: MouseEvent]
+  connect: [selection: CharacterConnection]
+}>()
+const props = withDefaults(
+  defineProps<{ mode?: 'library' | 'create'; conversationHref?: string; ownerId?: string }>(),
+  { mode: 'library', conversationHref: '/', ownerId: '' },
+)
 const { t } = useLocaleStore()
-const state = useCharacters()
-const form = useTemplateRef<InstanceType<typeof CharacterUpload>>('form')
+const state = useCharacters(props.ownerId)
+const draft = useCharacterJourney(props.ownerId)
 async function submit(name: string, image: File) {
-  if (await state.submit(name, image)) form.value?.reset()
+  await state.submit(name, image)
 }
 </script>
-
 <template>
-  <section class="characters-page">
-    <header class="page-heading">
-      <div>
-        <p class="eyebrow">{{ t('Your collection') }}</p>
-        <h1>{{ t('Characters') }}</h1>
-        <p>{{ t('Bring a portrait into the conversation.') }}</p>
-      </div>
-      <a href="/" @click="emit('navigate', $event)">{{ t('Back to conversation') }}</a>
-    </header>
-    <p v-if="state.error.value" class="page-error" role="alert">{{ t(state.error.value) }}</p>
-    <div class="character-layout">
+  <section
+    class="console-page characters-page"
+    :class="{ 'characters-page--create': mode === 'create' }"
+  >
+    <nav v-if="mode === 'create'" class="character-breadcrumb" :aria-label="t('Breadcrumb')">
+      <a href="/characters" @click="emit('navigate', $event)">{{ t('Characters') }}</a
+      ><span aria-hidden="true">/</span><span>{{ t('Create character') }}</span>
+    </nav>
+    <ConsoleHeading
+      :title="mode === 'create' ? 'Create character' : 'Characters'"
+      :description="
+        mode === 'create'
+          ? 'From a portrait to a character you can test and connect.'
+          : 'Create, test and manage your personal characters.'
+      "
+    />
+    <CharacterPreparation
+      v-if="mode === 'create' && draft.receipt"
+      :item="draft.receipt"
+      :loading="state.loading.value"
+      :error="state.error.value"
+      :removing="state.removingId.value === draft.receipt.id"
+      @refresh="state.refresh"
+      @remove="state.remove"
+      @navigate="emit('navigate', $event)"
+      @connect="emit('connect', $event)"
+      @another="draft.receipt = null"
+    />
+    <template v-else-if="mode === 'create'"
+      ><p v-if="state.error.value && !draft.submitError" class="console-notice error" role="alert">
+        {{ t(state.error.value) }}
+        <button class="console-button quiet" @click="state.refresh">{{ t('Try again') }}</button>
+      </p>
       <CharacterUpload
-        ref="form"
+        :owner-id="ownerId"
         :busy="state.submitting.value"
-        :blocked="state.active.value"
+        :blocked="state.active.value && !state.resubmittingPending.value"
+        :unavailable="state.loading.value || Boolean(state.error.value && !draft.submitError)"
         @submit="submit"
-      />
-      <CharacterLibrary
-        :items="state.items.value"
-        :loading="state.loading.value"
-        @remove="state.remove"
-        @refresh="state.refresh"
-        @navigate="emit('navigate', $event)"
-      />
-    </div>
+    /></template>
+    <CharacterLibrary
+      v-else
+      :items="state.items.value"
+      :loading="state.loading.value"
+      :error="state.error.value"
+      :removing-id="state.removingId.value"
+      @remove="state.remove"
+      @refresh="state.refresh"
+      @navigate="emit('navigate', $event)"
+      @connect="emit('connect', $event)"
+    />
   </section>
 </template>
-
 <style scoped>
-.characters-page {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 12px 0 36px;
+.characters-page--create {
+  --console-page-width: 920px;
 }
-.page-heading {
+.character-breadcrumb {
   display: flex;
+  gap: 10px;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-.eyebrow {
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-.page-heading h1 {
-  font-size: clamp(28px, 4vw, 36px);
-  margin: 0 0 8px;
-  letter-spacing: -0.025em;
-}
-.page-heading p:not(.eyebrow) {
+  margin: 0 0 16px;
   color: var(--muted);
-  margin: 0;
+  font-size: 12px;
 }
-.page-heading a {
-  color: var(--text);
-  font-size: 14px;
-  white-space: nowrap;
+.character-breadcrumb a {
+  color: var(--muted);
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
-.character-layout {
-  display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-  gap: 40px;
-  align-items: start;
+.characters-page > .console-notice {
+  max-width: 920px;
 }
-.page-error {
-  padding: 14px 18px;
-  border: 1px solid var(--divider);
-  border-radius: 10px;
-  color: var(--error);
-  margin-bottom: 24px;
+.character-breadcrumb a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
-@media (max-width: 760px) {
-  .character-layout {
-    grid-template-columns: 1fr;
-    gap: 32px;
-  }
-  .page-heading {
-    align-items: start;
-  }
-  .page-heading a {
-    white-space: normal;
-    max-width: 110px;
-    text-align: right;
+@media (hover: hover) {
+  .character-breadcrumb a:hover {
+    color: var(--text);
+    text-decoration: underline;
   }
 }
 </style>

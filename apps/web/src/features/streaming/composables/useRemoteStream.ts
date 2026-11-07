@@ -3,8 +3,10 @@ import { request, RequestError } from '../api'
 import type { Envelope, StreamSettings } from '../types'
 import type { ConversationEvent, ConversationTurn } from '../../conversation/types'
 import { useMicrophone } from '../../conversation/composables/useMicrophone'
+import type { RemoteSession, RemoteStreamTransport } from '../transport'
 
-export function useRemoteStream(settings: () => StreamSettings) {
+export function useRemoteStream(settings: () => StreamSettings, transport?: RemoteStreamTransport) {
+  const streamRequest = transport?.request ?? request
   const id = shallowRef('')
   const state = shallowRef('not-started')
   const media = shallowRef<MediaStream | null>(null)
@@ -30,6 +32,8 @@ export function useRemoteStream(settings: () => StreamSettings) {
   const partial = shallowRef('')
   const turns = shallowRef<ConversationTurn[]>([])
   const currentTurn = shallowRef('')
+  const conversationId = shallowRef('')
+  const conversationRevision = shallowRef(0)
   let socket: WebSocket | null = null
   let peer: RTCPeerConnection | null = null
   let epoch = 0
@@ -43,24 +47,20 @@ export function useRemoteStream(settings: () => StreamSettings) {
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined
   let connectionTimer: ReturnType<typeof setTimeout> | undefined
   let pausedID = ''
+  let presentationActive = true
+  let navigationBlocked = false
+  const suspending = shallowRef(false)
+  const navigationPaused = shallowRef(false)
+  let suspensionTimer: ReturnType<typeof setTimeout> | undefined
+  let finishSuspension: ((value: boolean) => void) | undefined
+  let suspension: Promise<boolean> | undefined
   let releasing = Promise.resolve()
-  type Session = {
-    ice_servers?: RTCIceServer[]
-    startup_timeout_ms?: number
-    id: string
-    ticket: string
-    state: string
-    configured: boolean
-    speech_configured?: boolean
-    recognition: boolean
-    laughter_available?: boolean
-    emotions_available?: boolean
-    time_limits_enabled?: boolean
-  }
+  type Session = RemoteSession
 
   async function loadPolicy() {
+    if (transport?.loadPolicy === false) return
     try {
-      const policy = await request<{
+      const policy = await streamRequest<{
         time_limits_enabled?: boolean
         laughter?: Record<string, boolean>
       }>('/api/v1/streams/status')
@@ -79,27 +79,40 @@ export function useRemoteStream(settings: () => StreamSettings) {
         ? 'This session has ended.'
         : state.value === 'exhausted'
           ? 'Your 15-minute demo allowance has been used.'
-          : state.value === 'paused'
-            ? characterMessage('Syntelle is paused due to inactivity', 'Paused due to inactivity')
-            : !ready.value
-              ? connecting.value
-                ? retry
-                  ? characterMessage('Reconnecting to Syntelle…', 'Reconnecting to your character…')
-                  : characterMessage('Connecting to Syntelle…', 'Connecting to your character…')
-                : characterMessage('Syntelle is disconnected', 'Your character is disconnected')
-              : speaking.value
-                ? 'Speaking'
-                : pending.value
-                  ? 'Preparing reply'
-                  : microphone.active.value
-                    ? 'Listening'
-                    : 'Ready',
+          : state.value === 'suspension-failed'
+            ? 'Your conversation needs attention before continuing.'
+            : suspending.value
+              ? 'Pausing your conversation…'
+              : state.value === 'paused'
+                ? navigationPaused.value
+                  ? 'Your conversation is paused.'
+                  : characterMessage(
+                      'Syntelle is paused due to inactivity',
+                      'Paused due to inactivity',
+                    )
+                : !ready.value
+                  ? connecting.value
+                    ? retry
+                      ? characterMessage(
+                          'Reconnecting to Syntelle…',
+                          'Reconnecting to your character…',
+                        )
+                      : characterMessage('Connecting to Syntelle…', 'Connecting to your character…')
+                    : characterMessage('Syntelle is disconnected', 'Your character is disconnected')
+                  : speaking.value
+                    ? 'Speaking'
+                    : pending.value
+                      ? 'Preparing reply'
+                      : microphone.active.value
+                        ? 'Listening'
+                        : 'Ready',
   )
   function characterMessage(sample: string, personal: string) {
     return settings().character === 'syntelle' ? sample : personal
   }
 
   function connected() {
+    if (!presentationActive || navigationBlocked) return
     ready.value = true
     connecting.value = false
     retry = 0
@@ -110,7 +123,14 @@ export function useRemoteStream(settings: () => StreamSettings) {
   // Only transport and idle video recover automatically. User commands and
   // microphone capture are never replayed by connection recovery.
   function recover(binding: number) {
-    if (binding !== epoch || disposed || state.value === 'paused') return
+    if (
+      binding !== epoch ||
+      disposed ||
+      navigationBlocked ||
+      !presentationActive ||
+      state.value === 'paused'
+    )
+      return
     detach()
     if (currentTurn.value) replaceTurn(currentTurn.value, { status: 'interrupted' })
     currentTurn.value = ''
@@ -169,16 +189,18 @@ export function useRemoteStream(settings: () => StreamSettings) {
       stopMicrophone()
       return
     }
-    if (!ready.value || !recognition.value) return
+    if (!presentationActive || navigationBlocked || !ready.value || !recognition.value) return
     startingMicrophone.value = true
     error.value = ''
     micID = crypto.randomUUID()
+    const startedMicrophone = micID
     if (!sendMicrophone('mic_start')) {
       error.value = 'Reconnect the stream before using your microphone.'
       stopMicrophone()
       return
     }
     const active = await microphone.start()
+    if (!presentationActive || navigationBlocked || startedMicrophone !== micID) return
     startingMicrophone.value = false
     if (!active) {
       error.value = microphone.error.value
@@ -191,6 +213,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
   }
 
   function conversation(event: ConversationEvent) {
+    if (event.conversation_id) conversationId.value = event.conversation_id
     if (event.type === 'transcript_partial') {
       if (event.turn_id === micID) partial.value = event.text ?? ''
       return
@@ -234,6 +257,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
         reply: event.text ?? '',
         spoken: (event.data as { spoken?: string })?.spoken ?? '',
       })
+      conversationRevision.value++
     } else if (event.type === 'cancelled') {
       audioSuppressed.value = true
       replaceTurn(event.turn_id, { status: 'interrupted' })
@@ -276,6 +300,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       return
     }
     if (message.session_id && message.session_id !== id.value) return
+    if (navigationBlocked && !['paused', 'ended', 'error', 'stopped'].includes(message.type)) return
     if (message.type === 'signal') {
       const target = peer
       signaling = signaling
@@ -327,8 +352,13 @@ export function useRemoteStream(settings: () => StreamSettings) {
           ? data
           : (data?.message ?? data?.text ?? 'The stream encountered an error.')
       pending.value = false
+      if (suspending.value) failSuspension()
     } else if (message.type === 'paused' || message.type === 'ended') {
       const previousID = id.value
+      navigationPaused.value =
+        message.type === 'paused' &&
+        (message.data as { reason?: string } | undefined)?.reason === 'navigation'
+      settleSuspension(message.type === 'paused')
       if (currentTurn.value) replaceTurn(currentTurn.value, { status: 'interrupted' })
       detach()
       currentTurn.value = ''
@@ -339,19 +369,24 @@ export function useRemoteStream(settings: () => StreamSettings) {
       error.value = ''
       state.value = message.type === 'paused' ? 'paused' : 'ended'
     } else if (message.type === 'stopped') {
+      if (suspending.value) return failSuspension()
       error.value = 'This stream has ended.'
       void stop()
     }
   }
 
   async function connect(resume = false, continueConversationID = '') {
+    if (!presentationActive || suspending.value || disposed || state.value === 'suspension-failed')
+      return
     const resumeFrom = state.value === 'paused' ? pausedID : ''
+    const resumedNavigation = navigationPaused.value
+    navigationBlocked = false
     let released: Promise<void> | undefined
     if (resume) detach()
     else released = stop()
     const binding = epoch
     await released
-    if (disposed || binding !== epoch) return
+    if (disposed || binding !== epoch || !presentationActive) return
     connecting.value = true
     state.value = resume ? 'reconnecting' : 'connecting'
     error.value = ''
@@ -362,8 +397,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
         const previousID = id.value
         // Failure requires explicit action: never allocate another renderer
         // automatically when the old session has closed or paused.
-        const session = await request<Session>(`/api/v1/streams/${encodeURIComponent(previousID)}`)
-        const ticket = await request<{ ticket: string }>(
+        const session = await streamRequest<Session>(
+          `/api/v1/streams/${encodeURIComponent(previousID)}`,
+        )
+        const ticket = await streamRequest<{ ticket: string }>(
           `/api/v1/streams/${encodeURIComponent(previousID)}/ticket`,
           'POST',
         )
@@ -371,13 +408,15 @@ export function useRemoteStream(settings: () => StreamSettings) {
         restored = true
       }
       if (binding !== epoch || disposed) return
-      result ??= await request<Session>('/api/v1/streams', 'POST', {
-        settings: settings(),
-        ...(resumeFrom ? { resume_from: resumeFrom } : {}),
-        ...(continueConversationID ? { continue_conversation_id: continueConversationID } : {}),
-      })
+      result ??= transport
+        ? await transport.createSession({ resumeFrom, continueConversationID })
+        : await streamRequest<Session>('/api/v1/streams', 'POST', {
+            settings: settings(),
+            ...(resumeFrom ? { resume_from: resumeFrom } : {}),
+            ...(continueConversationID ? { continue_conversation_id: continueConversationID } : {}),
+          })
       if (binding !== epoch || disposed) {
-        await request(`/api/v1/streams/${encodeURIComponent(result.id)}`, 'DELETE').catch(
+        await streamRequest(`/api/v1/streams/${encodeURIComponent(result.id)}`, 'DELETE').catch(
           () => undefined,
         )
         return
@@ -398,7 +437,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       const stream = new MediaStream()
       media.value = stream
       peer.ontrack = ({ track }) => {
-        if (binding !== epoch) return
+        if (binding !== epoch || navigationBlocked || !presentationActive) return track.stop()
         if (!stream.getTrackById(track.id)) {
           stream.addTrack(track)
           // addTrack() does not dispatch addtrack for manually assembled streams.
@@ -424,6 +463,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
       connection.onopen = () => {
         if (binding !== epoch) return connection.close()
         send('authenticate', { ticket: result.ticket })
+        if (navigationBlocked) {
+          sendSuspension()
+          return
+        }
         if (restored) {
           // Stop recognition/obsolete output on the surviving server channel;
           // reattachment does not submit any speech or model work.
@@ -436,6 +479,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
       connection.onmessage = (event) => received(event, binding)
       connection.onclose = () => {
         if (binding !== epoch) return
+        if (suspending.value) return failSuspension()
         recover(binding)
       }
       connectionTimer = setTimeout(
@@ -444,8 +488,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
       )
     } catch (failure) {
       if (binding === epoch) {
+        if (suspending.value) return failSuspension()
         if (resumeFrom) {
           pausedID = resumeFrom
+          navigationPaused.value = resumedNavigation
           state.value = 'paused'
           connecting.value = false
           error.value =
@@ -481,6 +527,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
     amount?: number,
     repetitions?: number,
   ) {
+    if (!presentationActive || navigationBlocked) return false
     const commandID = crypto.randomUUID()
     if (
       !send(
@@ -519,6 +566,59 @@ export function useRemoteStream(settings: () => StreamSettings) {
     pending.value = speaking.value = false
   }
 
+  function settleSuspension(success: boolean) {
+    clearTimeout(suspensionTimer)
+    suspending.value = false
+    finishSuspension?.(success)
+    finishSuspension = undefined
+    suspension = undefined
+  }
+
+  function failSuspension() {
+    settleSuspension(false)
+    detach()
+    id.value = ''
+    pausedID = ''
+    connecting.value = false
+    state.value = 'suspension-failed'
+    error.value =
+      'Your conversation could not be paused safely. Start a new conversation to reconnect.'
+  }
+
+  function sendSuspension() {
+    return send('command', { type: 'suspend', text: '' }, crypto.randomUUID())
+  }
+
+  // Keep the authenticated socket only until the persisted pause is confirmed.
+  // A cached transcript is never used as a substitute for a resumable server ID.
+  function suspendNavigation(): Promise<boolean> {
+    presentationActive = false
+    navigationBlocked = true
+    audioSuppressed.value = true
+    stopMicrophone()
+    clearTimeout(recoveryTimer)
+    clearTimeout(connectionTimer)
+    if (currentTurn.value) replaceTurn(currentTurn.value, { status: 'interrupted' })
+    currentTurn.value = ''
+    laughterBusy.value = pending.value = speaking.value = false
+    if (suspension) return suspension
+    if (state.value === 'paused') return Promise.resolve(true)
+    if (!id.value && !connecting.value) return Promise.resolve(false)
+    suspending.value = true
+    ready.value = false
+    suspension = new Promise<boolean>((resolve) => {
+      finishSuspension = resolve
+    })
+    suspensionTimer = setTimeout(failSuspension, 10_000)
+    sendSuspension() // A connecting socket sends this immediately after authentication.
+    return suspension
+  }
+
+  function activatePresentation() {
+    presentationActive = true
+    // Continuation remains an explicit user action; this never reconnects.
+  }
+
   function detach() {
     laughterBusy.value = false
     epoch++
@@ -540,7 +640,10 @@ export function useRemoteStream(settings: () => StreamSettings) {
   }
 
   async function stop() {
+    settleSuspension(false)
     detach()
+    navigationBlocked = false
+    navigationPaused.value = false
     retry = 0
     connecting.value = false
     const previousID = id.value
@@ -551,7 +654,7 @@ export function useRemoteStream(settings: () => StreamSettings) {
     if (previousID) {
       const previous = releasing
       releasing = previous
-        .then(() => request(`/api/v1/streams/${encodeURIComponent(previousID)}`, 'DELETE'))
+        .then(() => streamRequest(`/api/v1/streams/${encodeURIComponent(previousID)}`, 'DELETE'))
         .then(
           () => undefined,
           () => undefined,
@@ -586,6 +689,8 @@ export function useRemoteStream(settings: () => StreamSettings) {
     turns,
     status,
     currentTurn,
+    conversationId,
+    conversationRevision,
     startingMicrophone,
     microphone: microphone.active,
     inputLevel: microphone.inputLevel,
@@ -595,5 +700,9 @@ export function useRemoteStream(settings: () => StreamSettings) {
     stop,
     toggleMicrophone,
     stopMicrophone,
+    suspendNavigation,
+    activatePresentation,
+    suspending,
+    navigationPaused,
   }
 }

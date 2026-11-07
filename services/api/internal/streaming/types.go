@@ -14,14 +14,22 @@ import (
 type ResolveFunc func(http.ResponseWriter, *http.Request, bool) (accounts.Principal, error)
 
 type Config struct {
-	LaunchClient      *http.Client
-	WorkerToken       string
-	MaximumSessions   int
-	PackageHash       string
-	ValidatePrincipal func(context.Context, accounts.Principal) error
-	ResolveCharacter  func(context.Context, string, string) (string, error)
-	Admission         AdmissionConfig
-	DisableTimeLimits bool
+	LaunchClient            *http.Client
+	WorkerToken             string
+	MaximumSessions         int
+	PackageHash             string
+	ValidatePrincipal       func(context.Context, accounts.Principal) error
+	ResolveCharacter        func(context.Context, string, string) (string, error)
+	Admission               AdmissionConfig
+	DisableTimeLimits       bool
+	ResolveIntegration      func(context.Context, accounts.Principal, string) (accounts.PublishedIntegration, error)
+	ResolveWidget           func(context.Context, string) (accounts.PublishedIntegration, error)
+	TurnstileSiteKey        string
+	VerifyWidgetChallenge   func(context.Context, string, string, string) error
+	ReserveIntegrationUsage func(context.Context, string, string, string) (time.Time, error)
+	StartIntegrationUsage   func(context.Context, string) error
+	RenewIntegrationUsage   func(context.Context, string) (time.Time, error)
+	ReleaseIntegrationUsage func(context.Context, string) error
 }
 
 // Envelope never contains provider credentials. Conversation audio exists only
@@ -49,6 +57,7 @@ type SessionResponse struct {
 	ICEServers        []rendercontract.ICEServer `json:"ice_servers,omitempty"`
 	ID                string                     `json:"id"`
 	Ticket            string                     `json:"ticket,omitempty"`
+	Capability        string                     `json:"capability,omitempty"`
 	State             string                     `json:"state"`
 	Configured        bool                       `json:"configured"`
 	SpeechConfigured  bool                       `json:"speech_configured"`
@@ -65,6 +74,10 @@ type commandResult struct {
 }
 
 type streamSession struct {
+	capabilities            map[string]bool
+	capabilityHash          [32]byte
+	usageStarted            bool
+	nextUsageRenewal        time.Time
 	packageHash             string
 	basicCharacter          bool
 	moodCheckpoint          *rendercontract.MoodCheckpoint

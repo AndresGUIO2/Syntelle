@@ -1,10 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, shallowRef } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onScopeDispose,
+  shallowRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
+import AppIcon from '../../components/AppIcon.vue'
 import { useLocaleStore } from '../../stores/locale'
+import SectionNavigation from '../navigation/SectionNavigation.vue'
+import WorkspaceCreation from './WorkspaceCreation.vue'
 import { useWorkspaces, type Section, type WorkspaceRole } from './useWorkspaces'
 const { t } = useLocaleStore()
+const props = withDefaults(
+  defineProps<{
+    conversationHref?: string
+    workspaceId?: string
+    embedded?: boolean
+    initialSection?: Section
+  }>(),
+  { conversationHref: '/', workspaceId: undefined, initialSection: undefined },
+)
+defineEmits<{ navigate: [event: MouseEvent] }>()
 const state = useWorkspaces()
-const newName = shallowRef('')
+const initialized = shallowRef(false)
+const creationOpen = shallowRef(false)
+const creating = shallowRef(false)
+const creationError = shallowRef('')
+const creationDialog = useTemplateRef<HTMLDialogElement>('creationDialog')
+const createTrigger = useTemplateRef<HTMLButtonElement>('createTrigger')
+const workspacePicker = useTemplateRef<HTMLSelectElement>('workspacePicker')
 const email = shallowRef('')
 const inviteRole = shallowRef<WorkspaceRole>('editor')
 const keyName = shallowRef('')
@@ -21,13 +48,59 @@ const sections = computed<Section[]>(() => {
   if (state.manage.value) base.splice(2, 0, 'integrations', 'team', 'activity')
   return base
 })
+const sectionLabels: Record<Section, string> = {
+  overview: 'Overview',
+  characters: 'Shared settings',
+  integrations: 'Integrations',
+  team: 'Team',
+  activity: 'Activity',
+  usage: 'Usage',
+  billing: 'Billing',
+}
+const sectionItems = computed(() =>
+  sections.value.map((value) => ({ value, label: t(sectionLabels[value]) })),
+)
+function selectSection(value: string) {
+  if (sections.value.includes(value as Section)) state.section.value = value as Section
+}
 const pendingInvite = shallowRef(new URLSearchParams(location.search).get('invite') ?? '')
 const pendingTransfer = shallowRef(new URLSearchParams(location.search).get('transfer') ?? '')
-onMounted(() => {
-  void state.refresh()
+onMounted(async () => {
+  await state.refresh()
+  if (props.workspaceId) await state.select(props.workspaceId)
+  if (props.initialSection) state.section.value = props.initialSection
+  initialized.value = true
 })
-function create() {
-  if (newName.value.trim()) void state.create(newName.value.trim())
+watch(
+  [creationOpen, creationDialog],
+  ([open, dialog]) => {
+    if (open && dialog && !dialog.open) dialog.showModal()
+    else if (!open && dialog?.open) dialog.close()
+  },
+  { flush: 'post' },
+)
+onScopeDispose(() => creationDialog.value?.close())
+function openCreation() {
+  creationError.value = ''
+  creationOpen.value = true
+}
+function closeCreation() {
+  if (creating.value) return
+  creationOpen.value = false
+  void nextTick(() => createTrigger.value?.focus())
+}
+async function create(name: string) {
+  if (creating.value) return
+  creating.value = true
+  creationError.value = ''
+  await state.create(name)
+  creating.value = false
+  if (state.error.value) creationError.value = state.error.value
+  else {
+    creationOpen.value = false
+    await nextTick()
+    workspacePicker.value?.focus()
+  }
 }
 function invite() {
   if (email.value.trim()) void state.invite(email.value.trim(), inviteRole.value)
@@ -60,66 +133,71 @@ function createCredential() {
 </script>
 
 <template>
-  <section class="workspace-panel" :aria-label="t('Workspaces')">
-    <header class="panel-heading">
+  <section
+    class="workspace-panel"
+    :class="{ 'empty-state': initialized && !state.items.value.length && !embedded }"
+    :aria-label="t('Workspaces')"
+  >
+    <header v-if="!embedded" class="panel-heading">
       <div>
-        <p class="eyebrow">Syntelle</p>
         <h1>{{ t('Workspaces') }}</h1>
-        <p>{{ t('Manage your team and shared character settings.') }}</p>
+        <p>{{ t('Shared settings and team access, in one place.') }}</p>
       </div>
-      <a href="/">{{ t('Back to conversation') }}</a>
     </header>
-    <p v-if="state.error.value" class="message error" role="alert">{{ t(state.error.value) }}</p>
-    <p v-if="state.loading.value" class="message" role="status">{{ t('Loading…') }}</p>
-    <div v-if="pendingInvite" class="card">
+    <p v-if="state.error.value && !creationError" class="message error" role="alert">
+      {{ t(state.error.value) }}
+    </p>
+    <p v-if="!initialized" class="message" role="status">{{ t('Loading…') }}</p>
+    <div v-if="pendingInvite" class="invitation">
       <h2>{{ t('Workspace invitation') }}</h2>
       <button type="button" @click="acceptInvite">
         {{ t('Accept invitation') }}
       </button>
     </div>
-    <div v-if="pendingTransfer" class="card">
+    <div v-if="pendingTransfer" class="invitation">
       <h2>{{ t('Ownership invitation') }}</h2>
       <button type="button" @click="acceptOwnership">
         {{ t('Accept ownership') }}
       </button>
     </div>
-    <form class="card new-workspace" @submit.prevent="create">
-      <label for="workspace-name">{{ t('Create a workspace') }}</label>
-      <input
-        id="workspace-name"
-        v-model="newName"
-        maxlength="100"
-        required
-        :placeholder="t('Team or business name')"
-      />
-      <button type="submit" :disabled="state.loading.value">{{ t('Create') }}</button>
-    </form>
+    <div v-if="initialized && !state.items.value.length" class="empty-workspace">
+      <WorkspaceCreation :busy="creating" :error="creationError" @create="create" />
+    </div>
     <template v-if="state.items.value.length">
-      <div class="card selector">
-        <label for="active-workspace">{{ t('Active workspace') }}</label>
-        <select
-          id="active-workspace"
-          :value="state.selectedId.value"
-          @change="state.select(($event.target as HTMLSelectElement).value)"
+      <div v-if="!embedded" class="workspace-toolbar">
+        <div class="selector">
+          <label for="active-workspace">{{ t('Active workspace') }}</label>
+          <div class="workspace-choice">
+            <select
+              id="active-workspace"
+              ref="workspacePicker"
+              :value="state.selectedId.value"
+              @change="state.select(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="item in state.items.value" :key="item.id" :value="item.id">
+                {{ item.name }}
+              </option>
+            </select>
+            <span v-if="state.selected.value" class="role">{{ t(state.selected.value.role) }}</span>
+          </div>
+        </div>
+        <button
+          ref="createTrigger"
+          class="new-workspace-button"
+          type="button"
+          @click="openCreation"
         >
-          <option v-for="item in state.items.value" :key="item.id" :value="item.id">
-            {{ item.name }}
-          </option>
-        </select>
-        <span v-if="state.selected.value" class="role">{{ t(state.selected.value.role) }}</span>
+          <AppIcon name="plus" />{{ t('New workspace') }}
+        </button>
       </div>
-      <div v-if="state.selected.value" class="details">
-        <nav class="tabs" :aria-label="t('Workspace sections')">
-          <button
-            v-for="item in sections"
-            :key="item"
-            type="button"
-            :aria-current="state.section.value === item ? 'page' : undefined"
-            @click="state.section.value = item"
-          >
-            {{ t(item === 'characters' ? 'Shared settings' : item) }}
-          </button>
-        </nav>
+      <div v-if="state.selected.value" class="details" :class="{ embedded }">
+        <SectionNavigation
+          v-if="!embedded"
+          :label="t('Workspace sections')"
+          :items="sectionItems"
+          :selected="state.section.value"
+          @select="selectSection"
+        />
         <section v-if="state.section.value === 'overview'" class="card">
           <h2>{{ state.selected.value.name }}</h2>
           <p v-if="state.selected.value.suspended" class="message error">
@@ -190,51 +268,62 @@ function createCredential() {
           </ul>
         </section>
         <section v-else-if="state.section.value === 'team' && state.manage.value" class="card">
-          <h2>{{ t('Team') }}</h2>
-          <ul class="entries">
-            <li v-for="person in state.members.value" :key="person.account_id">
-              <span>{{ person.email }} · {{ t(person.role) }}</span
-              ><select
-                v-if="state.selected.value.role === 'owner' && person.role !== 'owner'"
-                :value="person.role"
-                :aria-label="t('Role for {email}', { email: person.email })"
-                @change="
-                  state.memberChange(
-                    person.account_id,
-                    ($event.target as HTMLSelectElement).value as WorkspaceRole,
-                  )
-                "
-              >
-                <option value="administrator">{{ t('administrator') }}</option>
-                <option value="editor">{{ t('editor') }}</option>
-                <option value="billing">{{ t('billing') }}</option></select
-              ><button
-                v-if="
-                  person.role === 'editor' ||
-                  (state.selected.value.role === 'owner' && person.role !== 'owner')
-                "
-                type="button"
-                @click="state.memberChange(person.account_id)"
-              >
-                {{ t('Remove') }}
-              </button>
+          <h2 v-if="!embedded">{{ t('Team') }}</h2>
+          <ul class="entries members">
+            <li v-for="person in state.members.value" :key="person.account_id" class="member-item">
+              <div class="member-identity">
+                <strong>{{ person.name || person.email }}</strong
+                ><small v-if="person.name">{{ person.email }}</small>
+              </div>
+              <div class="member-actions">
+                <select
+                  v-if="state.selected.value.role === 'owner' && person.role !== 'owner'"
+                  :value="person.role"
+                  :aria-label="t('Role for {email}', { email: person.email })"
+                  @change="
+                    state.memberChange(
+                      person.account_id,
+                      ($event.target as HTMLSelectElement).value as WorkspaceRole,
+                    )
+                  "
+                >
+                  <option value="administrator">{{ t('administrator') }}</option>
+                  <option value="editor">{{ t('editor') }}</option>
+                  <option value="billing">{{ t('billing') }}</option></select
+                ><span v-else class="role">{{ t(person.role) }}</span
+                ><button
+                  v-if="
+                    person.role === 'editor' ||
+                    (state.selected.value.role === 'owner' && person.role !== 'owner')
+                  "
+                  type="button"
+                  @click="state.memberChange(person.account_id)"
+                >
+                  {{ t('Remove') }}
+                </button>
+              </div>
             </li>
           </ul>
-          <form class="row" @submit.prevent="invite">
-            <input
-              v-model="email"
-              type="email"
-              required
-              :aria-label="t('Invite by email')"
-              :placeholder="t('Invite by email')"
-            /><select v-model="inviteRole" :aria-label="t('Role')">
-              <option value="editor">{{ t('editor') }}</option>
-              <option v-if="state.selected.value.role === 'owner'" value="administrator">
-                {{ t('administrator') }}
-              </option>
-              <option v-if="state.selected.value.role === 'owner'" value="billing">
-                {{ t('billing') }}
-              </option></select
+          <form class="invite-form" @submit.prevent="invite">
+            <label class="invite-email"
+              >{{ t('Invite by email')
+              }}<input
+                v-model="email"
+                type="email"
+                required
+                :aria-label="t('Invite by email')"
+                :placeholder="t('Invite by email')" /></label
+            ><label
+              >{{ t('Role')
+              }}<select v-model="inviteRole" :aria-label="t('Role')">
+                <option value="editor">{{ t('editor') }}</option>
+                <option v-if="state.selected.value.role === 'owner'" value="administrator">
+                  {{ t('administrator') }}
+                </option>
+                <option v-if="state.selected.value.role === 'owner'" value="billing">
+                  {{ t('billing') }}
+                </option>
+              </select></label
             ><button type="submit">{{ t('Create invitation') }}</button>
           </form>
           <p v-if="state.invitation.value" class="secret">
@@ -287,16 +376,38 @@ function createCredential() {
         </section>
       </div>
     </template>
+    <dialog
+      ref="creationDialog"
+      class="creation-dialog"
+      :aria-label="t('Create workspace')"
+      @cancel.prevent="closeCreation"
+      @close="creationOpen = false"
+      @click="$event.target === creationDialog && closeCreation()"
+    >
+      <WorkspaceCreation
+        v-if="creationOpen"
+        :busy="creating"
+        :error="creationError"
+        dismissible
+        @create="create"
+        @cancel="closeCreation"
+      />
+    </dialog>
   </section>
 </template>
 
 <style scoped>
 .workspace-panel {
   display: grid;
-  gap: 1rem;
-  max-width: 1050px;
-  margin: 0 auto;
+  gap: 28px;
+  width: 100%;
+  max-width: 1184px;
+  min-width: 0;
+  margin: 0;
   color: var(--text);
+}
+.workspace-panel.empty-state {
+  max-width: 520px;
 }
 .panel-heading {
   display: flex;
@@ -305,69 +416,205 @@ function createCredential() {
   gap: 1rem;
 }
 .panel-heading h1 {
-  font-size: clamp(1.8rem, 3vw, 2.5rem);
-  margin: 0.2rem 0;
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -0.8px;
+  line-height: 1.25;
+  margin: 0;
 }
-.eyebrow {
+.panel-heading > div > p:last-child {
+  margin: 8px 0 0;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.72rem;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.empty-workspace {
+  width: min(100%, 520px);
+  margin: 8px 0 32px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px var(--divider),
+    0 8px 28px rgb(0 0 0 / 0.04);
+  box-sizing: border-box;
+}
+.creation-dialog {
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 0;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.25);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.creation-dialog::backdrop {
+  background: rgb(8 6 12 / 0.55);
+}
+.invitation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: var(--subtle);
+}
+.invitation h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.workspace-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--divider);
+}
+.workspace-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.new-workspace-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.new-workspace-button :deep(svg) {
+  width: 18px;
+  height: 18px;
+}
+.selector {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.selector label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.selector select {
+  width: 320px;
+  max-width: 100%;
+  font-weight: 600;
+  background: var(--surface);
+}
+.role {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--subtle);
+}
+.message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.message.error {
+  color: var(--error);
+}
+@media (min-width: 1024px) {
+  .card {
+    min-height: 190px;
+    border-left: 1px solid var(--divider);
+  }
+}
+.details {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  align-items: start;
+  gap: 32px;
 }
 .card {
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 18px;
-  padding: 1.25rem;
+  padding: 8px 0 24px 32px;
   display: grid;
-  gap: 0.8rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+  font-size: 14px;
+  min-width: 0;
 }
 .card h2,
 .card h3 {
   margin: 0;
+  font-weight: 600;
+}
+.card h2 {
+  font-size: 21px;
+  letter-spacing: -0.4px;
+}
+.card h3 {
+  font-size: 16px;
 }
 .card p {
   margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
-.new-workspace,
-.selector,
 .row {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.7rem;
 }
+.row > input,
+.row > select {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: min(520px, 100%);
+}
 input,
 select {
-  min-height: 40px;
+  min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.55rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border: 1px solid var(--control-border);
   border-radius: 10px;
   background: var(--page);
   color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
 }
 button {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0.5rem 0.8rem;
   border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 10px;
   background: var(--page);
   color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
   cursor: pointer;
 }
-button:hover,
-button[aria-current='page'] {
-  border-color: var(--accent);
+@media (hover: hover) {
+  button:hover {
+    border-color: var(--accent);
+  }
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 button:disabled {
   opacity: 0.5;
   cursor: default;
-}
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
 }
 .entries {
   padding: 0;
@@ -383,6 +630,66 @@ button:disabled {
   gap: 1rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  flex-wrap: wrap;
+}
+.entries li > span {
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+.entries .member-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+}
+.member-identity {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.member-identity strong {
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.member-identity small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.member-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.member-actions button {
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+}
+.invite-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.invite-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+.invite-form .invite-email {
+  flex: 1 1 260px;
+}
+.invite-form input {
+  width: 100%;
 }
 .secret {
   overflow-wrap: anywhere;
@@ -393,21 +700,83 @@ button:disabled {
   font-size: 0.8rem;
 }
 .message.error {
-  color: #a43562;
+  color: var(--error);
 }
 .transfer {
   display: grid;
   gap: 0.6rem;
   border-top: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  padding-top: 1rem;
+  padding-top: 24px;
+  margin-top: 16px;
+  width: 100%;
+  max-width: 640px;
+  justify-items: start;
+}
+.transfer > select,
+.transfer > .row {
+  width: 100%;
+}
+.transfer .row input {
+  max-width: 180px;
 }
 @media (max-width: 600px) {
   .panel-heading {
     flex-direction: column;
   }
-  .new-workspace input,
   .row input {
     flex: 1 1 180px;
   }
+  .workspace-panel {
+    gap: 24px;
+  }
+  .panel-heading h1 {
+    font-size: 28px;
+  }
+  .empty-workspace {
+    margin: 12px 0 24px;
+  }
+  .workspace-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+    padding-bottom: 22px;
+  }
+  .workspace-choice select {
+    min-width: 0;
+    flex: 1;
+    width: auto;
+  }
+  .new-workspace-button {
+    align-self: flex-start;
+  }
+  .invitation {
+    align-items: start;
+    flex-direction: column;
+  }
+  .invite-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .invite-form button {
+    justify-self: start;
+  }
+}
+@media (max-width: 1023px) {
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .card {
+    padding: 8px 0 24px;
+  }
+}
+.details.embedded {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.details.embedded .card {
+  padding: 0;
+  border: 0;
 }
 </style>

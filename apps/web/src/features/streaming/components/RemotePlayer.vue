@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { useLocaleStore } from '../../../stores/locale'
-import { computed, onMounted, onScopeDispose, shallowRef, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  onScopeDispose,
+  shallowRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import AppIcon from '../../../components/AppIcon.vue'
 import { useBackgroundVideo } from '../composables/useBackgroundVideo'
 import type { StreamSettings } from '../types'
@@ -28,7 +37,12 @@ watch(posterImage, () => {
 const video = useTemplateRef<HTMLVideoElement>('video')
 const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
 const pipVideo = useTemplateRef<HTMLVideoElement>('pipVideo')
-const composed = useBackgroundVideo({ settings: () => props, source: video, canvas })
+const active = shallowRef(true)
+const composed = useBackgroundVideo({
+  settings: () => ({ ...props, media: active.value ? props.media : null }),
+  source: video,
+  canvas,
+})
 const frameReady = shallowRef(false)
 const showVideo = computed(() => props.ready && frameReady.value && composed.ready.value)
 const muted = shallowRef(true)
@@ -63,7 +77,7 @@ function updatePictureInPicture() {
 }
 async function changePictureInPicture(automatic = false) {
   const element = pipVideo.value as SafariVideo | null
-  if (!element || !props.ready || pipPending.value) return
+  if (!active.value || !element || !props.ready || pipPending.value) return
   const alreadyOpen =
     document.pictureInPictureElement === element ||
     element.webkitPresentationMode === 'picture-in-picture'
@@ -79,6 +93,10 @@ async function changePictureInPicture(automatic = false) {
     else {
       element.srcObject = composed.captureForPictureInPicture()
       await element.play()
+      if (!active.value) {
+        leavePictureInPicture()
+        return
+      }
       if (document.pictureInPictureEnabled && element.requestPictureInPicture)
         await element.requestPictureInPicture()
       else if (
@@ -87,6 +105,10 @@ async function changePictureInPicture(automatic = false) {
       )
         element.webkitSetPresentationMode('picture-in-picture')
       else throw Error('Picture in picture is unavailable.')
+    }
+    if (!active.value) {
+      suspendPresentation()
+      return
     }
     updatePictureInPicture()
   } catch {
@@ -97,7 +119,8 @@ async function changePictureInPicture(automatic = false) {
     pipPending.value = false
   }
 }
-onMounted(() => {
+function registerAutomaticPip() {
+  if (autoPipRegistered) return
   try {
     navigator.mediaSession?.setActionHandler(autoPipAction, () => {
       void changePictureInPicture(true)
@@ -106,11 +129,19 @@ onMounted(() => {
   } catch {
     // Unsupported actions keep the manual video control available.
   }
-})
+}
+onMounted(registerAutomaticPip)
+function activatePresentation() {
+  active.value = true
+  registerAutomaticPip()
+}
+onActivated(activatePresentation)
+onDeactivated(suspendPresentation)
 watch([pipVideo, () => props.ready], updatePictureInPicture, { flush: 'post' })
 watch(
-  [video, () => props.media],
-  ([element, stream], _previous, onCleanup) => {
+  [video, () => props.media, active],
+  ([element, availableStream, visible], _previous, onCleanup) => {
+    const stream = visible ? availableStream : null
     frameReady.value = false
     if (!element) return
     element.srcObject = stream
@@ -150,7 +181,7 @@ watch(
 )
 async function enableAudio() {
   const element = video.value
-  if (!element) return
+  if (!active.value || !element) return
   const attempt = ++audioAttempt
   const stream = element.srcObject
   muted.value = false
@@ -188,9 +219,14 @@ function toggleAudio() {
   audioError.value = ''
   if (video.value) video.value.muted = true
 }
-onScopeDispose(() => {
+function suspendPresentation() {
+  active.value = false
   audioAttempt++
+  muted.value = true
+  if (video.value) video.value.muted = true
+  composed.stopCapture()
   if (autoPipRegistered) navigator.mediaSession.setActionHandler(autoPipAction, null)
+  autoPipRegistered = false
   if (pipVideo.value && document.pictureInPictureElement === pipVideo.value)
     void document.exitPictureInPicture().catch(() => undefined)
   const element = pipVideo.value as SafariVideo | null
@@ -204,8 +240,9 @@ onScopeDispose(() => {
     video.value.pause()
     video.value.srcObject = null
   }
-})
-defineExpose({ enableAudio })
+}
+onScopeDispose(suspendPresentation)
+defineExpose({ enableAudio, suspendPresentation, activatePresentation })
 </script>
 
 <template>
@@ -280,7 +317,7 @@ defineExpose({ enableAudio })
       <p v-if="audioError" class="audio-error" role="status">{{ t(audioError) }}</p>
       <p v-if="pipError" class="audio-error" role="status">{{ t(pipError) }}</p>
     </div>
-    <Teleport v-if="ready && controlsTarget" :to="controlsTarget">
+    <Teleport v-if="active && ready && controlsTarget" :to="controlsTarget">
       <div class="player-controls" role="group" :aria-label="t('Video controls')">
         <button
           v-if="ready"

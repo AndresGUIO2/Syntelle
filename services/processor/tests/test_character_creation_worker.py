@@ -10,7 +10,7 @@ from psycopg.rows import dict_row
 
 from app.core.paths import ROOT
 from app.workflows.characters.preparation import CreationError, build, digest, read
-from app.workflows.characters.worker import approval_for, funded_providers, run_once
+from app.workflows.characters.worker import approval_for, funded_providers, run_once, cleanup_packages
 
 
 def test_unrecognized_portrait_is_never_substituted(tmp_path):
@@ -53,6 +53,27 @@ def isolated_db():
                 yield conn,dsn
         finally:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name)))
+
+
+def test_published_package_survives_personal_deletion(isolated_db, tmp_path):
+    import json
+    conn, _ = isolated_db
+    packages = (tmp_path / "packages").resolve()
+    packages.mkdir()
+    package = packages / ("a" * 64)
+    package.mkdir()
+    (package / ".creation-managed.json").write_text(json.dumps({
+        "package_hash": package.name, "source_sha256": "b" * 64,
+    }))
+    # No personal source remains; a workspace publication owns the immutable
+    # prepared output, including after its public access has been revoked.
+    conn.execute("CREATE TABLE syntelle_accounts.publications (package_hash text)")
+    conn.execute("INSERT INTO syntelle_accounts.publications VALUES (%s)", (package.name,))
+    cleanup_packages(conn, packages)
+    assert package.is_dir()
+    conn.execute("DELETE FROM syntelle_accounts.publications")
+    cleanup_packages(conn, packages)
+    assert not package.exists()
 
 
 def test_claim_publish_expire_and_recover_without_provider_calls(isolated_db,tmp_path):
