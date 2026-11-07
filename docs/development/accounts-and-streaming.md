@@ -135,6 +135,14 @@ The phase-50 client fixes the stopped-video state reported after tab changes and
 
 Sign-in email now sends self-contained HTML plus the original text alternative. `internal/accounts/templates/sign-in.html` follows the graphite/violet palette, with an emphasized one-time code, expiry, safety guidance and system fonts. Tables and inline styles avoid a new rendering dependency. Dynamic content is escaped by Go's `html/template`. No remote images/fonts, links, scripts or template tracking resources are included; actual codes and rendered login bodies remain memory-only. Preview evidence in `.tools/email-template-51/` uses six placeholder bullets, never a real challenge. It is browser layout evidence, not a claim of identical rendering in every mail client. No additional email was sent during this change.
 
+### Administrative verification email correction (phase135)
+
+The owner reported that administrative codes arrived without the sign-in email's presentation. `SendPurposeCode` now uses the same embedded table/inline-style template, with purpose-specific heading, instructions, preheader and footer. Administration entry/grants and ownership transfer retain their existing subjects and privileged idempotency key. Sign-in copy and HTML remain equivalent to the preceding output, verified offline after normalizing line endings. Expiry, verification, delivery status, retries and access rules are unchanged.
+
+Provider-fixture tests inspect the actual outgoing JSON for all three privileged purposes, HTML/text alternatives, code emphasis, expiry, fixed recipient/envelope and rejection without retry. Escaping checks cover every purpose. Browser previews at 640px and 390px use placeholder bullets only, without sending an email. These are layout checks, not a Gmail/Outlook delivery qualification.
+
+Source, fixtures, placeholder previews, isolated build and rollback evidence are in `.tools/verification-email-135/`. Build from the preserved phase126 API/contracts plus the explicit email files, retaining the original runtime/Speech SDK and worker image/resources. The local API replacement reconnects the existing native worker with its captured settings. Do not rebuild the mixed native source or run an old experiment finalizer. Archive reviewed evidence using `app.audits.archive_preparation`; actual codes, email bodies, credentials and private account records must not enter evidence. The separate color previews remain unselected.
+
 Resend domain-level open/click tracking must remain disabled, separately from template content; see [Resend's domain settings](https://resend.com/docs/api-reference/domains/update-domain). The configured key returned 401 for a read-only domain lookup, so this run could not verify or alter that provider setting. No provider configuration was silently changed. The earlier owner-authorized plain-text test remains a separate delivery record.
 
 ### Stream workspace presentation

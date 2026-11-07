@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>Your Syntelle sign-in code</title>
+    <title>{{.Subject}}</title>
   </head>
   <body style="margin: 0; padding: 0; background-color: #f3f2f5; color: #24212b; font-family: Arial, Helvetica, sans-serif; -webkit-text-size-adjust: 100%">
-    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent">Your one-time sign-in code is valid for 10 minutes.</div>
+    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent">{{.Preheader}}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f3f2f5">
       <tr>
         <td align="center" style="padding: 40px 16px">
@@ -19,8 +19,8 @@
             </tr>
             <tr>
               <td style="padding: 36px 32px 32px">
-                <h1 style="margin: 0 0 16px; font-size: 26px; line-height: 34px; font-weight: 700; letter-spacing: -0.5px; color: #24212b">Your sign-in code</h1>
-                <p style="margin: 0 0 28px; font-size: 15px; line-height: 24px; color: #645e70">Enter this code in the Syntelle window where you requested it.</p>
+                <h1 style="margin: 0 0 16px; font-size: 26px; line-height: 34px; font-weight: 700; letter-spacing: -0.5px; color: #24212b">{{.Heading}}</h1>
+                <p style="margin: 0 0 28px; font-size: 15px; line-height: 24px; color: #645e70">{{.Instruction}}</p>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
                     <td align="center" style="padding: 24px 12px; background-color: #f3effb; border: 1px solid #e2d8f6; border-radius: 8px">
@@ -34,7 +34,7 @@
             </tr>
             <tr>
               <td style="padding: 20px 32px; border-top: 1px solid #e2dfe7; background-color: #fafaf9; border-radius: 0 0 11px 11px">
-                <p style="margin: 0; font-size: 12px; line-height: 19px; color: #645e70">Sent by Syntelle to help you sign in. No password required.</p>
+                <p style="margin: 0; font-size: 12px; line-height: 19px; color: #645e70">{{.Footer}}</p>
               </td>
             </tr>
           </table>

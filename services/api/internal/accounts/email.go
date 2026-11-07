@@ -31,12 +31,14 @@ type PurposeMailer interface {
 }
 
 func (m *ResendMailer) SendPurposeCode(ctx context.Context, email, code, challengeID, purpose string) (string, error) {
-	subject := "Your Syntelle administration code"
-	if purpose == "ownership_transfer" {
-		subject = "Your Syntelle ownership code"
+	message, err := renderVerificationEmail(code, purpose)
+	if err != nil {
+		return "", errors.New("email could not be prepared")
 	}
-	message := "Your Syntelle verification code is " + code + ". It expires in 10 minutes."
-	body, err := json.Marshal(map[string]any{"from": m.From, "to": []string{email}, "subject": subject, "text": message, "html": "<p>Your Syntelle verification code:</p><p><strong>" + code + "</strong></p><p>It expires in 10 minutes.</p>"})
+	body, err := json.Marshal(map[string]any{
+		"from": m.From, "to": []string{email}, "subject": message.Subject,
+		"text": message.Text, "html": message.HTML,
+	})
 	if err != nil {
 		return "", errors.New("email could not be prepared")
 	}
