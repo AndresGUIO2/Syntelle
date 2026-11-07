@@ -41,7 +41,7 @@ const { t } = useLocaleStore()
 }
 .brand-wordmark {
   width: fit-content;
-  color: #f3f0f7;
+  color: var(--navigation-text, #f3f0f7);
   font-size: 26px;
   line-height: 1.25;
   font-weight: 750;
@@ -49,10 +49,10 @@ const { t } = useLocaleStore()
   text-decoration: none;
 }
 .brand-wordmark span {
-  color: #bba3f5;
+  color: var(--navigation-accent, #bba3f5);
 }
 .brand-wordmark:focus-visible {
-  outline: 2px solid #bba3f5;
+  outline: 2px solid var(--navigation-accent, #bba3f5);
   outline-offset: 4px;
   border-radius: 3px;
 }
@@ -63,7 +63,7 @@ const { t } = useLocaleStore()
   min-width: 0;
 }
 .brand-by {
-  color: #bdb6c9;
+  color: var(--navigation-muted, #bdb6c9);
   font-size: 12px;
   line-height: 1;
   flex-shrink: 0;
@@ -96,7 +96,7 @@ const { t } = useLocaleStore()
 }
 .mobile .company-signature {
   padding-left: 12px;
-  border-left: 1px solid #494252;
+  border-left: 1px solid var(--navigation-edge, #494252);
   gap: 6px;
 }
 </style>

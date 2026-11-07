@@ -143,8 +143,8 @@ watch(
   z-index: 1;
   padding: 6px 9px;
   border-radius: 6px;
-  background: #fffffff0;
-  color: #26212d;
+  background: var(--portrait-ownership, #fffffff0);
+  color: var(--portrait-text, #26212d);
   font-size: 11px;
   font-weight: 600;
 }
@@ -199,8 +199,8 @@ watch(
   align-items: center;
   gap: 7px;
   padding: 6px 10px;
-  background: #15131bee;
-  color: #f3f0f7;
+  background: var(--portrait-status, #15131bee);
+  color: var(--portrait-text, #f3f0f7);
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.4;
@@ -212,10 +212,10 @@ watch(
   background: currentColor;
 }
 .character-status.ready > span {
-  background: #bba3f5;
+  background: var(--portrait-accent, #bba3f5);
 }
 .character-status.failed > span {
-  background: #ff9d95;
+  background: var(--portrait-error, #ff9d95);
 }
 .character-details {
   padding: 20px;

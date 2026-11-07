@@ -79,6 +79,7 @@ function applyTheme() {
   const choice = metadata.value?.appearance.theme ?? 'system'
   document.documentElement.dataset.theme =
     choice === 'system' ? (systemTheme.matches ? 'dark' : 'light') : choice
+  tellParent('theme-changed', { theme: document.documentElement.dataset.theme })
 }
 function stop() {
   startup?.abort()
@@ -115,6 +116,7 @@ function receive(event: MessageEvent) {
     floating.value = event.data.placement === 'floating'
     clearInterval(readyTimer)
     tellParent('initialized')
+    tellParent('theme-changed', { theme: document.documentElement.dataset.theme })
   } else if (parentOrigin.value && (event.data.type === 'close' || event.data.type === 'destroy'))
     stop()
 }
@@ -329,7 +331,7 @@ onScopeDispose(() => {
   background: var(--muted);
 }
 .live-dot.active {
-  background: var(--accent);
+  background: var(--primary, var(--accent));
 }
 .widget-stage {
   position: relative;
@@ -375,8 +377,8 @@ onScopeDispose(() => {
 .message-form button {
   border: 1px solid transparent;
   border-radius: 10px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--primary, var(--accent));
+  color: var(--on-primary, var(--on-accent));
   min-height: 44px;
   padding: 10px 18px;
   font-size: 14px;
@@ -384,6 +386,13 @@ onScopeDispose(() => {
 }
 .start-action:disabled {
   opacity: 0.5;
+}
+@media (hover: hover) {
+  .start-action:enabled:hover,
+  .mic-action:enabled:hover,
+  .message-form button:enabled:hover {
+    background: var(--widget-primary-hover, var(--accent));
+  }
 }
 .small-note {
   font-size: 12px !important;

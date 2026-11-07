@@ -40,8 +40,8 @@ const { t } = useLocaleStore()
   transform: rotate(180deg);
 }
 .gallery-sample {
-  --accent: #d5c2ff;
-  --primary-border: #a88bd0;
+  --accent: var(--portrait-accent, #d5c2ff);
+  --primary-border: var(--portrait-primary-border, #a88bd0);
   position: relative;
   isolation: isolate;
   display: flex;
@@ -52,8 +52,8 @@ const { t } = useLocaleStore()
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: 22px;
-  background: #1b1823;
-  color: #f8f6fc;
+  background: var(--portrait-ink, #1b1823);
+  color: var(--portrait-text, #f8f6fc);
   box-shadow:
     0 0 0 1px #ffffff14,
     0 4px 8px #15131b0a,
@@ -67,7 +67,13 @@ const { t } = useLocaleStore()
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, #1b182300 30%, #1b182330 48%, #1b1823ed 76%, #1b1823 100%);
+  background: linear-gradient(
+    180deg,
+    #1b182300 30%,
+    var(--portrait-fade-start, #1b182330) 48%,
+    var(--portrait-fade-end, #1b1823ed) 76%,
+    var(--portrait-ink, #1b1823) 100%
+  );
 }
 .sample-portrait img {
   position: absolute;
@@ -89,15 +95,15 @@ const { t } = useLocaleStore()
   padding: 7px 10px;
   border: 1px solid #ffffff26;
   border-radius: 100px;
-  color: #faf8ff;
-  background: #211c2be8;
+  color: var(--portrait-text, #faf8ff);
+  background: var(--portrait-label, #211c2be8);
   font-size: 11px;
   font-weight: 500;
 }
 .sample-label svg {
   width: 14px;
   height: 14px;
-  color: #d5c2ff;
+  color: var(--portrait-accent, #d5c2ff);
 }
 .sample-details {
   position: relative;
@@ -121,19 +127,19 @@ const { t } = useLocaleStore()
   gap: 7px;
   align-items: center;
   font-size: 12px;
-  color: #e0dce8;
+  color: var(--portrait-muted, #e0dce8);
   flex-shrink: 0;
 }
 .sample-ready > span {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #d5c2ff;
-  box-shadow: 0 0 0 4px #d5c2ff14;
+  background: var(--portrait-accent, #d5c2ff);
+  box-shadow: 0 0 0 4px var(--portrait-accent-wash, #d5c2ff14);
 }
 .sample-details p {
   margin: 10px 0 20px;
-  color: #e0dce8;
+  color: var(--portrait-muted, #e0dce8);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -154,7 +160,7 @@ const { t } = useLocaleStore()
   gap: 5px;
   min-width: 0;
   padding-inline: 2px;
-  color: #f1ecf8;
+  color: var(--portrait-text, #f1ecf8);
 }
 .sample-actions .console-button svg {
   width: 16px;

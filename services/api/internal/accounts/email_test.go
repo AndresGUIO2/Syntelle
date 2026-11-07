@@ -35,7 +35,7 @@ func TestResendPurposeCodeUsesStyledVerificationEmail(t *testing.T) {
 				if body.Subject != tc.subject || body.From != "Syntelle <login@example.test>" || len(body.To) != 1 || body.To[0] != "owner@example.test" {
 					t.Fatal("incorrect message envelope")
 				}
-				for _, required := range []string{tc.heading, "123456", "role=\"presentation\"", "background-color: #1c1b20", "letter-spacing: 7px", "Valid for 10 minutes", "One-time use", "Keep this code private"} {
+				for _, required := range []string{tc.heading, "123456", "role=\"presentation\"", "background-color: #1b2b3e", "letter-spacing: 7px", "Valid for 10 minutes", "One-time use", "Keep this code private"} {
 					if !strings.Contains(body.HTML, required) {
 						t.Fatalf("styled verification message missing %q", required)
 					}

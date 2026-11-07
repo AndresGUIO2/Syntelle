@@ -1,10 +1,31 @@
 # Syntelle brand and interface colors
 
-The owner selected Syntelle as the platform name and graphite with a soft violet accent as its palette. This replaces the earlier jade and ink direction. Both light and dark interface themes are required. Colors Studio is the company behind the product and retains its separate identity.
+The platform is Syntelle. Colors Studio is the company behind it and retains its original, separate identity. Both light and dark interface themes are required.
+
+## Current approved identity: night blue (phase136)
+
+The owner selected the Azul noche preview and approved consistent use across management, navigation, conversation, embedded widgets and verification-email headers. This section supersedes every earlier dark palette and the earlier restriction on conversation palette changes. The approved light interface and light email bodies stay unchanged. Original Colors Studio SVGs and character/source-image bytes are protected.
+
+| Dark role | Color |
+| --- | --- |
+| Canvas / panel | `#1B2B3E` / `#293F53` |
+| Raised / subtle surface | `#344F66` / `#23364A` |
+| Text / secondary text | `#F3F0EB` / `#BCC8D5` |
+| Link and focus / hover | `#BDC6E9` / `#DBE3FB` |
+| Primary button / hover | `#EEEAE2` / `#FFFFFF` |
+| Button label / boundary | `#28262D` / `#EEEAE2` |
+| Divider / essential boundary | `#4A6075` / `#9BAEC4` |
+| Error / warning | `#FFB2AA` / `#F2C064` |
+
+`apps/web/src/theme.css` owns these values and dark-only component roles. Navigation stays near-black `#0D1016`, with blue selected/hover/focus states. Use ivory primary actions throughout the dark interface, keeping accents separate from action fills. Derive photographic caption veils and decorative sheen from the shared palette without changing their opacity, source pixels or layout. Main text, secondary text, links and semantic text meet at least 4.5:1 on all four surfaces; essential boundaries meet 3:1. Retain the 1.2:1 dark canvas/navigation product floor.
+
+The dependency-free external widget loader mirrors only the colors needed by its shadow host; browser tests compare those values with the iframe's canonical CSS. Explicit light/dark choices remain authoritative and system changes synchronize both sides through the existing validated message channel. Theme changes never start media. Verification-email headers use the night canvas, ivory wordmark and blue accent; the existing light body and code treatment remain intact.
+
+The sections below preserve the earlier decisions and experiments for context. Their dark colors are historical, not implementation defaults.
 
 The colors below implement that direction. The final Syntelle logo is open; use a restrained typographic wordmark in mockups. Do not recolor or redesign the Colors Studio logos to stand in for the product identity.
 
-## Color roles
+## Historical base color roles
 
 | Role | Light theme | Dark theme |
 | --- | --- | --- |
@@ -21,7 +42,7 @@ The colors below implement that direction. The final Syntelle logo is open; use 
 | Error text and icon | `#B42318` | `#FF9D95` |
 | Warning text and icon | `#8A4B08` | `#F2C064` |
 
-Violet identifies primary actions, links, focus, and active controls. Keep large areas neutral: warm white in light mode and graphite in dark mode. Avoid tinting the entire interface with the accent. Use error and warning colors only for their respective states, accompanied by labels or icons. Decorative separators cannot replace essential control boundaries.
+The light interface retains its violet actions and accents. The current dark interface uses the night-blue roles above. Use error and warning colors only for their respective states, accompanied by labels or icons. Decorative separators cannot replace essential control boundaries.
 
 ## Contrast checks
 

@@ -363,7 +363,7 @@ defineExpose({ enableAudio, suspendPresentation, activatePresentation })
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: #19181b;
+  background: var(--player-background, #19181b);
   border: 1px solid var(--divider);
   border-radius: 16px;
   box-shadow: var(--panel-shadow);
@@ -424,9 +424,14 @@ defineExpose({ enableAudio, suspendPresentation, activatePresentation })
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 8% 8%, #f3f0f74d, transparent 42%),
-    radial-gradient(ellipse at 92% 90%, #bab4c53d, transparent 48%),
-    linear-gradient(140deg, #f3f0f721, #25232b26 56%, #bab4c52d);
+    radial-gradient(ellipse at 8% 8%, var(--player-sheen-high, #f3f0f74d), transparent 42%),
+    radial-gradient(ellipse at 92% 90%, var(--player-sheen-low, #bab4c53d), transparent 48%),
+    linear-gradient(
+      140deg,
+      var(--player-sheen-edge, #f3f0f721),
+      var(--player-sheen-middle, #25232b26) 56%,
+      var(--player-sheen-bottom, #bab4c52d)
+    );
 }
 .remote-stage-still .remote-poster img {
   filter: saturate(0.4) contrast(1.04) brightness(0.88);
@@ -438,10 +443,15 @@ defineExpose({ enableAudio, suspendPresentation, activatePresentation })
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 8% 8%, #f3f0f74d, transparent 42%),
-    radial-gradient(ellipse at 92% 90%, #bab4c53d, transparent 48%),
-    linear-gradient(140deg, #f3f0f721, #25232b26 56%, #bab4c52d);
-  box-shadow: inset 0 0 0 1px #f3f0f73d;
+    radial-gradient(ellipse at 8% 8%, var(--player-sheen-high, #f3f0f74d), transparent 42%),
+    radial-gradient(ellipse at 92% 90%, var(--player-sheen-low, #bab4c53d), transparent 48%),
+    linear-gradient(
+      140deg,
+      var(--player-sheen-edge, #f3f0f721),
+      var(--player-sheen-middle, #25232b26) 56%,
+      var(--player-sheen-bottom, #bab4c52d)
+    );
+  box-shadow: inset 0 0 0 1px var(--player-sheen-ring, #f3f0f73d);
 }
 @media (max-width: 899px) {
   .remote-backdrop {
@@ -556,7 +566,7 @@ defineExpose({ enableAudio, suspendPresentation, activatePresentation })
   margin: 0;
   padding: 8px 12px;
   border-radius: 6px;
-  background: #242226;
+  background: var(--player-empty, #242226);
   font-size: 12px;
   color: white;
   text-align: left;

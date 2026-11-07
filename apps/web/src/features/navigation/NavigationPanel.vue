@@ -245,14 +245,14 @@ const workspaceLinks = computed(() => [
 .navigation-panel {
   --page: #0d1016;
   --surface: #0d1016;
-  --surface-raised: #232733;
-  --subtle: #232733;
-  --text: #f3f0f7;
-  --muted: #b7bfce;
-  --accent: #bba3f5;
-  --on-accent: #21172f;
-  --divider: #2c303b;
-  --control-border: #857b94;
+  --surface-raised: var(--navigation-tooltip, #232733);
+  --subtle: var(--navigation-tooltip, #232733);
+  --text: var(--navigation-text, #f3f0f7);
+  --muted: var(--navigation-muted, #b7bfce);
+  --accent: var(--navigation-accent, #bba3f5);
+  --on-accent: var(--navigation-on-accent, #21172f);
+  --divider: var(--navigation-edge, #2c303b);
+  --control-border: var(--navigation-control-border, #857b94);
   color-scheme: dark;
   display: flex;
   flex-direction: column;
@@ -340,7 +340,7 @@ const workspaceLinks = computed(() => [
   border: 1px solid var(--control-border);
   border-radius: 8px;
   color: var(--text);
-  background: #1c202b;
+  background: var(--navigation-hover, #1c202b);
   font: inherit;
   font-size: 13px;
 }
@@ -369,7 +369,7 @@ const workspaceLinks = computed(() => [
   margin-top: 28px;
 }
 .test-navigation :deep(.nav-item:not([aria-current])) {
-  color: #bdb6c9;
+  color: var(--navigation-muted, #bdb6c9);
 }
 .panel-bottom {
   margin-top: auto;
@@ -402,8 +402,8 @@ const workspaceLinks = computed(() => [
   height: 34px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #393047;
-  color: #d5c4fb;
+  background: var(--navigation-selected, #393047);
+  color: var(--navigation-accent, #d5c4fb);
   font-size: 14px;
   font-weight: 650;
 }

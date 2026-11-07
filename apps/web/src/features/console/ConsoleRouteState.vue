@@ -65,4 +65,7 @@ const copy = computed(
   color: var(--muted);
   margin: 12px 0 24px;
 }
+.route-state p[role='alert'] {
+  color: var(--route-error, var(--muted));
+}
 </style>

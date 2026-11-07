@@ -332,7 +332,7 @@ onScopeDispose(() => {
   overscroll-behavior: contain;
 }
 .account-dialog::backdrop {
-  background: #08060db3;
+  background: var(--modal-backdrop, #08060db3);
 }
 .account-content {
   display: flex;

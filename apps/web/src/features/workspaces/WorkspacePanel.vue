@@ -452,7 +452,7 @@ function createCredential() {
   overscroll-behavior: contain;
 }
 .creation-dialog::backdrop {
-  background: rgb(8 6 12 / 0.55);
+  background: var(--workspace-backdrop, rgb(8 6 12 / 0.55));
 }
 .invitation {
   display: flex;

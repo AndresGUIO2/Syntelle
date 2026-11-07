@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import '@fontsource-variable/dm-sans'
+import './theme.css'
 import './styles.css'
 const embedded = /^\/embed\/([a-zA-Z0-9_-]+)\/?$/.exec(location.pathname)
 if (embedded) {

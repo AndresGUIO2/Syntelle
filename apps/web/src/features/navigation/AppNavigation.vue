@@ -273,9 +273,9 @@ onScopeDispose(() => {
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  border-bottom: 1px solid #494252;
+  border-bottom: 1px solid var(--navigation-edge, #494252);
   background: #0d1016;
-  color: #f3f0f7;
+  color: var(--navigation-text, #f3f0f7);
 }
 .drawer-trigger {
   display: grid;
@@ -287,11 +287,11 @@ onScopeDispose(() => {
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: #f3f0f7;
+  color: var(--navigation-text, #f3f0f7);
   cursor: pointer;
 }
 .drawer-trigger:focus-visible {
-  outline: 2px solid #bba3f5;
+  outline: 2px solid var(--navigation-accent, #bba3f5);
   outline-offset: 2px;
 }
 .mobile-drawer {
@@ -304,9 +304,9 @@ onScopeDispose(() => {
   height: 100dvh;
   max-height: none;
   border: 0;
-  border-right: 1px solid #494252;
+  border-right: 1px solid var(--navigation-edge, #494252);
   background: #0d1016;
-  color: #f3f0f7;
+  color: var(--navigation-text, #f3f0f7);
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: 12px 0 40px #0003;
@@ -316,7 +316,7 @@ onScopeDispose(() => {
 }
 @media (hover: hover) {
   .drawer-trigger:hover {
-    background: #292430;
+    background: var(--navigation-hover, #292430);
   }
 }
 @media (max-height: 620px) and (min-width: 1024px) {
@@ -351,15 +351,15 @@ onScopeDispose(() => {
   width: 2px;
   height: 36px;
   border-radius: 2px;
-  background: #857b94;
+  background: var(--navigation-control-border, #857b94);
 }
 .sidebar-resizer:focus-visible {
-  outline: 2px solid #bba3f5;
+  outline: 2px solid var(--navigation-accent, #bba3f5);
   outline-offset: -3px;
 }
 @media (hover: hover) {
   .sidebar-resizer:hover {
-    background: #bba3f540;
+    background: var(--navigation-resizer-hover, #bba3f540);
   }
 }
 </style>

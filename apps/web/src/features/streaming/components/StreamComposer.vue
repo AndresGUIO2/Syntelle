@@ -132,8 +132,8 @@ watch(
   padding: 0;
   border: 1px solid transparent;
   border-radius: 8px;
-  color: var(--on-accent);
-  background: var(--accent);
+  color: var(--on-primary, var(--on-accent));
+  background: var(--primary, var(--accent));
   cursor: pointer;
 }
 .send-action:disabled {
@@ -171,7 +171,7 @@ watch(
 }
 @media (hover: hover) {
   .send-action:enabled:hover {
-    background: var(--accent-hover);
+    background: var(--primary-hover, var(--accent-hover));
   }
   .return-action:hover {
     background: var(--subtle);

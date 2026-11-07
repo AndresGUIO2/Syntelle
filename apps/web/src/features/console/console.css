@@ -1,12 +1,12 @@
-/* Console and account surfaces are independent of the unchanged conversation player. */
+/* Console layout and light overrides; dark colors share the platform palette. */
 /* Theme ownership belongs to the complete frame, not its width-limited children. */
 .console-shell {
   --console-canvas: #f2f3f7;
   --console-panel: #ffffff;
 }
 [data-theme='dark'] .console-shell {
-  --console-canvas: #25262c;
-  --console-panel: #303139;
+  --console-canvas: var(--night-canvas);
+  --console-panel: var(--night-panel);
 }
 .console-content,
 .account-dialog {
@@ -28,24 +28,26 @@
 }
 [data-theme='dark'] .console-content,
 [data-theme='dark'] .account-dialog {
-  --page: #25262c;
-  --surface: #303139;
-  --surface-raised: #3a3b45;
-  --subtle: #2b2c34;
-  --text: #f3f0eb;
-  --muted: #bfbcc8;
-  --divider: #50505d;
-  --control-border: #9996a8;
-  --accent: #c4b3e2;
-  --accent-hover: #dfd2f3;
-  --on-accent: #25212d;
-  --primary: #eeeae2;
-  --primary-hover: #ffffff;
-  --primary-border: #eeeae2;
-  --on-primary: #28262d;
+  --error: var(--night-error);
+  --warning: var(--night-warning);
+  --page: var(--night-canvas);
+  --surface: var(--night-panel);
+  --surface-raised: var(--night-raised);
+  --subtle: var(--night-subtle);
+  --text: var(--night-text);
+  --muted: var(--night-muted);
+  --divider: var(--night-divider);
+  --control-border: var(--night-control-border);
+  --accent: var(--night-accent);
+  --accent-hover: var(--night-accent-hover);
+  --on-accent: var(--night-canvas);
+  --primary: var(--night-primary);
+  --primary-hover: var(--night-primary-hover);
+  --primary-border: var(--night-primary);
+  --on-primary: var(--night-on-primary);
 }
 [data-theme='dark'] .console-content .gallery-sample {
-  --primary-border: var(--primary);
+  --primary-border: var(--night-primary);
 }
 .console-content {
   background: var(--page);
@@ -360,7 +362,7 @@
     0 24px 80px #0004;
 }
 .console-dialog::backdrop {
-  background: #09070db3;
+  background: var(--modal-backdrop, #09070db3);
 }
 .console-dialog h2 {
   margin: 0 0 10px;

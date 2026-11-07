@@ -70,7 +70,12 @@ test.afterAll(async () => {
 async function fixture(
   page: Page,
   pixels: boolean,
-  options: { slowChallenge?: boolean; denied?: boolean; spanish?: boolean } = {},
+  options: {
+    slowChallenge?: boolean
+    denied?: boolean
+    spanish?: boolean
+    theme?: 'system' | 'light' | 'dark'
+  } = {},
 ) {
   const starts: Record<string, unknown>[] = [],
     deletes: string[] = []
@@ -175,6 +180,7 @@ async function fixture(
     requests.push({ path, cookie: headers.cookie, auth: headers.authorization })
     if (path === `/api/v1/widgets/${id}`) {
       const data = metadata()
+      if (options.theme) data.appearance.theme = options.theme
       if (options.spanish) {
         data.appearance.language = 'es-CO'
         data.appearance.launcher_label = 'Hablar con Syntelle'
@@ -258,30 +264,28 @@ test('floating widget requires explicit Start, uses scoped capability and releas
     )
     .toBeGreaterThan(0)
   await player.locator('picture img').evaluate((image: HTMLImageElement) => image.decode())
-  await test
-    .info()
-    .attach('portrait-layout.json', {
-      body: JSON.stringify(
-        await player
-          .locator('.widget-stage,.remote-stage,.remote-media,.remote-poster,.remote-poster img')
-          .evaluateAll((elements) =>
-            elements.map((element) => ({
-              name: element.className || element.tagName,
-              rect: element.getBoundingClientRect().toJSON(),
-              style: {
-                position: getComputedStyle(element).position,
-                height: getComputedStyle(element).height,
-                width: getComputedStyle(element).width,
-                display: getComputedStyle(element).display,
-                opacity: getComputedStyle(element).opacity,
-              },
-            })),
-          ),
-        null,
-        2,
-      ),
-      contentType: 'application/json',
-    })
+  await test.info().attach('portrait-layout.json', {
+    body: JSON.stringify(
+      await player
+        .locator('.widget-stage,.remote-stage,.remote-media,.remote-poster,.remote-poster img')
+        .evaluateAll((elements) =>
+          elements.map((element) => ({
+            name: element.className || element.tagName,
+            rect: element.getBoundingClientRect().toJSON(),
+            style: {
+              position: getComputedStyle(element).position,
+              height: getComputedStyle(element).height,
+              width: getComputedStyle(element).width,
+              display: getComputedStyle(element).display,
+              opacity: getComputedStyle(element).opacity,
+            },
+          })),
+        ),
+      null,
+      2,
+    ),
+    contentType: 'application/json',
+  })
   await page.screenshot({ path: test.info().outputPath('floating-before-start.png') })
   await player.getByRole('button', { name: 'Talk with Syntelle', exact: true }).click()
   await expect(player.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible()
@@ -385,3 +389,128 @@ test('quota refusal stays in the widget and never falls back to personal or demo
   expect(state.commands).toEqual([])
   expect(state.unexpected).toEqual([])
 })
+
+for (const theme of ['system', 'light', 'dark'] as const) {
+  for (const mode of ['inline', 'floating'] as const) {
+    test(`night theme stays synchronized for ${theme} ${mode} without starting media`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await page.addInitScript(() => {
+        window.addEventListener('message', (event) => {
+          if (event.data?.type === 'ready' && event.data?.channel === 'syntelle-widget-v1')
+            (window as Window & { themeReviewNonce?: string }).themeReviewNonce = event.data.nonce
+        })
+      })
+      const state = await fixture(page, false, { theme })
+      await page.goto(mode === 'floating' ? `${customerOrigin}/floating` : customerOrigin)
+      const host = page.locator('[data-syntelle-widget]')
+      const frame = page.frameLocator('iframe')
+      const initial = theme === 'light' ? 'light' : 'dark'
+      await expect(host).toHaveAttribute('data-syntelle-theme', initial)
+      if (mode === 'floating')
+        await page.getByRole('button', { name: 'Talk with Syntelle', exact: true }).click()
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', initial)
+      if (initial === 'dark') {
+        await expect(frame.locator('.start-action')).toHaveCSS(
+          'background-color',
+          'rgb(238, 234, 226)',
+        )
+        const mirrors = await frame.locator('html').evaluate((element) => {
+          const style = getComputedStyle(element)
+          return Object.fromEntries(
+            ['panel', 'text', 'divider', 'primary', 'primary-hover', 'on-primary', 'accent'].map(
+              (name) => [name, style.getPropertyValue(`--night-${name}`).trim()],
+            ),
+          )
+        })
+        const hostColors = await host.evaluate((element) => {
+          const style = (element as HTMLElement).style
+          return Object.fromEntries(
+            ['surface', 'text', 'border', 'primary', 'primaryHover', 'onPrimary', 'accent'].map(
+              (name) => [name, style.getPropertyValue(`--syntelle-widget-${name}`).trim()],
+            ),
+          )
+        })
+        expect(hostColors).toEqual({
+          surface: mirrors.panel,
+          text: mirrors.text,
+          border: mirrors.divider,
+          primary: mirrors.primary,
+          primaryHover: mirrors['primary-hover'],
+          onPrimary: mirrors['on-primary'],
+          accent: mirrors.accent,
+        })
+      }
+      await page.emulateMedia({ colorScheme: 'light' })
+      const next = theme === 'system' ? 'light' : initial
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', next)
+      await expect(host).toHaveAttribute('data-syntelle-theme', next)
+      const nonce = await page.evaluate(
+        () => (window as Window & { themeReviewNonce?: string }).themeReviewNonce,
+      )
+      const player = page.frames().find((item) => item.url().includes('/embed/'))!
+      const forgedTheme = next === 'dark' ? 'light' : 'dark'
+      await player.evaluate(
+        ({ origin, forgedTheme }) =>
+          window.parent.postMessage(
+            {
+              channel: 'syntelle-widget-v1',
+              type: 'theme-changed',
+              nonce: 'forged',
+              theme: forgedTheme,
+            },
+            origin,
+          ),
+        { origin: customerOrigin, forgedTheme },
+      )
+      await expect(host).toHaveAttribute('data-syntelle-theme', next)
+      await player.evaluate(
+        ({ origin, nonce }) =>
+          window.parent.postMessage(
+            { channel: 'syntelle-widget-v1', type: 'theme-changed', nonce, theme: 'invalid' },
+            origin,
+          ),
+        { origin: customerOrigin, nonce },
+      )
+      await expect(host).toHaveAttribute('data-syntelle-theme', next)
+      await page.evaluate(
+        ({ nonce, forgedTheme }) =>
+          window.postMessage(
+            { channel: 'syntelle-widget-v1', type: 'theme-changed', nonce, theme: forgedTheme },
+            '*',
+          ),
+        { nonce, forgedTheme },
+      )
+      await expect(host).toHaveAttribute('data-syntelle-theme', next)
+      await page.evaluate(
+        ({ nonce, forgedTheme }) => {
+          const iframe = document
+            .querySelector('[data-syntelle-widget]')!
+            .shadowRoot!.querySelector('iframe')!
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: iframe.contentWindow,
+              origin: 'https://forged.example',
+              data: {
+                channel: 'syntelle-widget-v1',
+                type: 'theme-changed',
+                nonce,
+                theme: forgedTheme,
+              },
+            }),
+          )
+        },
+        { nonce, forgedTheme },
+      )
+      await expect(host).toHaveAttribute('data-syntelle-theme', next)
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await expect(host).toHaveAttribute('data-syntelle-theme', initial)
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', initial)
+      await page.screenshot({ path: test.info().outputPath(`${theme}-${mode}.png`) })
+      expect(state.starts).toHaveLength(0)
+      expect(state.commands).toHaveLength(0)
+      expect(state.unexpected).toEqual([])
+    })
+  }
+}

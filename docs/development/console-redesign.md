@@ -1,6 +1,14 @@
 # Console and character creation
 
-## Historical neutral dark correction: phase133
+## Current shared identity: phase136
+
+The owner approved Azul noche for the full customer/staff interface, conversation, widget and email headers. Shared dark tokens are in `apps/web/src/theme.css`; public-source admission explicitly includes that file. Existing theme variables and local component roles reference those tokens, with unchanged light fallbacks. Dark navigation retains its near-black base and uses blue states; primary controls use ivory. Frozen trials, original logos, portraits, geometry, media clocks and renderer resources are preserved.
+
+The widget's optional `theme-changed` message carries only the resolved light/dark enum over the existing source/origin/channel/nonce boundary. It synchronizes the external frame and launcher at initialization and on system preference changes without session or microphone effects. The standalone loader mirrors a small fixed palette, checked against computed iframe tokens. The shared email header changes only its three brand colors; body/copy/verification/delivery behavior is unchanged.
+
+Evidence, original sources, failures, focused browser checks and rollback are `.tools/night-blue-136/`. Use fixtures and cached resources only. The email binary builds from preserved phase135 sources plus the header/test expectation changes, not the mixed native checkout. Local installation preserves web133/API135 rollback and reconnects the unchanged worker with captured settings. Archive this new evidence and verify restoration; never run a historical motion finalizer. Owner approval of the color direction does not establish physical-device or public-launch qualification.
+
+## Historical neutral dark correction: phase133 (superseded by phase136)
 
 The owner rejected phase132's purple background and primary action. Dark console/account surfaces now use deeper neutral graphite with ivory primary buttons and dark labels. Violet is limited to small accents. Sample-card actions receive the same neutral boundary; the approved light palette and rendered gallery remain unchanged.
 
@@ -10,7 +18,7 @@ Evidence and phase132 rollback are in `.tools/neutral-dark-133/`. Bounded review
 
 Archive with `python -m app.audits.finalize_console_redesign --experiment neutral-dark-133 --parent-snapshot 854`. Local installation changes only the web CSS. Keep owner acceptance and physical-device qualification pending.
 
-## Historical dark palette correction: phase132
+## Historical dark palette correction: phase132 (superseded by phase136)
 
 The owner approved the light-theme buttons and requested less gray in dark mode. Only dark console/account tokens change: indigo/plum canvas and panel layers replace the cool-gray surfaces, and primary actions use vivid violet `#8756E8` with white labels and a darker hover. The full frame shares the same canvas token. Sidebar, light-theme colors, card layout, portraits and conversation rendering retain their existing behavior.
 

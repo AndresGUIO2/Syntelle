@@ -351,8 +351,8 @@ onScopeDispose(() => {
   right: 12px;
   padding: 8px 12px;
   border-radius: 8px;
-  background: #15131be6;
-  color: #f3f0f7;
+  background: var(--portrait-upload, #15131be6);
+  color: var(--portrait-text, #f3f0f7);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -66,13 +66,13 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
   width: 48px;
   height: 48px;
   padding: 0;
-  color: #21192d;
+  color: var(--mic-text, #21192d);
   border: 1px solid var(--control-border);
   border-radius: 50%;
-  background: linear-gradient(145deg, #fff 25%, #f8f5ff);
+  background: var(--mic-background, linear-gradient(145deg, #fff 25%, #f8f5ff));
   box-shadow:
     0 6px 18px #22103926,
-    0 0 24px #a17be847,
+    0 0 24px var(--mic-glow, #a17be847),
     inset 0 2px 1px #fff;
 }
 .microphone-button .conversation-icon {
@@ -88,17 +88,17 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
   box-shadow: none;
 }
 [data-capture='false']:not([data-state='starting']) .microphone-button:enabled {
-  color: #6d4bd0;
-  background: #f8f5ff;
-  box-shadow: 0 4px 16px #6d4bd038;
+  color: var(--mic-text, #6d4bd0);
+  background: var(--mic-background, #f8f5ff);
+  box-shadow: 0 4px 16px var(--mic-glow, #6d4bd038);
 }
 [data-capture='false']:not([data-state='starting']) .microphone-halo {
   opacity: 0;
 }
 [data-capture='true'] .microphone-button {
-  color: #21192d;
-  background: #c4aaf5;
-  border-color: #c4aaf5;
+  color: var(--mic-text, #21192d);
+  background: var(--mic-background, #c4aaf5);
+  border-color: var(--mic-background, #c4aaf5);
 }
 .microphone-halo {
   position: absolute;
@@ -107,8 +107,8 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
   inset: -12px;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 28% 35%, #9b5be4a6, transparent 65%),
-    radial-gradient(ellipse at 75% 65%, #c1a3ff99, transparent 65%);
+    radial-gradient(ellipse at 28% 35%, var(--mic-halo-first, #9b5be4a6), transparent 65%),
+    radial-gradient(ellipse at 75% 65%, var(--mic-halo-second, #c1a3ff99), transparent 65%);
   mask-image: radial-gradient(closest-side, #000 50%, transparent 100%);
   opacity: 0.36;
 }
@@ -147,13 +147,13 @@ defineExpose({ focus: () => button.value?.focus({ preventScroll: true }) })
 }
 @media (hover: hover) {
   [data-capture='false'] .microphone-button:enabled:hover {
-    background: var(--subtle);
+    background: var(--mic-hover, var(--subtle));
   }
   [data-capture='true'] .microphone-button:enabled:hover {
-    background: #d1bdf7;
+    background: var(--mic-hover, #d1bdf7);
     box-shadow:
       0 6px 22px #22103933,
-      0 0 30px #a17be866,
+      0 0 30px var(--mic-glow-hover, #a17be866),
       inset 0 2px 1px #fff;
   }
 }

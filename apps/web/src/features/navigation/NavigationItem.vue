@@ -125,8 +125,8 @@ onScopeDispose(() => {
   overflow-wrap: anywhere;
 }
 .nav-item[aria-current='page'] {
-  background: #393047;
-  color: #f6f2ff;
+  background: var(--navigation-selected, #393047);
+  color: var(--navigation-text, #f6f2ff);
   font-weight: 650;
 }
 .nav-item[aria-current='page']::before {
@@ -137,13 +137,13 @@ onScopeDispose(() => {
   bottom: 12px;
   width: 3px;
   border-radius: 3px;
-  background: #bba3f5;
+  background: var(--navigation-accent, #bba3f5);
 }
 .nav-item[aria-current='page'] :deep(svg) {
-  color: #cbb8fa;
+  color: var(--navigation-accent, #cbb8fa);
 }
 .nav-item:focus-visible {
-  outline: 2px solid #bba3f5;
+  outline: 2px solid var(--navigation-accent, #bba3f5);
   outline-offset: 1px;
 }
 .compact {
@@ -156,10 +156,10 @@ onScopeDispose(() => {
   transform: translateY(-50%);
   max-width: 196px;
   padding: 9px 12px;
-  border: 1px solid #6f657d;
+  border: 1px solid var(--navigation-control-border, #6f657d);
   border-radius: 8px;
-  color: #f3f0f7;
-  background: #25212d;
+  color: var(--navigation-text, #f3f0f7);
+  background: var(--navigation-tooltip, #25212d);
   box-shadow: 0 6px 24px #0004;
   font:
     500 13px/1.4 'DM Sans Variable',
@@ -169,11 +169,11 @@ onScopeDispose(() => {
 }
 @media (hover: hover) {
   .nav-item:hover {
-    background: #292430;
-    color: #f3f0f7;
+    background: var(--navigation-hover, #292430);
+    color: var(--navigation-text, #f3f0f7);
   }
   .nav-item[aria-current='page']:hover {
-    background: #443951;
+    background: var(--navigation-selected-hover, #443951);
   }
 }
 @media (prefers-reduced-motion: no-preference) {

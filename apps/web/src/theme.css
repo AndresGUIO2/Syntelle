@@ -1,0 +1,89 @@
+/* Approved night-blue palette. Component fallbacks preserve the light theme. */
+:root {
+  --night-canvas: #1b2b3e;
+  --night-panel: #293f53;
+  --night-raised: #344f66;
+  --night-subtle: #23364a;
+  --night-text: #f3f0eb;
+  --night-muted: #bcc8d5;
+  --night-accent: #bdc6e9;
+  --night-accent-hover: #dbe3fb;
+  --night-primary: #eeeae2;
+  --night-primary-hover: #ffffff;
+  --night-on-primary: #28262d;
+  --night-divider: #4a6075;
+  --night-control-border: #9baec4;
+  --night-error: #ffb2aa;
+  --night-warning: #f2c064;
+}
+
+:root[data-theme='dark'] {
+  --navigation-accent: var(--night-accent);
+  --navigation-text: var(--night-text);
+  --navigation-muted: var(--night-muted);
+  --navigation-selected: var(--night-panel);
+  --navigation-hover: var(--night-canvas);
+  --navigation-selected-hover: var(--night-raised);
+  --navigation-edge: var(--night-divider);
+  --navigation-on-accent: var(--night-canvas);
+  --navigation-control-border: var(--night-control-border);
+  --navigation-tooltip: var(--night-subtle);
+  --route-error: var(--night-error);
+  --modal-backdrop: color-mix(in srgb, var(--night-canvas) 70.196078%, transparent);
+  --workspace-backdrop: color-mix(in srgb, var(--night-canvas) 55%, transparent);
+  --history-backdrop: color-mix(in srgb, var(--night-canvas) 43.921569%, transparent);
+  --navigation-resizer-hover: color-mix(in srgb, var(--night-accent) 25.098039%, transparent);
+  --portrait-ink: var(--night-canvas);
+  --portrait-fade-start: color-mix(in srgb, var(--night-canvas) 18.823529%, transparent);
+  --portrait-fade-end: color-mix(in srgb, var(--night-canvas) 92.941176%, transparent);
+  --portrait-label: color-mix(in srgb, var(--night-canvas) 90.980392%, transparent);
+  --portrait-status: color-mix(in srgb, var(--night-canvas) 93.333333%, transparent);
+  --portrait-ownership: color-mix(in srgb, var(--night-canvas) 94.117647%, transparent);
+  --portrait-upload: color-mix(in srgb, var(--night-canvas) 90.196078%, transparent);
+  --portrait-text: var(--night-text);
+  --portrait-muted: var(--night-muted);
+  --portrait-accent: var(--night-accent);
+  --portrait-accent-wash: color-mix(in srgb, var(--night-accent) 7.843137%, transparent);
+  --portrait-primary-border: var(--night-primary);
+  --portrait-error: var(--night-error);
+  --widget-primary-hover: var(--night-primary-hover);
+  --widget-primary-border: var(--night-primary);
+  --stream-overlay: color-mix(in srgb, var(--night-canvas) 92.156863%, transparent);
+  --stream-overlay-mobile: color-mix(in srgb, var(--night-canvas) 70.196078%, transparent);
+  --stream-note: var(--night-panel);
+  --stream-note-translucent: color-mix(in srgb, var(--night-panel) 90.980392%, transparent);
+  --stream-note-text: var(--night-muted);
+  --stream-note-strong: var(--night-text);
+  --stream-note-border: var(--night-control-border);
+  --stream-link: var(--night-accent);
+  --entry-background: var(--night-primary);
+  --entry-hover: var(--night-primary-hover);
+  --entry-text: var(--night-on-primary);
+  --entry-border: var(--night-primary);
+  --entry-focus-shadow: 0 0 0 3px var(--night-canvas), 0 0 0 6px var(--night-accent);
+  --mic-background: var(--night-primary);
+  --mic-hover: var(--night-primary-hover);
+  --mic-text: var(--night-on-primary);
+  --mic-border: var(--night-primary);
+  --mic-glow: color-mix(in srgb, var(--night-accent) 27.843137%, transparent);
+  --mic-glow-hover: color-mix(in srgb, var(--night-accent) 40%, transparent);
+  --mic-halo-first: color-mix(in srgb, var(--night-accent) 65.098039%, transparent);
+  --mic-halo-second: color-mix(in srgb, var(--night-accent-hover) 60%, transparent);
+  --player-background: var(--night-canvas);
+  --player-empty: var(--night-subtle);
+  --player-sheen-high: color-mix(in srgb, var(--night-text) 30.196078%, transparent);
+  --player-sheen-low: color-mix(in srgb, var(--night-muted) 23.921569%, transparent);
+  --player-sheen-edge: color-mix(in srgb, var(--night-text) 12.941176%, transparent);
+  --player-sheen-middle: color-mix(in srgb, var(--night-subtle) 14.901961%, transparent);
+  --player-sheen-bottom: color-mix(in srgb, var(--night-muted) 17.647059%, transparent);
+  --player-sheen-ring: color-mix(in srgb, var(--night-text) 23.921569%, transparent);
+}
+
+/* Disabled controls remain readable without changing their interaction state. */
+:root[data-theme='dark'] :is(.navigation-shell, dialog, .widget-host) button:disabled {
+  opacity: 1;
+  color: var(--night-muted);
+  background: var(--night-subtle);
+  border-color: var(--night-control-border);
+  box-shadow: none;
+}

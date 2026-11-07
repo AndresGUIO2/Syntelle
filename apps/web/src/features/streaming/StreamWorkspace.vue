@@ -706,13 +706,13 @@ defineExpose({
   justify-content: center;
   gap: 12px;
   padding: 20px;
-  background: #19181beb;
+  background: var(--stream-overlay, #19181beb);
   border-radius: 0 0 16px 16px;
   pointer-events: none;
 }
 .connection-status {
   margin: 0;
-  color: #d4d0da;
+  color: var(--stream-note-text, #d4d0da);
   font-size: 14px;
   text-align: center;
 }
@@ -723,7 +723,7 @@ defineExpose({
   pointer-events: auto;
 }
 .character-error a {
-  color: #cbb8fa;
+  color: var(--stream-link, #cbb8fa);
 }
 .connection-state.connection-entry {
   inset: 0;
@@ -739,13 +739,13 @@ defineExpose({
   transform: translateX(-50%);
   padding: 10px 14px;
   border-radius: 8px;
-  background: #26232c;
+  background: var(--stream-note, #26232c);
   font-size: 13px;
 }
 .connection-paused .connection-status {
-  color: #f3f0f7;
-  border: 1px solid #857b94;
-  background: #26232ce8;
+  color: var(--stream-note-strong, #f3f0f7);
+  border: 1px solid var(--stream-note-border, #857b94);
+  background: var(--stream-note-translucent, #26232ce8);
 }
 .entry-action {
   position: relative;
@@ -756,10 +756,10 @@ defineExpose({
   min-height: 72px;
   max-width: 100%;
   padding: 18px 22px;
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--entry-border, var(--control-border));
   border-radius: 16px 16px 16px 4px;
-  color: var(--text);
-  background: color-mix(in srgb, var(--surface-raised) 78%, transparent);
+  color: var(--entry-text, var(--text));
+  background: var(--entry-background, color-mix(in srgb, var(--surface-raised) 78%, transparent));
   box-shadow: 0 2px 8px #14131633;
   backdrop-filter: blur(3px);
   font: inherit;
@@ -771,13 +771,13 @@ defineExpose({
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  color: var(--accent);
+  color: var(--entry-text, var(--accent));
 }
 .entry-action-arrow {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  color: var(--muted);
+  color: var(--entry-text, var(--muted));
 }
 .entry-action-label {
   font-size: 15px;
@@ -788,14 +788,15 @@ defineExpose({
 .entry-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
+  box-shadow: var(--entry-focus-shadow, 0 2px 8px #14131633);
 }
 @media (hover: hover) {
   .entry-action:hover {
-    background: color-mix(in srgb, var(--subtle) 84%, transparent);
-    border-color: color-mix(in srgb, var(--control-border) 72%, transparent);
+    background: var(--entry-hover, color-mix(in srgb, var(--subtle) 84%, transparent));
+    border-color: var(--entry-border, color-mix(in srgb, var(--control-border) 72%, transparent));
   }
   .entry-action:hover .entry-action-arrow {
-    color: var(--accent);
+    color: var(--entry-text, var(--accent));
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -819,12 +820,12 @@ defineExpose({
   margin: 0 auto;
   padding: 6px 10px;
   border-radius: 6px;
-  color: #d4d0da;
-  background: #26232c;
+  color: var(--stream-note-text, #d4d0da);
+  background: var(--stream-note, #26232c);
 }
 .session-note {
   margin: 0;
-  color: #b7b2bf;
+  color: var(--stream-note-text, #b7b2bf);
   font-size: 12px;
   text-align: center;
 }
@@ -885,7 +886,7 @@ defineExpose({
     width: 50%;
     padding: 12px;
     border-radius: 0 16px 16px 0;
-    background: #19181bb3;
+    background: var(--stream-overlay-mobile, #19181bb3);
   }
   .connection-state.connection-entry {
     inset: 0;

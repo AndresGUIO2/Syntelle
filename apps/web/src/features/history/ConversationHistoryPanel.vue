@@ -121,7 +121,7 @@ onScopeDispose(() => {
   flex-direction: column;
 }
 .conversation-history-panel::backdrop {
-  background: #08060d70;
+  background: var(--history-backdrop, #08060d70);
 }
 .history-panel-header {
   display: flex;
